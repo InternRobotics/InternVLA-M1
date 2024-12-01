@@ -212,19 +212,6 @@ class TrainingStrategy(ABC):
 
                     # Commit Loss (Prior to Gradient Accumulation Normalization)
                     metrics.commit(loss=loss)
-
-                    # Normalize Loss to account for Gradient Accumulation --> Backward!
-                    # [IMPORTANT] Technically speaking, doing gradient accumulation in this way is "incorrect"; this is
-                    #             because in general, each batch has a *different number of masked out tokens* (because
-                    #             we're instruct-tuning). Taking the mean over two unbalanced means != the right thing!
-                    #
-                    #             HOWEVER -- at least at the 7B scale, the "naive" approach is just as performant as
-                    #             the "correct" implementation, without adding extra complexity.
-                    #
-                    # That being said =>> at the 13B scale, *no matter what we tried, ANY gradient accumulation is just
-                    #   really bad for downstream performance. Initial investigation shows that BF16 accumulation
-                    #   just really tanks in precision... and don't have a good/clean way to fix this. Would love for
-                    #   someone to PR and fix this (and I'd greatly appreciate it!!!)
                     normalized_loss = loss / self.grad_accumulation_steps
                     normalized_loss.backward()
 

@@ -120,12 +120,6 @@ def train(cfg: TrainConfig) -> None:
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
     torch.cuda.set_device(device_id := overwatch.local_rank())
-    # if overwatch.is_rank_zero():
-    #     debugpy.listen(("0.0.0.0", 5678))  # You can change the port if needed
-    #     print("Waiting for debugger attach...")
-    #     debugpy.wait_for_client()
-    #     print("Debugger attached, starting training...")
-
     torch.cuda.empty_cache()
 
     # Configure Unique Run Name & Save Directory
@@ -167,7 +161,6 @@ def train(cfg: TrainConfig) -> None:
         overwatch.info("Loading VLA Checkpoint")
         if cfg.use_ema:
             overwatch.info("Loading EMA of Diffusion")
-        # vlm = load_vla(cfg.pretrained_checkpoint, hf_token=hf_token, load_for_training=True)
         vla = load_vla(cfg.pretrained_checkpoint, 
                         hf_token=hf_token, 
                         load_for_training=True, 

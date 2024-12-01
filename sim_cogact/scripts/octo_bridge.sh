@@ -1,5 +1,3 @@
-
-
 gpu_id=0
 declare -a policy_models=(
 "octo-small"

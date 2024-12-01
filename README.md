@@ -181,7 +181,8 @@ Then add a new policy model in [SimplerEnv/simpler_env/main_inference.py](https:
         )
 After that, you can modify and launch the scripts in ``sim_cogact/scripts`` like:
 ```bash
-bash sim_cogact/scripts/cogact_put_in_drawer_visual_matching.sh
+cd <your_path_to_simpler>
+bash simpler_env/policies/sim_cogact/scripts/cogact_put_in_drawer_visual_matching.sh
 ```
 ## Citing
 If you find our work useful, please consider citing [our paper](https://cogact.github.io/CogACT_paper.pdf):

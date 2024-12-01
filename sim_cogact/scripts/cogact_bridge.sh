@@ -1,6 +1,7 @@
-gpu_id=2
+gpu_id=0
 policy_model=cogact
 ckpt_path=CogACT/CogACT-Base # CogACT/CogACT-Large CogACT/CogACT-Small
+
 scene_name=bridge_table_1_v1
 robot=widowx
 rgb_overlay_path=ManiSkill2_real2sim/data/real_inpainting/bridge_real_eval_1.png

@@ -1,4 +1,3 @@
-
 gpu_id=0
 
 declare -a arr=("CogACT/CogACT-Base")

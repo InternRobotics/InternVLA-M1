@@ -1,5 +1,5 @@
 # CogACT: A Foundational Vision-Language-Action Model for Synergizing Cognition and Action in Robotic Manipulation
-### 🚩[Project Page](https://cogact.github.io/) | 📑[Paper](https://cogact.github.io/) | 🤗[Models](https://huggingface.co/CogACT)
+### 🚩[Project Page](https://cogact.github.io/) | 📑[Paper](https://arxiv.org/abs/2411.19650) | 🤗[Models](https://huggingface.co/CogACT)
 
 
 This is the code for CogACT: A Foundational Vision-Language-Action Model for Synergizing Cognition and Action in Robotic Manipulation.

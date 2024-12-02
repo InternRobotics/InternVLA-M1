@@ -69,9 +69,9 @@ class CogACTInference:
         self.vla = load_vla(
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
           load_for_training=False, 
-          action_model_type='DiT-B',              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight
-          future_action_window_size=15,
-          action_dim=7,
+          action_model_type=action_model_type,              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight
+          future_action_window_size=future_action_window_size,
+          action_dim=action_dim,
         )
 
         if use_bf16:

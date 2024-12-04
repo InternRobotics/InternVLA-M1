@@ -189,10 +189,10 @@ If you find our work useful, please consider citing [our paper](https://cogact.g
 
 ```bibtex
 @article{li2024cogact,
-  title = {CogACT: A Foundational Vision-Language-Action Model for Synergizing Cognition and Action in Robotic Manipulation},
-  author = {Qixiu, Li and Yaobo, Liang and Zeyu, Wang and Lin, Luo and Xi, Chen and Mozheng, Liao and Fangyun, Wei and Yu, Deng and Sicheng, Xu and Yizhong, Zhang and Xiaofan, Wang and Bei, Liu and Jianlong, Fu and Jianmin, Bao and Dong, Chen and Yuanchun, Shi and Jiaolong, Yang and Baining, Guo},
-  journal = {arXiv preprint},
-  year = {2024},
+  title={CogACT: A Foundational Vision-Language-Action Model for Synergizing Cognition and Action in Robotic Manipulation},
+  author={Li, Qixiu and Liang, Yaobo and Wang, Zeyu and Luo, Lin and Chen, Xi and Liao, Mozheng and Wei, Fangyun and Deng, Yu and Xu, Sicheng and Zhang, Yizhong and others},
+  journal={arXiv preprint arXiv:2411.19650},
+  year={2024}
 }
 ```
 

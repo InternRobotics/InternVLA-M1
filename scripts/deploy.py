@@ -58,7 +58,6 @@ import math
 from flask import Flask, request, jsonify
 import tempfile
 import torch
-from vla import CogACT
 from vla import load_vla
 from sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
@@ -104,7 +103,6 @@ class CogACTService:
         self.cfg_scale = cfg_scale
 
         self.image_size = image_size
-        self.args = args
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
         self.action_ensemble = action_ensemble
@@ -116,6 +114,8 @@ class CogACTService:
             self.action_ensembler = AdaptiveEnsembler(self.action_ensemble_horizon, self.adaptive_ensemble_alpha)
         else:
             self.action_ensembler = None
+
+        self.args = args
         self.reset()
 
     def reset(self) -> None:
@@ -196,7 +196,7 @@ def resize_image(image: Image, size=(224, 224), shift_to_left=0):
 
 # Here the image is first center cropped and then resized back to its original size 
 # because random crop data augmentation was used during finetuning.
-def scale_and_resize(image : Image, target_size=(224, 224), scale=0.9, margin_w_ratio=0, margin_h_ratio=0):
+def scale_and_resize(image : Image, target_size=(224, 224), scale=0.9, margin_w_ratio=0.5, margin_h_ratio=0.5):
     w, h = image.size
     new_w = int(w * math.sqrt(scale))
     new_h = int(h * math.sqrt(scale))
@@ -209,11 +209,9 @@ def scale_and_resize(image : Image, target_size=(224, 224), scale=0.9, margin_w_
     return image
 
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--saved_model_path", type=str, default="CogACT/CogACT-Base")
 parser.add_argument("--unnorm_key", type=str, default=None)
-parser.add_argument("--policy_setup", type=str, default="widowx_bridge")
 parser.add_argument("--image_size", type=list[int], default=[224, 224])
 parser.add_argument("--action_model_type", type=str, default="DiT-B")
 parser.add_argument("--future_action_window_size", type=int, default=15)
@@ -226,7 +224,6 @@ parser.add_argument("--action_ensemble_horizon", type=int, default=2)
 parser.add_argument("--adaptive_ensemble_alpha", type=float, default=0.1)
 parser.add_argument("--action_chunking", action="store_true")
 parser.add_argument("--action_chunking_window", type=int, default=None)
-
 
 args = parser.parse_args()
 
@@ -246,7 +243,6 @@ inferencer = CogACTService(
     action_chunking_window=args.action_chunking_window,
     args=args
 )
-
 
 @app.route('/api/inference', methods=['POST'])
 def inference():

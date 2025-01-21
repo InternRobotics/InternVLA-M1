@@ -23,7 +23,7 @@ scene_name=frl_apartment_stage_simple
 EvalSim() {
   echo ${ckpt_path} ${env_name}
 
-  CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py --policy-model cogact --ckpt-path None \
+  CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py --policy-model cogact --ckpt-path ${ckpt_path} \
     --robot google_robot_static \
     --control-freq 3 --sim-freq 513 --max-episode-steps 113 \
     --env-name ${env_name} --scene-name ${scene_name} \

@@ -10,7 +10,7 @@ from typing import Callable, Optional, Union
 import torch
 
 from prismatic.models.vlms import PrismaticVLM
-from vla import CogACT
+from llavavla.model.vla import CogACT
 from training.strategies import FSDPStrategy, TrainingStrategy
 # Registry =>> Maps ID --> {cls(), kwargs} :: supports FSDP for now, but DDP handler is also implemented!
 TRAIN_STRATEGIES = {

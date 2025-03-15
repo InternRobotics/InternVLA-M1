@@ -91,6 +91,8 @@ class TrainConfig:
     use_ema: bool = False                                           # EMA version of action model
     action_dim: int = 7                                             # Dimension of action space
 
+    #@Jinhui overwrite 
+
     def __post_init__(self) -> None:
         """Lift optimization parameters from `self.vla` for ease of use =>> validate on `expected_world_size`"""
         self.epochs = self.vla.epochs
@@ -112,6 +114,8 @@ class TrainConfig:
         ), f"Expected World Size = {self.vla.expected_world_size} but Found {overwatch.world_size()} GPUs!"
 
     # fmt: on
+
+
 
 
 @draccus.wrap()
@@ -136,7 +140,8 @@ def train(cfg: TrainConfig) -> None:
 
     # Start =>> Build Directories and Set Randomness
     overwatch.info('"Do or do not; there is no try."', ctx_level=1)
-    hf_token = cfg.hf_token.read_text().strip() if isinstance(cfg.hf_token, Path) else os.environ[cfg.hf_token]
+    hf_token = Path(cfg.hf_token).read_text().strip() if "/" in cfg.hf_token else os.environ[cfg.hf_token]
+    
     worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
     os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
     os.makedirs(cfg.run_root_dir / cfg.run_id / "checkpoints", exist_ok=True)
@@ -163,7 +168,7 @@ def train(cfg: TrainConfig) -> None:
             overwatch.info("Loading EMA of Diffusion")
         vla = load_vla(cfg.pretrained_checkpoint, 
                         hf_token=hf_token, 
-                        load_for_training=True, 
+                        load_for_training=True,  #jinhui False
                         action_model_type=cfg.action_model_type, 
                         action_dim=cfg.action_dim,
                         future_action_window_size=cfg.future_action_window_size,
@@ -172,17 +177,17 @@ def train(cfg: TrainConfig) -> None:
                         )
 
     else:
-        vlm = load(cfg.vla.base_vlm, hf_token=hf_token, load_for_training=True)
+        vlm = load(cfg.vla.base_vlm, hf_token=hf_token, load_for_training=True) # @Jinhui True
         overwatch.info("Creating VLA from Base VLM")
         if cfg.use_ema:
             overwatch.info("Creating EMA for Diffusion")
         vla = CogACT(vlm, 
-                            action_model_type=cfg.action_model_type,
-                            action_dim=cfg.action_dim,
-                            future_action_window_size=cfg.future_action_window_size,
-                            past_action_window_size=cfg.past_action_window_size,
-                            use_ema=cfg.use_ema,
-                            )
+                    action_model_type=cfg.action_model_type,
+                    action_dim=cfg.action_dim,
+                    future_action_window_size=cfg.future_action_window_size,
+                    past_action_window_size=cfg.past_action_window_size,
+                    use_ema=cfg.use_ema,
+                    )
         # del this variable to avoid bugs. The vlm shouldn't be used anymore
         del vlm
 

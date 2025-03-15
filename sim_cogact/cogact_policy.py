@@ -41,7 +41,7 @@ class CogACTInference:
     ) -> None:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         if policy_setup == "widowx_bridge":
-            unnorm_key = "bridge_orig" if unnorm_key is None else unnorm_key
+            unnorm_key = "bridge_dataset" if unnorm_key is None else unnorm_key #@Jinhui bridge_orig
             action_ensemble = action_ensemble
             adaptive_ensemble_alpha = adaptive_ensemble_alpha
             if action_ensemble_horizon is None:

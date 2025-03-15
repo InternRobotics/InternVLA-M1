@@ -194,11 +194,12 @@ def load_vla(
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
     overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg.llm_backbone_id}[/] via HF Transformers")
+    # "/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/Llama-2-7b"
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
         model_cfg.llm_backbone_id,
         llm_max_length=model_cfg.llm_max_length,
         hf_token=hf_token,
-        inference_mode=not load_for_training,
+        inference_mode=not load_for_training, #not load_for_training
     )
 
     # Load VLM using `from_pretrained` (clobbers HF syntax... eventually should reconcile)
@@ -210,7 +211,7 @@ def load_vla(
         vision_backbone,
         llm_backbone,
         arch_specifier=model_cfg.arch_specifier,
-        freeze_weights=not load_for_training,
+        freeze_weights=not load_for_training, 
         norm_stats=norm_stats,
         **kwargs,
     )

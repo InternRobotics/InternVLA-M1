@@ -26,7 +26,7 @@ vla:
   enable_gradient_checkpointing: true
   enable_mixed_precision_training: true
   epochs: 100
-  expected_world_size: 8
+  expected_world_size: 1
   freeze_llm_backbone: false
   freeze_vision_backbone: false
   global_batch_size: 256

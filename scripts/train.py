@@ -33,10 +33,10 @@ from prismatic.util import set_global_seed
 from prismatic.vla import get_vla_dataset_and_collator
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
-from training import VLAMetrics, get_train_strategy
-from conf import VLAConfig, VLARegistry
-from vla import load, load_vla
-from vla import CogACT
+from llavavla.training import VLAMetrics, get_train_strategy
+from llavavla.conf import VLAConfig, VLARegistry
+from llavavla.model.vla import load, load_vla
+from llavavla.model.vla import CogACT
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"

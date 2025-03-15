@@ -4,7 +4,7 @@ import torch
 model_path = "/fs-computility/efm/yejinhui/Models/CogACT-Small/checkpoints/CogACT-Small.pt"
 model = load_vla(
         model_path,                   # choose from [CogACT-Small, CogACT-Base, CogACT-Large] or the local path
-        load_for_training=False, 
+        load_for_training=False,  #False
         action_model_type='DiT-S',              # choose from ['DiT-S', 'DiT-B', 'DiT-L'] to match the model weight
         future_action_window_size=15,
     )   

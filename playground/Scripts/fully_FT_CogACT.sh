@@ -3,6 +3,8 @@ export TRANSFORMERS_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
 export HF_HOME=/fs-computility/efm/yejinhui/.cache/huggingface_cache
 export HF_TOKEN=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
 
+cd /fs-computility/efm/yejinhui/Projects/CogACT
+
 # <model_id/local_path_to_model,e.g,"CogACT/CogACT-Base">
 MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
 

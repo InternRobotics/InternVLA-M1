@@ -28,7 +28,7 @@ from prismatic.util import check_bloat16_supported
 from prismatic.util.batching_utils import SplitModalitySampler
 from prismatic.util.data_utils import PaddedCollatorForActionPrediction, PaddedCollatorForLanguageModeling
 
-from vla import CogACT
+from llavavla.model.vla import CogACT
   
 @torch.no_grad()
 def update_ema(ema_model, model, decay=0.9999):

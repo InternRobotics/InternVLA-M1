@@ -27,8 +27,8 @@ from prismatic.models.vlms.prismatic import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
 
-from action_model.action_model import ActionModel
-from action_model.models import DiT
+from llavavla.model.action_model.action_model import ActionModel
+from llavavla.model.action_model.models import DiT
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)

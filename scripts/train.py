@@ -239,6 +239,7 @@ def train(cfg: TrainConfig) -> None:
         future_action_window_size=cfg.future_action_window_size,
         past_action_window_size=cfg.past_action_window_size,
     )
+    sample = next(iter(vla_dataset))
 
     # Save dataset statistics for de-normalization at inference time
     if overwatch.is_rank_zero():

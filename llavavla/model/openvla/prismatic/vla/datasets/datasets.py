@@ -45,7 +45,7 @@ class RLDSBatchTransform:
         else:
             dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
 
-        img = Image.fromarray(rlds_batch["observation"]["image_primary"][0])
+        img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # 为什么这里只那 RGB的 R？
         lang = rlds_batch["task"]["language_instruction"].decode().lower()
 
         # Construct Chat-based Prompt
@@ -74,7 +74,7 @@ class RLDSBatchTransform:
         # Tensorize =>> Run Image Transform to get `pixel_values` =>> Return
         #   =>> IMPORTANT :: IF WE'RE USING HF LLM.forward(..., labels=labels), SHIFTING HAPPENS _INSIDE_ MODEL!
         input_ids, labels = torch.tensor(input_ids), torch.tensor(labels)
-        pixel_values = self.image_transform(img)
+        pixel_values = self.image_transform(img) #@Jinhui
 
         # Add future actions to batch
         if rlds_batch["action"].shape[0] > 1:

@@ -61,6 +61,7 @@ def chunk_act_obs(traj: Dict, window_size: int, future_action_window_size: int =
             "future_action_window_size > 0 but no absolute_action_mask was provided. "
             "Assuming all actions are relative for the purpose of making neutral actions."
         )
+        
     absolute_action_mask = traj.get("absolute_action_mask", tf.zeros([traj_len, action_dim], dtype=tf.bool))
     
 

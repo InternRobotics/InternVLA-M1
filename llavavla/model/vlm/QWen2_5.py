@@ -20,7 +20,72 @@ from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProje
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
+from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
 
+
+from typing import Optional, Sequence, Type
+
+import torch
+from transformers import AutoModelForCausalLM
+from torch.distributed.fsdp.wrap import (
+    transformer_auto_wrap_policy,
+    size_based_auto_wrap_policy,
+    wrap,
+)
+
+# Registry =>> Support Qwen-2.5 Models (from HF Transformers)
+# fmt: off
+QWEN25_MODELS = {
+    # === Pure Qwen2.5 (non-instruct/chat-tuned) Models ===
+    "qwen25-0_5b-extra": {
+        "llm_family": "qwen2.5", "llm_cls": AutoModelForCausalLM, "hf_hub_path": "Qwen/Qwen2.5-0.5B"
+    },
+    "qwen25-0_5b-pure": {
+        "llm_family": "qwen2.5", "llm_cls": AutoModelForCausalLM, "hf_hub_path": "Qwen/Qwen2.5-0.5B"
+    },
+    "qwen25-1_5b-pure": {
+        "llm_family": "qwen2.5", "llm_cls": AutoModelForCausalLM, "hf_hub_path": "Qwen/Qwen2.5-1.5B"
+    },
+    "qwen25-3b-pure": {
+        "llm_family": "qwen2.5", "llm_cls": AutoModelForCausalLM, "hf_hub_path": "Qwen/Qwen2.5-3B"
+    },
+    "qwen25-7b-pure": {
+        "llm_family": "qwen2.5", "llm_cls": AutoModelForCausalLM, "hf_hub_path": "Qwen/Qwen2.5-7B"
+    },
+
+}
+# fmt: on
+
+
+# add by jinhui
+from llavavla.model.vlm.qwen_prompter import QwenPromptBuilder
+from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
+from torch.nn import Linear, Embedding
+
+# 从 transformers 导入 Qwen2.5 相关模块
+from transformers.models.qwen2.modeling_qwen2 import (
+    Qwen2DecoderLayer,           # LLM Decoder Layer
+    Qwen2MLP,                    # MLP Module in LLM
+    Qwen2Attention,               # LLM Attention Layer
+    Qwen2RMSNorm,                 # Normalization Layer
+    Qwen2RotaryEmbedding          # Rotary Position Embedding
+)
+
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    Qwen2_5_VisionTransformerPretrainedModel,
+    Qwen2_5_VisionPatchEmbed,
+    Qwen2_5_VLVisionBlock,
+    Qwen2_5_VLSdpaAttention,
+    Qwen2_5_VLMLP,
+    Qwen2_5_VLPatchMerger,
+    Qwen2_5_VisionRotaryEmbedding,
+    Qwen2RMSNorm,
+    Qwen2_5_VLModel,
+    Qwen2_5_VLDecoderLayer,
+    Qwen2_5_VLSdpaAttention,
+    Qwen2MLP,
+    Qwen2_5_VLRotaryEmbedding,
+)
 
 class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对齐， 思考更加flexible做法， --》 接口class的实现
     """
@@ -42,15 +107,13 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         
         vision_backbone = model.visual
         # 为了对齐 self.llm_backbone # 需要这样干的原因是 VLM_base 写的不好，做了强制假设
-        llm_backbone = model.model
+        llm_backbone = model.model #
         processor = AutoProcessor.from_pretrained(model_id)
         llm_backbone.llm = llm_backbone.config
         llm_backbone.llm.generation_config  =  llm_backbone.generation_config
 
-        
-
         super().__init__(
-            "prismatic",
+            "prismatic", #这个其实可以rm
             model_id,
             vision_backbone,
             llm_backbone,
@@ -61,7 +124,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         # 将整个模型转换为所需的精度类型。
         self.model.to(torch.float32)
         # 伪造子模块引用，以便 CogACT 里还能访问 想办法拿到
-        self.projector = self.model.lm_head
+        # self.projector = self.model.lm_head #
         self.vision_backbone = self.model.visual
         # 如果需要在 forward 过程中做自动混合精度
         self.enable_mixed_precision_training = enable_mixed_precision_training
@@ -74,8 +137,9 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         
         # 对齐 Keys
         self.arch_specifier = None #其实是在  self.vision_backbone 内部
-        self.projector = self.model.lm_head #@Jinhui TODO Check maybe None 应该是不用看的
-        
+
+        self.llm_backbone.transformer_layer_cls = Qwen2DecoderLayer
+  
 
 
     def forward(
@@ -169,7 +233,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
 
     ## Padding Methods
     def get_prompt_builder(self, system_prompt: Optional[str] = None) -> PromptBuilder:
-        prompt_initializer: Type[PromptBuilder] = self.llm_backbone.prompt_builder_fn
+        prompt_initializer: Type[PromptBuilder] = self.prompt_builder_fn
         return prompt_initializer(self.model_family, system_prompt=system_prompt)
 
     def freeze_backbones(self, stage: str) -> None:
@@ -185,7 +249,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         if stage == "align":
             self.vision_backbone.requires_grad_(False)
             self.llm_backbone.requires_grad_(False)
-            self.projector.requires_grad_(True)
+            # self.projector.requires_grad_(True)
 
             # Add to `self.trainable_module_keys`
             self.trainable_module_keys = ["projector"]
@@ -201,7 +265,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         elif stage in {"finetune", "vla-train"}:
             self.vision_backbone.requires_grad_(False)
             self.llm_backbone.requires_grad_(True)
-            self.projector.requires_grad_(True)
+            # self.projector.requires_grad_(True)
 
             # Add to `self.trainable_module_keys`
             self.trainable_module_keys = ["projector", "llm_backbone"]
@@ -222,7 +286,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             
             self.vision_backbone.requires_grad_(True)
             self.llm_backbone.requires_grad_(True)
-            self.projector.requires_grad_(True)
+        
 
             # Add to `self.trainable_module_keys`
             self.trainable_module_keys = ["vision_backbone", "projector", "llm_backbone"]
@@ -237,7 +301,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
 
         elif stage in {"last-layer-finetune", "vla-last-layer-train"}:
             self.vision_backbone.requires_grad_(False)
-            self.projector.requires_grad_(False)
+            # self.projector.requires_grad_(False)         
             self.llm_backbone.requires_grad_(False)
 
             # Unfreeze final LLM layer
@@ -261,7 +325,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             # self.vision_backbone.dtype = torch.float32
             self.vision_backbone.to(torch.float32)
             self.vision_backbone.requires_grad_(True)
-            self.projector.requires_grad_(True)
+            # self.projector.requires_grad_(True)
             self.llm_backbone.requires_grad_(False)
 
             # Unfreeze final LLM layer
@@ -314,7 +378,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         if pretrained_checkpoint is not None:
             overwatch.info(f"Loading from Provided Checkpoint `{pretrained_checkpoint}`", ctx_level=1)
             model_state_dict = torch.load(pretrained_checkpoint)["model"]
-            self.projector.load_state_dict(model_state_dict["projector"])
+            # self.projector.load_state_dict(model_state_dict["projector"])
 
             return
 
@@ -329,33 +393,54 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         if (pretrained_checkpoint := (align_dirs[0] / "checkpoints" / "latest-checkpoint.pt")).exists():
             overwatch.info(f"Loading from Discovered Checkpoint `{pretrained_checkpoint}`", ctx_level=1)
             model_state_dict = torch.load(pretrained_checkpoint)["model"]
-            self.projector.load_state_dict(model_state_dict["projector"])
+            # self.projector.load_state_dict(model_state_dict["projector"])
         else:
             raise ValueError(f"Could not find valid `align` checkpoint at {pretrained_checkpoint}!")
 
     def get_fsdp_wrapping_policy(self) -> Callable:
-        """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
-        vision_fsdp_wrapping_policy = self.vision_backbone.get_fsdp_wrapping_policy()
-        llm_fsdp_wrapping_policy = self.llm_backbone.get_fsdp_wrapping_policy()
+        """
+        Return an FSDP wrapping policy that combines size-based and transformer-based auto-wrapping policies.
+        """
 
-        # Get Prismatic Wrapping Policy =>> just a module wrapping policy around `self.projector`
-        prismatic_fsdp_wrapping_policy = partial(
-            _module_wrap_policy,
-            module_classes={LinearProjector, MLPProjector, FusedMLPProjector},
+        # 1️⃣ Transformer-based Auto-Wrap Policy
+        transformer_policy = partial(
+            transformer_auto_wrap_policy,
+            transformer_layer_cls={
+                Qwen2_5_VLDecoderLayer,  # LLM 解码层
+                Qwen2_5_VLVisionBlock,   # 视觉 Transformer Block
+            }
         )
 
-        # Return union (_or_) over constituent policies
-        #   => Note: there is *not* a fall-through policy; any module that isn't covered by the above constituents will
-        #            automatically be folded into the root VLM FSDP instance.
-        return partial(
-            _or_policy,
-            policies=[
-                vision_fsdp_wrapping_policy,
-                llm_fsdp_wrapping_policy,
-                prismatic_fsdp_wrapping_policy,
-            ],
+        # 2️⃣ Size-based Auto-Wrap Policy (用于超大层)
+        size_policy = partial(
+            size_based_auto_wrap_policy,
+            min_num_params=1e8  # 1 亿参数以上的层进行 FSDP 包装
         )
 
+        # 3️⃣ 组合策略：优先匹配 Transformer 层，否则基于参数数量包装
+        def combined_policy(module, recurse, nonwrapped_numel):
+            return transformer_policy(module, recurse, nonwrapped_numel) or size_policy(module, recurse, nonwrapped_numel)
+
+        return combined_policy
+
+    @property
+    def prompt_builder_fn(self) -> Type[PromptBuilder]:
+        return QwenPromptBuilder
+    
+    @property
+    def transformer_layer_cls(self) -> Type[torch.nn.Module]:
+        return Qwen2DecoderLayer
+    
+    @property
+    def half_precision_dtype(self) -> torch.dtype:
+        return torch.bfloat16
+
+    @property
+    def last_layer_finetune_modules(self) -> Sequence[torch.nn.Module]:
+        # TODO not sure that this works
+        return (self.llm.model.embed_tokens, self.llm.model.layers[-1], self.llm.lm_head)
+
+    
 def get_qwen2_5_vl(model_id="playground/Pretrained_models/Qwen2.5-VL-7B-Instruct"):
 
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained( # 里面有奇怪的bug, 来自cookbooks

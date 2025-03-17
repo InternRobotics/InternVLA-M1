@@ -58,7 +58,7 @@ import math
 from flask import Flask, request, jsonify
 import tempfile
 import torch
-from llavavla.model.vla import load_vla
+from llavavla.model.vla import load_qwenvla
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
 app = Flask(__name__)
@@ -90,7 +90,7 @@ class CogACTService:
         self.unnorm_key = unnorm_key
 
         print(f"*** unnorm_key: {unnorm_key} ***")
-        self.vla = load_vla(
+        self.vla = load_qwenvla(
           saved_model_path,
           load_for_training=False, 
           action_model_type=action_model_type,

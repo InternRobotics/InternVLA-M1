@@ -160,28 +160,20 @@ class CogACT_Qwen(nn.Module):
         loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
         return loss, output
 
+
     def get_fsdp_wrapping_policy(self) -> Callable:
-        """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
-        vision_fsdp_wrapping_policy = self.vlm.vision_backbone.get_fsdp_wrapping_policy()
-        llm_fsdp_wrapping_policy = self.vlm.llm_backbone.get_fsdp_wrapping_policy()
+        """
+        Defines the FSDP wrapping policy for `_QWen_VL_Interface`.
 
-        # Get Prismatic Wrapping Policy =>> just a module wrapping policy around `self.projector` and DiT
-        prismatic_fsdp_wrapping_policy = partial(
-            _module_wrap_policy,
-            module_classes={LinearProjector, MLPProjector, FusedMLPProjector, DiT},
-        )
+        - Wraps large linear layers and embeddings for efficient memory usage.
+        - Leaves normalization layers untouched.
+        - Separates vision and LLM backbone processing.
+        """
 
-        # Return union (_or_) over constituent policies
-        #   => Note: there is *not* a fall-through policy; any module that isn't covered by the above constituents will
-        #            automatically be folded into the root VLM FSDP instance.
-        return partial(
-            _or_policy,
-            policies=[
-                vision_fsdp_wrapping_policy,
-                llm_fsdp_wrapping_policy,
-                prismatic_fsdp_wrapping_policy,
-            ],
-        )
+        # Define FSDP policy for specific module classes
+
+
+        return self.vlm.get_fsdp_wrapping_policy()
 
     def load_ema_to_weights(self):
         """Load the EMA state dict to the weights."""

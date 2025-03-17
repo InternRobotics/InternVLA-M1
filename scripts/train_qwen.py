@@ -229,6 +229,7 @@ def train(cfg: TrainConfig) -> None:
         f"# Parameters (in millions): {num_params / 10**6:.3f} Total, {num_trainable_params / 10**6:.3f} Trainable"
     )
 
+
     overwatch.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.vla.data_mix}`")
     #   text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     vla_dataset, _, collator = get_vla_dataset_and_collator(
@@ -236,8 +237,8 @@ def train(cfg: TrainConfig) -> None:
         cfg.vla.data_mix,
         image_transform=vla.vlm.processor.image_processor, #这个实现很不好，其实现在已经开始和模型绑定了
         tokenizer=vla.vlm.processor.tokenizer,
-        prompt_builder_fn=vla.vlm.processor.apply_chat_template, #add_turn
-        default_image_resolution=[336,336,3],
+        prompt_builder_fn=vla.vlm.prompt_builder_fn, #add_turn
+        default_image_resolution=(3, 224, 224),
         shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
         image_aug=cfg.image_aug,
         load_all_data_for_training=cfg.load_all_data_for_training,

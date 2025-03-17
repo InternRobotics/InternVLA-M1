@@ -156,7 +156,7 @@ class CogACT(nn.Module):
         loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
         return loss, output
 
-    def get_fsdp_wrapping_policy(self) -> Callable:
+    def get_fsdp_wrapping_policy(self) -> Callable: 
         """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
         vision_fsdp_wrapping_policy = self.vlm.vision_backbone.get_fsdp_wrapping_policy()
         llm_fsdp_wrapping_policy = self.vlm.llm_backbone.get_fsdp_wrapping_policy()

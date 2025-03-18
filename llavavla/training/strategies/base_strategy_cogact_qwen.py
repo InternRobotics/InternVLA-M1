@@ -28,7 +28,7 @@ from prismatic.util import check_bloat16_supported
 from prismatic.util.batching_utils import SplitModalitySampler
 from prismatic.util.data_utils import PaddedCollatorForActionPrediction, PaddedCollatorForLanguageModeling
 
-from llavavla.model.vla import CogACT
+from llavavla.model.vla import CogACT_Qwen
   
 @torch.no_grad()
 def update_ema(ema_model, model, decay=0.9999):
@@ -49,7 +49,7 @@ overwatch = initialize_overwatch(__name__)
 class TrainingStrategy(ABC):
     def __init__(
         self,
-        vlm: Union[PrismaticVLM, CogACT],
+        vlm: Union[PrismaticVLM, CogACT_Qwen],
         device_id: int,
         stage: str,
         epochs: int,
@@ -108,7 +108,7 @@ class TrainingStrategy(ABC):
     def save_checkpoint(
         self,
         run_dir: Path,
-        global_step: int,
+        global_step: int, 
         epoch: int,
         train_loss: Optional[float] = None,
         only_trainable: bool = True,
@@ -301,7 +301,7 @@ class TrainingStrategy(ABC):
                             input_ids=batch["input_ids"],
                             attention_mask=batch["attention_mask"],
                             actions=batch["actions"],
-                            pixel_values=batch["pixel_values"],
+                            pixel_values=batch["pixel_values"], # 临时座位 dict 变量，允许dict传参数
                             action_masks=batch["action_masks"],
                             labels=batch["labels"],
                             output_hidden_states = True,

@@ -68,7 +68,7 @@ class LabelEmbedder(nn.Module):
     """
     Embeds conditions into vector representations. Also handles label dropout for classifier-free guidance.
     """
-    def __init__(self, in_size, hidden_size, dropout_prob=0.1, conditions_shape=(1, 1, 4096)):
+    def __init__(self, in_size, hidden_size, dropout_prob=0.1, conditions_shape=(1, 1, 2048)): # 点名批评 --> 怎么可以写一下hard shape
         super().__init__()
         self.linear = nn.Linear(in_size, hidden_size)
         self.dropout_prob = dropout_prob

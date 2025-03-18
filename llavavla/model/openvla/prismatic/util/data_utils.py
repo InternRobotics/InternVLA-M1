@@ -6,7 +6,7 @@ General utilities and classes for facilitating data loading and collation.
 
 from dataclasses import dataclass
 from typing import Callable, Dict, Sequence, Tuple
-
+from collections.abc import Mapping
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
@@ -127,6 +127,13 @@ class PaddedCollatorForActionPrediction:
         elif isinstance(pixel_values[0], dict):
             pixel_values = {
                 k: torch.stack([pixel_values[idx][k] for idx in range(len(input_ids))]) for k in pixel_values[0]
+            }
+        elif isinstance(pixel_values[0], Mapping):  # ✅ 兼容 UserDict 和 BatchFeature #@
+            pixel_values = {
+            k: torch.stack(
+                [torch.tensor(pixel_values[idx][k]) for idx in range(len(input_ids))]
+            )
+            for k in pixel_values[0] #@ TODO check why shape = [1,16,16]
             }
         else:
             raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")

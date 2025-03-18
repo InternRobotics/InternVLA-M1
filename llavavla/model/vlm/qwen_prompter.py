@@ -9,7 +9,7 @@ SYS_PROMPTS = {
 }
 
 
-class QwenPromptBuilder(PromptBuilder):
+class QwenPromptBuilder(PromptBuilder): #@Jinhui TODO 实现对接 Qwen 的完整版 builder 
     def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
 
@@ -33,7 +33,7 @@ class QwenPromptBuilder(PromptBuilder):
 
     def add_turn(self, role: str, message: str) -> str:
         assert (role == "human") if (self.turn_count % 2 == 0) else (role == "gpt")
-        message = message.replace("<image>", "").strip()
+        # message = message.replace("<image>", "").strip()
 
         # Special Handling for "first" input --> add an optional system prompt to the beginning.
         if self.turn_count == 0 and self.system_prompt is not None:

@@ -46,7 +46,7 @@ class CogACT_Qwen(nn.Module):
         self,
         vlm:_QWen_VL_Interface,
         action_model_type: str = 'DiT-B',
-        token_size: int = 4096,
+        token_size: int = 2048,
         action_dim: int = 7,
         future_action_window_size: int = 15,
         past_action_window_size: int = 0,
@@ -115,7 +115,8 @@ class CogACT_Qwen(nn.Module):
         action_masks = None,
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
-        
+        # @Jinhui TBD TODO 
+        # pixel_values = pixel_values["pixel_values"]
         output: CausalLMOutputWithPast = self.vlm(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -132,22 +133,22 @@ class CogACT_Qwen(nn.Module):
         # extract the last hidden state and the learnable EOS token feature
         last_hidden = output.hidden_states[-1]
 
-        # extract the visual token number
-        if self.vlm.vision_backbone.featurizer is not None:
-            num_patch = self.vlm.vision_backbone.featurizer.patch_embed.num_patches
-        elif hasattr(self.vlm.vision_backbone, 'siglip_featurizer') and self.vlm.vision_backbone.siglip_featurizer is not None:
-            num_patch = self.vlm.vision_backbone.siglip_featurizer.patch_embed.num_patches
-        else:
-            raise ValueError("No vision backbone found")
-        
-        last_hidden = last_hidden[:, num_patch :]
+        # extract the visual token number #@Jinhui 他要拿一个token 去做 下游 TODO 展示不要用关
+        # @Discussion 这个位置需要讨论 --> 其实可以通过检查 visual token 的 indexs 来
+        image_token_id, vido_token_id = 151655, 151654
+        # 1️⃣ 找到第一个匹配的 image_token_id 的索引
+        match_indices = (input_ids == image_token_id).float().argmax(dim=1)  # [B]
 
-        # extract the cognition feature
-        cumulative_sum = attention_mask.cumsum(dim=1)
-        last_true_indices = (cumulative_sum == cumulative_sum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  
-        expanded_indices = last_true_indices.unsqueeze(-1).expand(-1, last_hidden.size(-1))  
+        # 2️⃣ 确保索引不会越界（前一个 token 不能是 -1）
+        prev_indices = torch.clamp(match_indices - 1, min=0)  # [B]
+
+        # 3️⃣ 扩展索引，使其匹配 last_hidden 维度
+        expanded_indices = prev_indices.unsqueeze(-1).expand(-1, last_hidden.size(-1))  # [B, D]
+
+        # 4️⃣ 提取 cognition_features (前一个 token 的隐藏状态)
         cognition_features = last_hidden.gather(1, expanded_indices.unsqueeze(1))  # [B, 1, D]
-
+        cognition_features = cognition_features.to(torch.bfloat16)
+        
         actions_history = actions[:,0:self.past_action_window_size,:]
         actions_future = actions[:, -(self.future_action_window_size+1):, :]
         
@@ -161,19 +162,28 @@ class CogACT_Qwen(nn.Module):
         return loss, output
 
 
-    def get_fsdp_wrapping_policy(self) -> Callable:
-        """
-        Defines the FSDP wrapping policy for `_QWen_VL_Interface`.
+    def get_fsdp_wrapping_policy(self) -> Callable: 
+        """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
+        # vision_fsdp_wrapping_policy = self.vlm.vision_backbone.get_fsdp_wrapping_policy()
+        # llm_fsdp_wrapping_policy = self.vlm.llm_backbone.get_fsdp_wrapping_policy()
+        # vlm_fsdp_wrapping_policy = self.vlm.get_fsdp_wrapping_policy()
 
-        - Wraps large linear layers and embeddings for efficient memory usage.
-        - Leaves normalization layers untouched.
-        - Separates vision and LLM backbone processing.
-        """
+        # Get Prismatic Wrapping Policy =>> just a module wrapping policy around `self.projector` and DiT
+        prismatic_fsdp_wrapping_policy = partial(
+            _module_wrap_policy,
+            module_classes={DiT},
+        )
 
-        # Define FSDP policy for specific module classes
-
-
-        return self.vlm.get_fsdp_wrapping_policy()
+        # Return union (_or_) over constituent policies
+        #   => Note: there is *not* a fall-through policy; any module that isn't covered by the above constituents will
+        #            automatically be folded into the root VLM FSDP instance.
+        return partial(
+            _or_policy,
+            policies=[
+                # vlm_fsdp_wrapping_policy,
+                prismatic_fsdp_wrapping_policy,
+            ],
+        )
 
     def load_ema_to_weights(self):
         """Load the EMA state dict to the weights."""

@@ -21,6 +21,8 @@ from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProje
 overwatch = initialize_overwatch(__name__)
 
 from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
+from functools import partial
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy, size_based_auto_wrap_policy, _or_policy
 
 
 from typing import Optional, Sequence, Type
@@ -72,19 +74,8 @@ from transformers.models.qwen2.modeling_qwen2 import (
 )
 
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
-    Qwen2_5_VisionTransformerPretrainedModel,
-    Qwen2_5_VisionPatchEmbed,
     Qwen2_5_VLVisionBlock,
-    Qwen2_5_VLSdpaAttention,
-    Qwen2_5_VLMLP,
-    Qwen2_5_VLPatchMerger,
-    Qwen2_5_VisionRotaryEmbedding,
-    Qwen2RMSNorm,
-    Qwen2_5_VLModel,
     Qwen2_5_VLDecoderLayer,
-    Qwen2_5_VLSdpaAttention,
-    Qwen2MLP,
-    Qwen2_5_VLRotaryEmbedding,
 )
 
 class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对齐， 思考更加flexible做法， --》 接口class的实现
@@ -102,7 +93,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         **kwargs
     ):  
         # QWen 原生模型
-        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="auto")
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu")
         # 伪造子模块引用，以便 CogACT 里还能访问 想办法拿到
         
         vision_backbone = model.visual
@@ -159,11 +150,15 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         """
         调用 QWen2.5 的 forward，输出类似 CausalLMOutputWithPast 的结构，供 CogACT 使用。
         """
+        
         with torch.autocast("cuda", enabled=self.enable_mixed_precision_training, dtype=torch.float16):
+            # @Jinhui TBD TODO 
+            # pixel_values = pixel_values["pixel_values"]
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                pixel_values=pixel_values,
+                pixel_values=pixel_values["pixel_values"],
+                image_grid_thw =pixel_values["image_grid_thw"].reshape(-1, 3), #@Jinhui TODO mv to RLDSTransform
                 labels=labels,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
@@ -397,7 +392,8 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         else:
             raise ValueError(f"Could not find valid `align` checkpoint at {pretrained_checkpoint}!")
 
-    def get_fsdp_wrapping_policy(self) -> Callable:
+
+    def get_fsdp_wrapping_policy(self) -> Callable: #@Jinhui 确实不需要实现它
         """
         Return an FSDP wrapping policy that combines size-based and transformer-based auto-wrapping policies.
         """
@@ -417,11 +413,13 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             min_num_params=1e8  # 1 亿参数以上的层进行 FSDP 包装
         )
 
-        # 3️⃣ 组合策略：优先匹配 Transformer 层，否则基于参数数量包装
+        # 3️⃣ 组合策略，避免递归包装已是 FSDP 的子模块
         def combined_policy(module, recurse, nonwrapped_numel):
+            if isinstance(module, torch.distributed.fsdp.FullyShardedDataParallel):
+                return False  # ✅ 避免包装已是 FSDP 的模块
             return transformer_policy(module, recurse, nonwrapped_numel) or size_policy(module, recurse, nonwrapped_numel)
 
-        return combined_policy
+        return size_policy #combined_policy @TODO Jinhui: 或许 QWen 内部本来就有 fsdp
 
     @property
     def prompt_builder_fn(self) -> Type[PromptBuilder]:

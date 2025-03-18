@@ -30,13 +30,17 @@ import wandb
 
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util import set_global_seed
-from prismatic.vla import get_vla_dataset_and_collator
+# from prismatic.vla import get_vla_dataset_and_collator
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
-from llavavla.training import VLAMetrics, get_train_strategy
+# from llavavla.training import VLAMetrics, get_train_strategy
+from llavavla.training.materialize_qwen import get_train_strategy
+from llavavla.training import VLAMetrics
+
 from llavavla.conf import VLAConfig, VLARegistry
 from llavavla.model.vla import load_qwenvl, load_qwenvla
 from llavavla.model.vla import CogACT_Qwen
+from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -235,7 +239,7 @@ def train(cfg: TrainConfig) -> None:
     vla_dataset, _, collator = get_vla_dataset_and_collator(
         cfg.data_root_dir,
         cfg.vla.data_mix,
-        image_transform=vla.vlm.processor.image_processor, #这个实现很不好，其实现在已经开始和模型绑定了
+        vlp_processor=vla.vlm.processor, #这个实现很不好，其实现在已经开始和模型绑定了
         tokenizer=vla.vlm.processor.tokenizer,
         prompt_builder_fn=vla.vlm.prompt_builder_fn, #add_turn
         default_image_resolution=(3, 224, 224),
@@ -246,7 +250,7 @@ def train(cfg: TrainConfig) -> None:
         past_action_window_size=cfg.past_action_window_size,
     )
 
-    sample = next(iter(vla_dataset))
+    # sample = next(iter(vla_dataset)) #for debug
 
     # Save dataset statistics for de-normalization at inference time
     if overwatch.is_rank_zero():

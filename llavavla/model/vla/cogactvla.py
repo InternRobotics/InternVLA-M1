@@ -112,7 +112,7 @@ class CogACT(nn.Module):
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         
-        output: CausalLMOutputWithPast = self.vlm(
+        output: CausalLMOutputWithPast = self.vlm( 
             input_ids=input_ids,
             attention_mask=attention_mask,
             pixel_values=pixel_values,

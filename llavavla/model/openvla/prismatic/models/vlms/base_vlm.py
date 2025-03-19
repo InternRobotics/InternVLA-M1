@@ -106,3 +106,7 @@ class VLM(nn.Module, GenerationMixin, ABC):
     # => Beam Search Utility
     def _reorder_cache(self, past_key_values, beam_idx):
         return self.llm_backbone.llm._reorder_cache(past_key_values, beam_idx)
+    
+    @property
+    def _supports_cache_class(self):
+        return False

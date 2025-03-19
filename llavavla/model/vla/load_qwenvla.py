@@ -18,7 +18,7 @@ from prismatic.models.registry import GLOBAL_REGISTRY, MODEL_REGISTRY
 from llavavla.model.vlm import _QWen_VL_Interface
 from prismatic.overwatch import initialize_overwatch
 
-from llavavla.model.vla import CogACT
+from llavavla.model.vla import CogACT_Qwen
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -82,7 +82,7 @@ def load_qwenvla(
     load_for_training: bool = False,
     model_type: str = "pretrained",
     **kwargs,
-) -> CogACT:
+) -> CogACT_Qwen:
     """Loads a pretrained CogACT from either local disk or the HuggingFace Hub."""
 
     # TODO (siddk, moojink) :: Unify semantics with `load()` above; right now, `load_vla()` assumes path points to
@@ -100,30 +100,6 @@ def load_qwenvla(
         assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir = }`"
 
     # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
-    else:
-        # Search HF Hub Repo via fsspec API
-        overwatch.info(f"Checking HF for `{(hf_path := str(Path(model_id_or_path)))}`")
-        if not (tmpfs := HfFileSystem()).exists(hf_path):
-            raise ValueError(f"Couldn't find valid HF Hub Path `{hf_path = }`")
-
-        valid_ckpts = tmpfs.glob(f"{hf_path}/checkpoints/*.pt")
-        if (len(valid_ckpts) == 0) or (len(valid_ckpts) != 1):
-            raise ValueError(f"Couldn't find a valid checkpoint to load from HF Hub Path `{hf_path}/checkpoints/")
-
-        target_ckpt = Path(valid_ckpts[-1]).name
-        model_id_or_path = str(model_id_or_path)  # Convert to string for HF Hub API
-        overwatch.info(f"Downloading Model `{model_id_or_path}` Config & Checkpoint `{target_ckpt}`")
-        with overwatch.local_zero_first():
-            # relpath = Path(model_type) / model_id_or_path
-            config_json = hf_hub_download(
-                repo_id=model_id_or_path, filename=f"{('config.json')!s}", cache_dir=cache_dir
-            )
-            dataset_statistics_json = hf_hub_download(
-                repo_id=model_id_or_path, filename=f"{('dataset_statistics.json')!s}", cache_dir=cache_dir
-            )
-            checkpoint_pt = hf_hub_download(
-                repo_id=model_id_or_path, filename=f"{(Path('checkpoints') / target_ckpt)!s}", cache_dir=cache_dir
-            )
 
     # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
     with open(config_json, "r") as f:
@@ -138,9 +114,7 @@ def load_qwenvla(
     #   =>> Print Minimal Config
     overwatch.info(
         f"Found Config =>> Loading & Freezing [bold blue]{model_cfg.model_id}[/] with:\n"
-        f"             Vision Backbone =>> [bold]{model_cfg.vision_backbone_id}[/]\n"
-        f"             LLM Backbone    =>> [bold]{model_cfg.llm_backbone_id}[/]\n"
-        f"             Arch Specifier  =>> [bold]{model_cfg.arch_specifier}[/]\n"
+        f"             LVM Backbone =>> [bold]{model_cfg.model_id}[/]\n"
         f"             Checkpoint Path =>> [underline]`{checkpoint_pt}`[/]"
     )
 
@@ -164,12 +138,9 @@ def load_qwenvla(
     # Load VLM using `from_pretrained` (clobbers HF syntax... eventually should reconcile)
     overwatch.info(f"Loading VLA [bold blue]{model_cfg.model_id}[/] from Checkpoint")
 
-    vla = CogACT.from_pretrained(
+    vla = CogACT_Qwen.from_pretrained(
         checkpoint_pt,
         model_cfg.model_id,
-        vision_backbone,
-        llm_backbone,
-        arch_specifier=model_cfg.arch_specifier,
         freeze_weights=not load_for_training, 
         norm_stats=norm_stats,
         **kwargs,

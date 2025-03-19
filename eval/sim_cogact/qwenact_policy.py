@@ -15,8 +15,8 @@ from transforms3d.euler import euler2axangle
 from transformers import AutoModelForVision2Seq, AutoProcessor
 
 
-from llavavla.model.vla import CogACT
-from llavavla.model.vla import load_vla
+from llavavla.model.vla import CogACT_Qwen
+from llavavla.model.vla import load_qwenvla
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
 class CogACTInference:
@@ -66,7 +66,7 @@ class CogACTInference:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-        self.vla = load_vla(
+        self.vla = load_qwenvla(
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
           load_for_training=False, 
           action_model_type=action_model_type,              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight

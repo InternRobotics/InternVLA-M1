@@ -116,8 +116,8 @@ class CogACT_Qwen(nn.Module):
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         # @Jinhui TBD TODO 
-        # pixel_values = pixel_values["pixel_values"]
-        output: CausalLMOutputWithPast = self.vlm(
+        # pixel_values = pixel_values["pixel_values"] # labeles = pixel_values["labels"]
+        output: CausalLMOutputWithPast = self.vlm( #system 
             input_ids=input_ids,
             attention_mask=attention_mask,
             pixel_values=pixel_values,
@@ -222,14 +222,8 @@ class CogACT_Qwen(nn.Module):
 
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
         model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")["model"]
-        assert (
-            "projector" in model_state_dict and "llm_backbone" in model_state_dict
-        ), "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
 
-        vlm.projector.load_state_dict(model_state_dict["projector"])
-        vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"])
-        if "vision_backbone" in model_state_dict.keys():
-            vlm.vision_backbone.load_state_dict(model_state_dict["vision_backbone"])
+        vlm.load_state_dict(model_state_dict)
 
         # Freeze Weights
         if freeze_weights:

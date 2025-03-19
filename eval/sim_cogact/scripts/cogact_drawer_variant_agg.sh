@@ -1,17 +1,22 @@
 # shader_dir=rt means that we turn on ray-tracing rendering; this is quite crucial for the open / close drawer task as policies often rely on shadows to infer depth
-gpu_id=0
+gpu_id=1
+MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
+
+cd /root/envs/SimplerEnv
+export PYTHONPATH=$PYTHONPATH:/fs-computility/efm/yejinhui/Projects/CogACT/
+export CUDA_VISIBLE_DEVICES=0,1
 
 declare -a ckpt_paths=(
-"CogACT/CogACT-Base"
+${MODEL_PATH}
 )
 # CogACT/CogACT-Large CogACT/CogACT-Small
 declare -a env_names=(
-OpenTopDrawerCustomInScene-v0
-OpenMiddleDrawerCustomInScene-v0
-OpenBottomDrawerCustomInScene-v0
 CloseTopDrawerCustomInScene-v0
 CloseMiddleDrawerCustomInScene-v0
 CloseBottomDrawerCustomInScene-v0
+OpenTopDrawerCustomInScene-v0
+OpenMiddleDrawerCustomInScene-v0
+OpenBottomDrawerCustomInScene-v0
 )
 
 EXTRA_ARGS="--enable-raytracing"

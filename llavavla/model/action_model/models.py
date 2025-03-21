@@ -68,7 +68,7 @@ class LabelEmbedder(nn.Module):
     """
     Embeds conditions into vector representations. Also handles label dropout for classifier-free guidance.
     """
-    def __init__(self, in_size, hidden_size, dropout_prob=0.1, conditions_shape=(1, 1, 4096)): # @Jinhui 点名批评cogact --> 怎么可以写一下hard shape
+    def __init__(self, in_size, hidden_size, dropout_prob=0.1, conditions_shape=(1, 1, 4096)): # @Jinhui 点名批评cogact --> 怎么可以写一下hard shape 40962018
         super().__init__()
         self.linear = nn.Linear(in_size, hidden_size)
         self.dropout_prob = dropout_prob
@@ -188,7 +188,8 @@ class DiT(nn.Module):
         
         self.x_embedder = ActionEmbedder(action_size=in_channels, hidden_size=hidden_size)
         self.t_embedder = TimestepEmbedder(hidden_size)
-        self.z_embedder = LabelEmbedder(in_size=token_size, hidden_size=hidden_size, dropout_prob=class_dropout_prob)
+        conditions_shape = (1, 1, token_size) #@Jinhui: 我不明白为什么要定义这个参数？不是直接强制要求一定是token_size？token_size 的名字也不好，应该是 token_dim
+        self.z_embedder = LabelEmbedder(in_size=token_size, hidden_size=hidden_size, dropout_prob=class_dropout_prob, conditions_shape=conditions_shape)
         scale = hidden_size ** -0.5
 
         # Learnable positional embeddings

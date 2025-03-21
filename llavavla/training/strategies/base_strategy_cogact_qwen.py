@@ -71,9 +71,9 @@ class TrainingStrategy(ABC):
     ) -> None:
         self.vlm, self.device_id, self.stage = vlm, device_id, stage
 
-        # Get relevant VLM instance parameters before they get (potentially) wrapped
+        # Get relevant VLM instance parameters before they get (potentially) wrapped # 为什么要 跨级看vlm? VLM 是model
         self.all_module_keys, self.trainable_module_keys = self.vlm.all_module_keys, self.vlm.trainable_module_keys
-        self.llm_transformer_layer_cls = self.vlm.llm_backbone.transformer_layer_cls
+  
 
         # Optimization Parameters
         self.epochs, self.max_steps = epochs, max_steps

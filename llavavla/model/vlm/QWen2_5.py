@@ -80,18 +80,23 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, Auto
 class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对齐， 思考更加flexible做法， --》 接口class的实现
     """
     这是对 Qwen2_5_VLForConditionalGeneration 的简单封装，使其在接口层面上更接近 PrismaticVLM，
-    例如能够返回类似 CausalLMOutputWithPast 的结构，并拥有类似 vision_backbone、llm_backbone 等属性。
+    例如能够返回类似 CausalLMOutputWithPast 的结构，需要一个 class 来包装是因为 不同的VLM 有不一样的api, 但是要保证对外的功能是一致的
     """
 
     def __init__(
         self,
         model_id: str,
-        vision_backbone=None,
-        llm_backbone=None,
         load_for_training: bool = True,
         enable_mixed_precision_training: bool = True, #@Jinhui Check
         **kwargs
     ):  
+
+
+        super().__init__(
+            "Qwen", #这个其实可以rm
+            model_id,
+            enable_mixed_precision_training=enable_mixed_precision_training,
+        )
         # QWen 原生模型
         if load_for_training: #TODO model -> vlm
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu") # 只能到CPU先 # 
@@ -99,45 +104,14 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             config = AutoConfig.from_pretrained(model_id)
             model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
 
-        # 伪造子模块引用，以便 CogACT 里还能访问 想办法拿到
-        
-        vision_backbone = model.visual
-        # 为了对齐 self.llm_backbone # 需要这样干的原因是 VLM_base 写的不好，做了强制假设
-        llm_backbone = model.model #
         processor = AutoProcessor.from_pretrained(model_id)
-        llm_backbone.llm = llm_backbone.config
-        llm_backbone.llm.generation_config  =  llm_backbone.generation_config
 
-        super().__init__(
-            "prismatic", #这个其实可以rm
-            model_id,
-            vision_backbone,
-            llm_backbone,
-            enable_mixed_precision_training=enable_mixed_precision_training,
-        )
-        # QWen 原生模型
         self.model = model
-        # 将整个模型转换为所需的精度类型。
-        # self.model.to(torch.float32)
-        # 伪造子模块引用，以便 CogACT 里还能访问 想办法拿到
-        # self.projector = self.model.lm_head #
-        self.vision_backbone = self.model.visual
-        # 如果需要在 forward 过程中做自动混合精度
-        self.enable_mixed_precision_training = enable_mixed_precision_training
-        
-        # 处理图文输入
         self.processor = processor
         # 仅做示例：给出与 PrismaticVLM 接口对应的一些占位属性
-        self.trainable_module_keys = ["visual", "model", "lm_head"]
-        self.all_module_keys = ["visual", "model", "lm_head"]
-        
-        # 对齐 Keys
-        self.arch_specifier = None #其实是在  self.vision_backbone 内部
-
-        self.llm_backbone.transformer_layer_cls = Qwen2DecoderLayer
-  
-
-
+        self.trainable_module_keys = ["model.model"] # TODO 尝试设计更加flexible  的diy 方式
+        self.all_module_keys = ["model"]
+        # 这里还全部都不是 FSDP
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -239,11 +213,11 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
     def freeze_backbones(self, stage: str) -> None:
         """
         This function sets `requires_grad_` on each of the component modules explicitly, depending on stage.
-
+        
         We support two separate stages --> "align" and "finetune".
             => "align" --> vision_backbone*, llm_backbone* are frozen; only the `projector` is trained.
             => "finetune" --> vision_backbone* is frozen; both `projector` and `llm_backbone` are trained.
-
+        # @Jinhui TODO 为了高内聚，不要在其他地方设置trainable 模块调整training 策略的，要用链长了
         :param stage: Pretraining stage in < "align" | "finetune" | "full-finetune" | "vla-train" | "vla-full-train" >
         """
         if stage == "align":
@@ -280,29 +254,25 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
 
         elif stage in {"full-finetune", "vla-full-train"}:
             # self.vision_backbone.dtype = torch.float32 #直接修改dtype属性可能会导致错误
-            for param in self.vision_backbone.parameters():
+            for param in self.model.parameters():
                 if param.dtype != torch.float32:
                     param.data = param.data.float()
             
-            self.vision_backbone.requires_grad_(True)
-            self.llm_backbone.requires_grad_(True)
-        
+            self.model.requires_grad_(True)
 
             # Add to `self.trainable_module_keys`
-            self.trainable_module_keys = ["vision_backbone", "projector", "llm_backbone"]
+            self.trainable_module_keys = ["model"]
 
             # Update Trackers
-            self.vision_backbone_requires_grad = True
+            # self.vision_backbone_requires_grad = True
 
             # Explicitly Log Frozen / Unfrozen Components
-            overwatch.info(f"[TRAINABLE] 🔥 =>> Vision Backbone `{self.vision_backbone.__class__.__name__}`", ctx_level=1)
-            overwatch.info(f"[TRAINABLE] 🔥 =>> LLM Backbone `{self.llm_backbone.__class__.__name__}`", ctx_level=1)
-            overwatch.info(f"[TRAINABLE] 🔥 =>> Projector `{self.arch_specifier}`", ctx_level=1)
+            overwatch.info(f"[TRAINABLE] 🔥 =>> Backbone `{self.model.__class__.__name__}`", ctx_level=1)
+            # overwatch.info(f"[TRAINABLE] 🔥 =>> LLM Backbone `{self.llm_backbone.__class__.__name__}`", ctx_level=1)
+            # overwatch.info(f"[TRAINABLE] 🔥 =>> Projector `{self.arch_specifier}`", ctx_level=1)
 
         elif stage in {"last-layer-finetune", "vla-last-layer-train"}:
-            self.vision_backbone.requires_grad_(False)
-            # self.projector.requires_grad_(False)         
-            self.llm_backbone.requires_grad_(False)
+            self.model.requires_grad_(False)
 
             # Unfreeze final LLM layer
             for module in self.llm_backbone.last_layer_finetune_modules:

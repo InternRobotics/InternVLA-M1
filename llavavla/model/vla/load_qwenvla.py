@@ -67,8 +67,8 @@ def load_qwenvl(
     overwatch.info(
         f"Found Config =>> Loading & Freezing [bold blue]{model_cfg['_name_or_path']}[/] with:\n"
         f"             Vision Backbone =>> [bold]{model_cfg['model_type']}[/]\n"
-        f"             LLM Backbone    =>> [bold]{model_cfg['model_type']}[/]\n"
-        f"             Arch Specifier  =>> [bold]{model_cfg['model_type']}[/]\n"
+        # f"             LLM Backbone    =>> [bold]{model_cfg['model_type']}[/]\n"
+        # f"             Arch Specifier  =>> [bold]{model_cfg['model_type']}[/]\n"
         # f"             Checkpoint Path =>> [underline]`{_name_or_path}`[/]"
     )  
 

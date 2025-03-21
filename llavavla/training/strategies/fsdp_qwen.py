@@ -158,7 +158,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
         return checkpoint_path.with_suffix(".optimizer")
 
     def load_optimizer_and_scheduler(self, checkpoint_path: str) -> None:
-        """Load a checkpoint from the specified `checkpoint_path`."""
+        """Load a checkpoint from the specified `checkpoint_path`.""" #@jinhui FSDP 这里显示 VLM依然是已经被 wrapped
         assert isinstance(self.vlm, FSDP), "FSDPStrategy.load_optimizer_and_scheduler assumes VLM is already wrapped in FSDP!"
         checkpoint_path = Path(checkpoint_path)
         optimizer_path = self._get_optimizer_path(checkpoint_path)
@@ -199,7 +199,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
         # # <FSDP> => note that FSDP will automatically take care of device placement (similar to `autocast`)
         # self.vlm = self.vlm.to(torch.device(f"cuda:{torch.cuda.current_device()}"))  # 先移动到 GPU
 
-        self.vlm = FSDP(
+        self.vlm = FSDP( # 
             self.vlm,
             auto_wrap_policy=vlm_fsdp_wrapping_policy,
             mixed_precision=fsdp_precision_policy,
@@ -218,6 +218,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
             non_reentrant_wrapper = partial(checkpoint_wrapper, checkpoint_impl=CheckpointImpl.NO_REENTRANT)
 
             def check_fn(submodule: nn.Module) -> bool:
+                self.llm_transformer_layer_cls = self.vlm.vlm.model.model.__class__
                 return isinstance(submodule, self.llm_transformer_layer_cls)
 
             # Note that the terms "activation checkpointing" and "gradient checkpointing" are synonymous!

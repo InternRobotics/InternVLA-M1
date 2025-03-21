@@ -67,17 +67,16 @@ from torch.nn import Linear, Embedding
 # 从 transformers 导入 Qwen2.5 相关模块
 from transformers.models.qwen2.modeling_qwen2 import (
     Qwen2DecoderLayer,           # LLM Decoder Layer
-    Qwen2MLP,                    # MLP Module in LLM
-    Qwen2Attention,               # LLM Attention Layer
-    Qwen2RMSNorm,                 # Normalization Layer
-    Qwen2RotaryEmbedding          # Rotary Position Embedding
 )
 
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VLVisionBlock,
     Qwen2_5_VLDecoderLayer,
 )
+from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
 
+
+#@TODO emergency fix @Jinhui more readable and flexible way for VLM interface
 class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对齐， 思考更加flexible做法， --》 接口class的实现
     """
     这是对 Qwen2_5_VLForConditionalGeneration 的简单封装，使其在接口层面上更接近 PrismaticVLM，
@@ -89,11 +88,17 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         model_id: str,
         vision_backbone=None,
         llm_backbone=None,
+        load_for_training: bool = True,
         enable_mixed_precision_training: bool = True, #@Jinhui Check
         **kwargs
     ):  
         # QWen 原生模型
-        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu")
+        if load_for_training: #TODO model -> vlm
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu") # 只能到CPU先 # 
+        else:
+            config = AutoConfig.from_pretrained(model_id)
+            model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
+
         # 伪造子模块引用，以便 CogACT 里还能访问 想办法拿到
         
         vision_backbone = model.visual
@@ -113,7 +118,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         # QWen 原生模型
         self.model = model
         # 将整个模型转换为所需的精度类型。
-        self.model.to(torch.float32)
+        # self.model.to(torch.float32)
         # 伪造子模块引用，以便 CogACT 里还能访问 想办法拿到
         # self.projector = self.model.lm_head #
         self.vision_backbone = self.model.visual
@@ -222,7 +227,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         **kwargs
     ):
         """
-        类似 PrismaticVLM 的 from_pretrained，用于直接加载 Qwen2.5。
+        直接 的 from_pretrained，用于直接加载 Qwen2.5。
         """
         return cls(model_id, enable_mixed_precision_training, **kwargs)
 
@@ -419,7 +424,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
                 return False  # ✅ 避免包装已是 FSDP 的模块
             return transformer_policy(module, recurse, nonwrapped_numel) or size_policy(module, recurse, nonwrapped_numel)
 
-        return size_policy #combined_policy @TODO Jinhui: 或许 QWen 内部本来就有 fsdp
+        return combined_policy #combined_policy @TODO Jinhui: 或许 QWen 内部本来就有 fsdp
 
     @property
     def prompt_builder_fn(self) -> Type[PromptBuilder]:

@@ -19,10 +19,10 @@ from llavavla.model.vla import CogACT_Qwen
 from llavavla.model.vla import load_qwenvla
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
-class CogACTInference:
+class QwenACTInference:
     def __init__(
         self,
-        saved_model_path: str = 'CogACT/CogACT-Base',
+        saved_model_path: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
         unnorm_key: Optional[str] = None,
         policy_setup: str = "widowx_bridge",
         horizon: int = 0,

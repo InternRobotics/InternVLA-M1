@@ -14,7 +14,7 @@ torchrun --standalone --nnodes 1 --nproc-per-node 8 scripts/train.py \
   --vla.data_mix custom_finetuning \
   --vla.expected_world_size 8 \
   --vla.global_batch_size 256 \
-  --vla.per_device_batch_size 32 \
+  --vla.per_device_batch_size 16 \
   --vla.learning_rate 2e-5 \
   --data_root_dir /fs-computility/efm/yejinhui/Projects/CogACT/playground/Datasets/GenManipDatasets \
   --run_root_dir /fs-computility/efm/yejinhui/Projects/CogACT/playground/Checkpoints \

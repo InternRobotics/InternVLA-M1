@@ -67,7 +67,7 @@ class RLDSBatchQwenTransform:
                 {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {lang}?"}, {"image": None}]},
                 {"role": "gpt", "content": self.action_tokenizer(action)},
             ]
-        
+        # TODO emergency check for speedup
         # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
         # 拿到 对话的 text 文本 
         prompt_text = self.qwen_VLProcessor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)

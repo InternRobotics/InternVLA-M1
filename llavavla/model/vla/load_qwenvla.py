@@ -58,7 +58,7 @@ def load_qwenvl(
         # Load Vision Backbone
 
     qwen_vl = _QWen_VL_Interface.from_pretrained(model_id_or_path, enable_mixed_precision_training=False)
-    
+    # del qwen_vl.model.lm_head  # Remove LM Head for Inference
     # Load Model Config from `config.json`
     model_cfg = qwen_vl.model.config.to_dict()
     # processing_cfg = qwen_vl.processor
@@ -104,7 +104,7 @@ def load_qwenvla(
     # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
     with open(config_json, "r") as f:
         vla_cfg = json.load(f)["vla"]
-        model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])()
+        # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
 
     # Load Dataset Statistics for Action Denormalization
     with open(dataset_statistics_json, "r") as f:
@@ -113,34 +113,15 @@ def load_qwenvla(
     # = Load Individual Components necessary for Instantiating a VLA (via base VLM components) =
     #   =>> Print Minimal Config
     overwatch.info(
-        f"Found Config =>> Loading & Freezing [bold blue]{model_cfg.model_id}[/] with:\n"
-        f"             LVM Backbone =>> [bold]{model_cfg.model_id}[/]\n"
+        f"Found Config =>> Loading & Freezing [bold blue]{model_id_or_path      }[/] with:\n"
+        f"             LVM Backbone =>> [bold]{vla_cfg['base_vlm']}[/]\n"
         f"             Checkpoint Path =>> [underline]`{checkpoint_pt}`[/]"
     )
 
-    # Load Vision Backbone
-    overwatch.info(f"Loading Vision Backbone [bold]{model_cfg.vision_backbone_id}[/]")
-    vision_backbone, image_transform = get_vision_backbone_and_transform(
-        model_cfg.vision_backbone_id,
-        model_cfg.image_resize_strategy,
-    )
-
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
-    overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg.llm_backbone_id}[/] via HF Transformers")
-    # "/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/Llama-2-7b"
-    llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
-        model_cfg.llm_backbone_id,
-        llm_max_length=model_cfg.llm_max_length,
-        hf_token=hf_token,
-        inference_mode=not load_for_training, #not load_for_training
-    )
-
-    # Load VLM using `from_pretrained` (clobbers HF syntax... eventually should reconcile)
-    overwatch.info(f"Loading VLA [bold blue]{model_cfg.model_id}[/] from Checkpoint")
-
     vla = CogACT_Qwen.from_pretrained(
         checkpoint_pt,
-        model_cfg.model_id,
+        base_vlm = vla_cfg["base_vlm"],
         freeze_weights=not load_for_training, 
         norm_stats=norm_stats,
         **kwargs,

@@ -136,9 +136,9 @@ class CogACT(nn.Module):
         else:
             raise ValueError("No vision backbone found")
         
-        last_hidden = last_hidden[:, num_patch :]
+        last_hidden = last_hidden[:, num_patch :] # [B, T, D] # 去掉开头的 visual tokens
 
-        # extract the cognition feature
+        # extract the cognition feature # 是最后个token？ 看一下action 在哪里
         cumulative_sum = attention_mask.cumsum(dim=1)
         last_true_indices = (cumulative_sum == cumulative_sum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  
         expanded_indices = last_true_indices.unsqueeze(-1).expand(-1, last_hidden.size(-1))  
@@ -319,7 +319,7 @@ class CogACT(nn.Module):
             # fmt: on
 
         # Extract cognition feature
-        cognition_features = output.hidden_states[0][-1][:,-1,:]
+        cognition_features = output.hidden_states[0][-1][:,-1,:] # nexx tokens, layers, B, layers, D
         assert (cognition_features.shape[0], cognition_features.shape[1]) == (1,4096), "Batch size must be 1 for action prediction"
         using_cfg = cfg_scale > 1.0
 

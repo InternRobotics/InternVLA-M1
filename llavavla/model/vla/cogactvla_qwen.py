@@ -25,10 +25,11 @@ from prismatic.models.backbones.vision import VisionBackbone
 from prismatic.models.vlms.base_vlm import VLM
 from prismatic.models.vlms.prismatic import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
-from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
 
 from llavavla.model.action_model.action_model import ActionModel
 from llavavla.model.action_model.models import DiT
+import torch
+from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -72,6 +73,7 @@ class CogACT_Qwen(nn.Module):
         else:
             self.all_module_keys = ['action_model']
         
+        # TODO check 为什么改文件model 名字么？ 
         for module_keys in self.vlm.all_module_keys: #@Jinhui checking
             self.all_module_keys.append("vlm." + module_keys)
 
@@ -95,6 +97,39 @@ class CogACT_Qwen(nn.Module):
     def vision_backbone(self) -> VisionBackbone:
         return self.vlm.vision_backbone
     
+    @staticmethod
+    def align_module_names(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Aligns module names in the state dict to match the current model's module names."""
+        # TODO 是一个临时方法，后期要考虑align save 的逻辑，让他能够直接load 进来
+        """
+        Align the keys in the state_dict to match the expected model structure.
+
+        Args:
+            state_dict (dict): Original model state_dict with misaligned keys.
+
+        Returns:
+            dict: Aligned state_dict.
+        """
+        aligned_dict = {}
+
+        # Step 1: 处理 `model`，重命名为 `vlm.model`
+        if "model" in state_dict:
+            for key, value in state_dict["model"].items():
+                aligned_dict[f"vlm.model.{key}"] = value  # 添加前缀
+
+        # Step 2: 删除 `visual` 和 `lm_head`（假设它们为空）
+        if "visual" in state_dict:
+            if state_dict["visual"]:  # 如果 visual 不是空的，可能需要处理
+                print("Warning: 'visual' is expected to be empty but contains data.")
+            del state_dict["visual"]
+
+        if "lm_head" in state_dict:
+            if state_dict["lm_head"]:  # 如果 lm_head 不是空的，可能需要处理
+                print("Warning: 'lm_head' is expected to be empty but contains data.")
+            del state_dict["lm_head"]
+
+        return aligned_dict
+
     def freeze_backbones(self, stage):
         self.vlm.freeze_backbones(stage)
 
@@ -129,26 +164,12 @@ class CogACT_Qwen(nn.Module):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-
+        vlm_loss = output.loss
         # extract the last hidden state and the learnable EOS token feature
-        last_hidden = output.hidden_states[-1]
+        last_hidden = output.hidden_states[-1] # B,len,D
+        cognition_features = self._get_cognition_features(last_hidden, input_ids, attention_mask=attention_mask)
 
-        # extract the visual token number #@Jinhui 他要拿一个token 去做 下游 TODO 展示不要用关
-        # @Discussion 这个位置需要讨论 --> 其实可以通过检查 visual token 的 indexs 来
-        image_token_id, vido_token_id = 151655, 151654
-        # 1️⃣ 找到第一个匹配的 image_token_id 的索引
-        match_indices = (input_ids == image_token_id).float().argmax(dim=1)  # [B]
 
-        # 2️⃣ 确保索引不会越界（前一个 token 不能是 -1）
-        prev_indices = torch.clamp(match_indices - 1, min=0)  # [B]
-
-        # 3️⃣ 扩展索引，使其匹配 last_hidden 维度
-        expanded_indices = prev_indices.unsqueeze(-1).expand(-1, last_hidden.size(-1))  # [B, D]
-
-        # 4️⃣ 提取 cognition_features (前一个 token 的隐藏状态)
-        cognition_features = last_hidden.gather(1, expanded_indices.unsqueeze(1))  # [B, 1, D]
-        cognition_features = cognition_features.to(torch.bfloat16)
-        
         actions_history = actions[:,0:self.past_action_window_size,:]
         actions_future = actions[:, -(self.future_action_window_size+1):, :]
         
@@ -161,12 +182,66 @@ class CogACT_Qwen(nn.Module):
         loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
         return loss, output
 
+    def _get_cognition_features_old(self, last_hidden, input_ids) -> torch.Tensor:
+        # last_hidden = outputs.hidden_states[-1] # B,len,D
+
+        # extract the visual token number #@Jinhui 他要拿一个token 去做 下游 TODO 展示不要用关
+        # @Discussion 这个位置需要讨论 --> 其实可以通过检查 visual token 的 indexs 来
+        image_token_id, vido_token_id, pad_token_id = 151655, 151654, 151643
+        # 1️⃣ 找到第一个匹配的 image_token_id 的索引
+        match_indices = (input_ids == image_token_id).float().argmax(dim=1)  # [B]
+
+        # 2️⃣ 确保索引不会越界（前一个 token 不能是 -1）# 不对的，因为没有causal attention 还没看到 image token， 应该是next token
+        prev_indices = torch.clamp(match_indices - 1, min=0)  # [B] 
+
+        # 3️⃣ 扩展索引，使其匹配 last_hidden 维度
+        expanded_indices = prev_indices.unsqueeze(-1).expand(-1, last_hidden.size(-1))  # [B, D]
+
+        # 4️⃣ 提取 cognition_features (前一个 token 的隐藏状态)
+        cognition_features = last_hidden.gather(1, expanded_indices.unsqueeze(1))  # [B, 1, D]
+        cognition_features = cognition_features.to(torch.bfloat16)
+        
+        return cognition_features
+
+    def _get_cognition_features(self, last_hidden: torch.Tensor, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """
+        提取每个样本中最后一个有效 token 的 hidden state，作为 cognition feature。
+
+        Args:
+            last_hidden: Tensor, shape [B, T, D]
+            input_ids: Tensor, shape [B, T]
+            attention_mask: Tensor, shape [B, T]
+
+        Returns:
+            cognition_features: Tensor, shape [B, 1, D]
+        """
+
+
+        # extract the visual token number #@Jinhui 他要拿一个token 去做 下游 TODO 展示不要用关
+        # @Discussion 这个位置需要讨论 --> 其实可以通过检查 visual token 的 indexs 来, 
+        image_token_id, vido_token_id, pad_token_id = 151655, 151654, 151643
+        # assert TODO 需要假设 文本中不带 action 的， 不然需要新的 id 来标记位置
+        # 获取 batch size 和 hidden dim
+        B, T, D = last_hidden.shape
+
+        # 计算每个样本最后一个有效 token 的索引位置
+        # 方法：cumsum + == max
+        cumsum = attention_mask.cumsum(dim=1)  # shape: [B, T]
+        max_indices = (cumsum == cumsum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  # shape: [B]
+
+        # 构建 gather 索引：形状 [B, 1, D]
+        expanded_indices = max_indices.unsqueeze(1).unsqueeze(2).expand(-1, 1, D)  # [B, 1, D]
+
+        # gather 取出每个样本的最后有效 token 的 hidden state
+        cognition_features = last_hidden.gather(dim=1, index=expanded_indices)  # [B, 1, D]
+
+        return cognition_features
 
     def get_fsdp_wrapping_policy(self) -> Callable: 
         """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
         # vision_fsdp_wrapping_policy = self.vlm.vision_backbone.get_fsdp_wrapping_policy()
         # llm_fsdp_wrapping_policy = self.vlm.llm_backbone.get_fsdp_wrapping_policy()
-        # vlm_fsdp_wrapping_policy = self.vlm.get_fsdp_wrapping_policy()
+        vlm_fsdp_wrapping_policy = self.vlm.get_fsdp_wrapping_policy()
 
         # Get Prismatic Wrapping Policy =>> just a module wrapping policy around `self.projector` and DiT
         prismatic_fsdp_wrapping_policy = partial(
@@ -181,7 +256,7 @@ class CogACT_Qwen(nn.Module):
             _or_policy,
             policies=[
                 # vlm_fsdp_wrapping_policy,
-                prismatic_fsdp_wrapping_policy,
+                prismatic_fsdp_wrapping_policy, # @Jinhui TODO Checking这个应该保留么？
             ],
         )
 
@@ -195,11 +270,7 @@ class CogACT_Qwen(nn.Module):
     def from_pretrained(
         cls,
         pretrained_checkpoint: Path,
-        model_id: str,
-        vision_backbone: VisionBackbone,
-        llm_backbone: LLMBackbone,
-        enable_mixed_precision_training: bool = True,
-        arch_specifier: str = "gelu-mlp",
+        base_vlm: str,
         freeze_weights: bool = True,
         action_dim: int = 7,
         future_action_window_size: int = 15,
@@ -211,28 +282,24 @@ class CogACT_Qwen(nn.Module):
     ) -> CogACT_Qwen:
 
         # Load VLM backbone, borrowed from PrismaticVLM
-        vlm = PrismaticVLM(
-            model_id,
-            vision_backbone,
-            llm_backbone,
-            enable_mixed_precision_training=enable_mixed_precision_training,
-            arch_specifier=arch_specifier,
-            **kwargs,
-        )
+
+        # 仅加载模型配置，而不加载权重
+        base_vlm = "/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct" #TODO 需要调整training 和测试的工作目录
+        # config = AutoConfig.from_pretrained(base_vlm)
+        # vlm = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
+        vlm = _QWen_VL_Interface(model_id=base_vlm, load_for_training=False)
+        # 加载 Processor（它没有权重，不受影响）
+        #TODO 需要更好的逻辑
+        qwen_processor = AutoProcessor.from_pretrained(base_vlm)
+
+        # put it to interfance:
 
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
         model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")["model"]
-
-        vlm.load_state_dict(model_state_dict)
-
-        # Freeze Weights
-        if freeze_weights:
-            vlm.requires_grad_(False)
-            vlm.eval()
-
+        # qwen_state_dict = QwenACT_state_dict["model"]
         # Initialize CogACT
         cogact = CogACT_Qwen(vlm,
-                        token_size = vlm.llm_backbone.llm.lm_head.in_features,
+                        token_size = vlm.model.config.hidden_size, # 这里的 model 的分成很奇怪
                         action_dim = action_dim,
                         future_action_window_size = future_action_window_size,
                         past_action_window_size = past_action_window_size,
@@ -240,7 +307,15 @@ class CogACT_Qwen(nn.Module):
                         use_ema = use_ema,
                         norm_stats = norm_stats,
                         )
-
+        cogact.qwen_processor = qwen_processor
+        # Load VLM from Checkpoint # TODO 后期要对齐 save 的逻辑
+        # qwen_state_dict = CogACT_Qwen.align_module_names(model_state_dict)
+        # assert CogACT_Qwen.check_unexpected_keys(qwen_state_dict,cogact),  "check_point 中有参数没有被 load"
+        cogact.vlm.model.load_state_dict(model_state_dict["model"])  # @Jinhui 任务整个model一起，逻辑写到里面里面
+        # Freeze Weights
+        if freeze_weights:
+            vlm.requires_grad_(False)
+            vlm.eval()
         # Load ActionModel from Checkpoint
         if "action_model" in model_state_dict:
             cogact.action_model.load_state_dict(model_state_dict["action_model"])
@@ -250,7 +325,7 @@ class CogACT_Qwen(nn.Module):
                 cogact.ema_diffusion.load_state_dict(model_state_dict["action_model"])
         else:
             overwatch.warning("No ActionModel found in the pretrained checkpoint. Initializing a new one.")
-        return cogact        
+        return cogact
 
     @torch.inference_mode()
     def predict_action(
@@ -275,26 +350,27 @@ class CogACT_Qwen(nn.Module):
 
         @return Unnormalized (continuous) action vector --> end-effector deltas.
         """
-        image_transform, tokenizer = self.vlm.vision_backbone.image_transform, self.vlm.llm_backbone.tokenizer
-
+        # qwen_processor = self.qwen_processor
+        #@Jinhui 想办法怎么和dataloader 对齐？
         # Build VLA Prompt
-        prompt_builder = self.vlm.get_prompt_builder()
-        prompt_builder.add_turn(role="human", message=f"What action should the robot take to {instruction.lower()}?")
-        prompt_text = prompt_builder.get_prompt()
-        # Prepare Inputs
-        input_ids = tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.vlm.device)
-        if isinstance(tokenizer, LlamaTokenizerFast):
-            # Note: We need to add this special empty token ('') after the colon (':') token in "ASSISTANT:"
-            #       insert it to match the inputs seen at training time. The empty token is at index 29871.
-            #       We also need to add the special cognition token at index 2 (i.e. the EOS token).
-            input_ids = torch.cat(
-                (input_ids, torch.unsqueeze(torch.Tensor([29871, 2]).long(), dim=0).to(self.vlm.device)), dim=1
-            )
-        else:
-            raise ValueError(f"Unsupported `tokenizer` type = {type(tokenizer)}")
+        # prompt_builder = self.vlm.get_prompt_builder()
+        # prompt_builder.add_turn(role="human", message=f"What action should the robot take to {instruction.lower()}?")
 
-        # Preprocess Image
-        pixel_values = image_transform(image)
+        # TODO 为了保证测试一致性心里应该是 用func, 但是如果预期这里是 template-free, 就应该是这样的
+        # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
+        # 拿到 对话的 text 文本 
+        conversation = [
+            {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
+            ]
+        
+        prompt_text = self.qwen_processor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
+        # Tokenize (w/ `base_tokenizer`)
+        inputs = self.qwen_processor(text=[prompt_text], images=[image], padding=True, return_tensors="pt")
+
+        # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
+        input_ids = inputs.input_ids[0]
+        pixel_values = inputs.pixel_values # value in patch size
+
         if isinstance(pixel_values, torch.Tensor):
             pixel_values = pixel_values[None, ...].to(self.vlm.device)
         elif isinstance(pixel_values, dict):
@@ -303,30 +379,55 @@ class CogACT_Qwen(nn.Module):
             raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
         
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
-        autocast_dtype = self.vlm.llm_backbone.half_precision_dtype
+        autocast_dtype = self.vlm.half_precision_dtype # 为什么用半精度推理
+        
+        # add by Jinhui
+        device = self.vlm.device  # 确保所有输入和模型都在同一设备上
+        dtype = next(self.vlm.parameters()).dtype  # 获取模型的默认数据类型（float16 或 float32）
 
+        
+        # 确保所有张量都移动到 GPU，并转换为正确的数据类型
+        for key in inputs:
+            if isinstance(inputs[key], torch.Tensor):
+                if key in ["input_ids", "attention_mask"]:  # 保证 input_ids 和 attention_mask 仍然是 long 类型
+                    inputs[key] = inputs[key].to(device, dtype=torch.long)
+                elif key in ["image_grid_thw"]:
+                    continue
+                else:  # 其他 Tensor（如 pixel_values）转换成模型 dtype（float16 或 float32）
+                    inputs[key] = inputs[key].to(device, dtype=dtype)
+
+
+        # end add by Jinhui
         # Generate cognition feature through vlm
         with torch.autocast("cuda", dtype=autocast_dtype, enabled=self.vlm.enable_mixed_precision_training):
             # fmt: off
-            output = super(PrismaticVLM, self.vlm).generate(
-                input_ids=input_ids,                            # Shape: [1, seq]
-                pixel_values=pixel_values,                      # Shape: [1, 3, res, res] or Dict[str, ...]
-                max_new_tokens=1,
+            outputs = self.vlm.generate(
+                **inputs,
+                max_new_tokens=3, #@Jinhui Checking TODO: 这里很不科学
                 output_hidden_states=True, 
                 return_dict_in_generate=True,
                 **kwargs
-            )
-            # fmt: on
+            ) # generation 拿不到前面token 的信息，考虑使用 forward?
 
+            # Jinhui see text # outputs.sequences.shape: B, len with prefix
+            outputs.input_ids = outputs.sequences # 为了和 input dict 保持一致， 方便调用 self._get_cognition_features# 还真不太一样，因为generation的逻辑和 forward不一样
+            generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, outputs.sequences)]
+            output_text = self.qwen_processor.batch_decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            print("output:\n",output_text[0])
+            # fmt: on
+            # 我们training的时候是 image 不固定在最前面没，是没办法只max_new = 1 的
         # Extract cognition feature
-        cognition_features = output.hidden_states[0][-1][:,-1,:]
-        assert (cognition_features.shape[0], cognition_features.shape[1]) == (1,4096), "Batch size must be 1 for action prediction"
+        # outputs.hidden_states = list = next tokens 
+        # be careful about the where the cognition_features comes from would align with training
+        # cognition_features = output.hidden_states[0][-1][:,-1,:]  # nexx tokens, layers, B, len, D #@Jinhui to Think 这里为什么每一个 next token 都记录了 全部都 hidden? 不是的，只有第一个会
+        last_hidden_states = outputs.hidden_states[0][-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
+        cognition_features = self._get_cognition_features(last_hidden_states, outputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
+
+        assert (cognition_features.shape[0], cognition_features.shape[1], cognition_features.shape[-1]) == (1, 1,2048), "Batch size must be 1 for action prediction"
         using_cfg = cfg_scale > 1.0
 
         model_dtype = next(self.action_model.net.parameters()).dtype
         B = cognition_features.shape[0]
-
-        cognition_features = cognition_features.unsqueeze(1).to(model_dtype)  # [B, 1, D]
 
         # Sample random noise
         noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=cognition_features.device).to(model_dtype)  #[B, T, D]
@@ -584,3 +685,32 @@ class CogACT_Qwen(nn.Module):
         """Dimensionality of the policy's action space."""
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
         return self.norm_stats[unnorm_key]["action"]
+    
+    @staticmethod
+    def check_unexpected_keys(state_dict, model):
+        """
+        检查 state_dict 是否包含 unexpected_keys。
+        
+        Args:
+            state_dict (dict): 需要加载的模型权重。
+            model (torch.nn.Module): 目标模型（如 cogact）。
+        
+        Returns:
+            bool: 如果没有 unexpected_keys，则返回 True；否则返回 False 并报错。
+        """
+        # 获取模型已有的参数
+        model_keys = set(model.state_dict().keys())
+
+        # 获取 state_dict 里的参数
+        state_dict_keys = set(state_dict.keys())
+
+        # 计算 unexpected_keys
+        unexpected_keys = state_dict_keys - model_keys
+
+        # 如果发现 unexpected_keys，报错或者警告
+        if unexpected_keys:
+            print(f"❌ Unexpected keys found in state_dict: {unexpected_keys}")
+            return False  # 发现不匹配的 key，返回 False
+        
+        print("✅ No unexpected keys found.")
+        return True  # 所有 key 都匹配，返回 True

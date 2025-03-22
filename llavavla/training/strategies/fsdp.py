@@ -204,7 +204,7 @@ class FSDPStrategy(TrainingStrategy):
             sharding_strategy=self.fsdp_sharding_strategy,
             device_id=torch.cuda.current_device(),
             limit_all_gathers=True,
-            use_orig_params=True,
+            use_orig_params=True, # @Jinhui 会什么这里可以 True 而Transformer不行？
         )
         # Gradient Checkpoint Setup
         if self.enable_gradient_checkpointing:

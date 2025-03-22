@@ -206,7 +206,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
             sharding_strategy=self.fsdp_sharding_strategy,
             device_id=torch.cuda.current_device(),
             limit_all_gathers=True,
-            use_orig_params=True,
+            use_orig_params=False, # @Jinhui  True -> False, 为什么要用原始参数？
         )
         # Gradient Checkpoint Setup
         if self.enable_gradient_checkpointing:
@@ -218,7 +218,8 @@ class FSDPStrategy_QWen(TrainingStrategy):
             non_reentrant_wrapper = partial(checkpoint_wrapper, checkpoint_impl=CheckpointImpl.NO_REENTRANT)
 
             def check_fn(submodule: nn.Module) -> bool:
-                self.llm_transformer_layer_cls = self.vlm.vlm.model.model.__class__
+                from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
+                self.llm_transformer_layer_cls = Qwen2DecoderLayer # 对非常大的模块用这个
                 return isinstance(submodule, self.llm_transformer_layer_cls)
 
             # Note that the terms "activation checkpointing" and "gradient checkpointing" are synonymous!

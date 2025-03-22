@@ -379,22 +379,11 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             transformer_layer_cls={
                 Qwen2_5_VLDecoderLayer,  # LLM 解码层
                 Qwen2_5_VLVisionBlock,   # 视觉 Transformer Block
+                nn.Linear,  # ✅ 超大的 llm_head
             }
         )
 
-        # 2️⃣ Size-based Auto-Wrap Policy (用于超大层)
-        size_policy = partial(
-            size_based_auto_wrap_policy,
-            min_num_params=1e8  # 1 亿参数以上的层进行 FSDP 包装
-        )
-
-        # 3️⃣ 组合策略，避免递归包装已是 FSDP 的子模块
-        def combined_policy(module, recurse, nonwrapped_numel):
-            if isinstance(module, torch.distributed.fsdp.FullyShardedDataParallel):
-                return False  # ✅ 避免包装已是 FSDP 的模块
-            return transformer_policy(module, recurse, nonwrapped_numel) or size_policy(module, recurse, nonwrapped_numel)
-
-        return combined_policy #combined_policy @TODO Jinhui: 或许 QWen 内部本来就有 fsdp
+        return transformer_policy #combined_policy @TODO Jinhui: 或许 QWen 内部本来就有 fsdp
 
     @property
     def prompt_builder_fn(self) -> Type[PromptBuilder]:

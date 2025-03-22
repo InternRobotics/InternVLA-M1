@@ -255,7 +255,7 @@ class CogACT_Qwen(nn.Module):
         return partial(
             _or_policy,
             policies=[
-                # vlm_fsdp_wrapping_policy,
+                vlm_fsdp_wrapping_policy,
                 prismatic_fsdp_wrapping_policy, # @Jinhui TODO Checking这个应该保留么？
             ],
         )

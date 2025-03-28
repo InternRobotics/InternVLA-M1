@@ -7,8 +7,15 @@ chmod 700 $XDG_RUNTIME_DIR
 # Personal Key TODO make it as read file
 export HF_TOKEN=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
 export WANDB_API_KEY=943ecb8d26fc2b3879cbc2d667414974906aebb9
+export HUGGINGFACE_HUB_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
+export TRANSFORMERS_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
+export HF_HOME=/fs-computility/efm/yejinhui/.cache/huggingface_cache
+export HF_TOKEN=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
+export WANDB_API_KEY=943ecb8d26fc2b3879cbc2d667414974906aebb9
+
 MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
-# MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Checkpoints/cogact_fullyFT_ddp_128GPUs--image_aug/checkpoints/step-016000-epoch-30-loss=0.0167.pt
+MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Checkpoints/cogact_RP_FSDP_128GPUs--image_aug/checkpoints/step-008000-epoch-02-loss=0.0555.pt
+
 
 gpu_id=0
 policy_model=cogact

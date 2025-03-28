@@ -228,10 +228,10 @@ class CogACT_Qwen(nn.Module):
         # 方法：cumsum + == max
         cumsum = attention_mask.cumsum(dim=1)  # shape: [B, T]
         max_indices = (cumsum == cumsum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  # shape: [B]
-
+        # train --> 198, test --> 198 ✅， 但是这里我想可能不应该是要同一个
         # 构建 gather 索引：形状 [B, 1, D]
         expanded_indices = max_indices.unsqueeze(1).unsqueeze(2).expand(-1, 1, D)  # [B, 1, D]
-
+        # index = ... 198, 151644, 77091, 198, 76478, 114218, 112578]
         # gather 取出每个样本的最后有效 token 的 hidden state
         cognition_features = last_hidden.gather(dim=1, index=expanded_indices)  # [B, 1, D]
 

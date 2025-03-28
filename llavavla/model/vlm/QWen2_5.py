@@ -211,13 +211,13 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         return prompt_initializer(self.model_family, system_prompt=system_prompt)
 
     def freeze_backbones(self, stage: str) -> None:
-        """
+        """ #@Jinhui 
         This function sets `requires_grad_` on each of the component modules explicitly, depending on stage.
         
         We support two separate stages --> "align" and "finetune".
             => "align" --> vision_backbone*, llm_backbone* are frozen; only the `projector` is trained.
             => "finetune" --> vision_backbone* is frozen; both `projector` and `llm_backbone` are trained.
-        # @Jinhui TODO 为了高内聚，不要在其他地方设置trainable 模块调整training 策略的，要用链长了
+        # @Jinhui TODO TODO 为了高内聚，不要在其他地方设置trainable 模块调整training 策略的，要用链长了
         :param stage: Pretraining stage in < "align" | "finetune" | "full-finetune" | "vla-train" | "vla-full-train" >
         """
         if stage == "align":
@@ -259,9 +259,10 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
                     param.data = param.data.float()
             
             self.model.requires_grad_(True)
-
             # Add to `self.trainable_module_keys`
             self.trainable_module_keys = ["model"]
+            # self.model.requires_grad_(False)
+            self.trainable_module_keys = []#["model"]
 
             # Update Trackers
             # self.vision_backbone_requires_grad = True
@@ -295,8 +296,8 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             # self.vision_backbone.dtype = torch.float32
             self.vision_backbone.to(torch.float32)
             self.vision_backbone.requires_grad_(True)
-            # self.projector.requires_grad_(True)
-            self.llm_backbone.requires_grad_(False)
+            self.projector.requires_grad_(True)
+            # self.llm_backbone.requires_grad_(False)
 
             # Unfreeze final LLM layer
             for module in self.llm_backbone.last_layer_finetune_modules:

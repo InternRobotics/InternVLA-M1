@@ -13,6 +13,7 @@ from prismatic.models.vlms import PrismaticVLM
 from llavavla.model.vla import CogACT, CogACT_Qwen
 from llavavla.training.strategies import FSDPStrategy_QWen, TrainingStrategy_Qwen
 # Registry =>> Maps ID --> {cls(), kwargs} :: supports FSDP for now, but DDP handler is also implemented!
+# 这个逻辑太绕了，不应该构建这个复杂逻辑，看看auto 能够自己解决
 TRAIN_STRATEGIES = {
     "fsdp-shard-grad-op": {"cls": FSDPStrategy_QWen, "kwargs": {"sharding_strategy": "shard-grad-op"}},
     "fsdp-full-shard": {"cls": FSDPStrategy_QWen, "kwargs": {"sharding_strategy": "full-shard"}},

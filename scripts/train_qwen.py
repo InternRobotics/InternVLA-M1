@@ -165,13 +165,15 @@ def train(cfg: TrainConfig) -> None:
         # [Validate] Pretrained Checkpoint `step` and `epoch` should match `resume_step` and `resume_epoch`
         #   =>> Note :: We make developers pass in `resume_*` arguments as an extra sanity check!
         if cfg.is_resume:
-            assert int(re.search("step-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_step
-            assert int(re.search("epoch-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
+            pretrained_checkpoint = Path(cfg.pretrained_checkpoint) #@Jinhui TODO Check cfg.pretrained_checkpoint 的参数类型为什么一直对不上
+            # cfg.pretrained_checkpoint = pretrained_checkpoint #TO MV 看一下为什么要检查这个
+            assert int(re.search("step-(.+?)-", pretrained_checkpoint.name).group(1)) == cfg.resume_step
+            assert int(re.search("epoch-(.+?)-", pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
         overwatch.info("Loading VLA Checkpoint")
         if cfg.use_ema:
             overwatch.info("Loading EMA of Diffusion")
-        vla = load_qwenvla(cfg.pretrained_checkpoint, 
-                        hf_token=hf_token, 
+        vla = load_qwenvla(cfg.pretrained_checkpoint,
+                        hf_token=hf_token,
                         load_for_training=True,  #jinhui False
                         action_model_type=cfg.action_model_type, 
                         action_dim=cfg.action_dim,

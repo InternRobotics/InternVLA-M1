@@ -220,7 +220,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         # @Jinhui TODO TODO 为了高内聚，不要在其他地方设置trainable 模块调整training 策略的，要用链长了
         :param stage: Pretraining stage in < "align" | "finetune" | "full-finetune" | "vla-train" | "vla-full-train" >
         """
-        if stage == "align":
+        if stage == "align": #@Jinhui TODO 这个预定义的策略挺好的，但是我该高内聚到 VLA Class 上面
             self.vision_backbone.requires_grad_(False)
             self.llm_backbone.requires_grad_(False)
             # self.projector.requires_grad_(True)
@@ -262,7 +262,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             # Add to `self.trainable_module_keys`
             self.trainable_module_keys = ["model"]
             # self.model.requires_grad_(False)
-            self.trainable_module_keys = []#["model"]
+            # self.trainable_module_keys = []#["model"] 3
 
             # Update Trackers
             # self.vision_backbone_requires_grad = True

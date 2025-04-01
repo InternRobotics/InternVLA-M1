@@ -31,20 +31,19 @@ LLaVA-VLA
 #
 愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
 
-理想的脚本
+## 希望的feature 和 理想的脚本
 1. Pretraining VLM
 2. Pretraining DiT
-3. align VLM with DiT
+3. align VLM with DiT (希望在 5 epcoh 内完成 alignment)
+
 
 ## 开发规划
-
-
 1. 支持 QwenACT 的training (done)
 2. 支持同时training VLA 和 VLM (done)
-3. 支持同时 align openVLA DiT and Qwen (done)
+3. 支持同时 align openVLA DiT and Qwen (done) 
 
-4. 支持 单独 training VLM with own vision encode (pending)
-5. 支持 单独training ACT with own vision encode (pending)
+4. 支持 单独 training VLM with own vision encode (pending) #直接用QWen
+5. 支持 单独 training ACT with own vision encode (pending) # 直接用openVLA
 
 ## 安装与使用
 

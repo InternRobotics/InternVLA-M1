@@ -11,7 +11,9 @@ export PYTHONPATH=$PYTHONPATH:/fs-computility/efm/yejinhui/Projects/CogACT/
 cd /root/envs/SimplerEnv
 
 MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
-MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Checkpoints/Qwen_bridge_128gpus_full--image_aug/checkpoints/step-040000-epoch-13-loss=0.0521.pt
+MODEL_PATH=/fs-computility/efm/yejinhui/Projects/CogACT/playground/Checkpoints/Qwen_bridge_128gpus_full--image_aug/checkpoints/step-030000-epoch-10-loss=0.0570.pt
+
+
 gpu_id=2
 policy_model=qwenact
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small

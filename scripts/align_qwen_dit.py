@@ -38,6 +38,7 @@ from llavavla.conf import VLAConfig, VLARegistry
 from llavavla.model.vla import load_qwenvl, load_qwenvla
 from llavavla.model.vla.align_qwen_act import QwenACT
 from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
+from llavavla.model.vla.load_qwenvla import load_qwenact
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -169,7 +170,7 @@ def train(cfg: TrainConfig) -> None:
         overwatch.info("Loading VLA Checkpoint")
         if cfg.use_ema:
             overwatch.info("Loading EMA of Diffusion")
-        vla = load_qwenvla(cfg.pretrained_checkpoint,
+        vla = load_qwenact(cfg.pretrained_checkpoint,
                         hf_token=hf_token,
                         load_for_training=True,  #jinhui False
                         action_model_type=cfg.action_model_type, 

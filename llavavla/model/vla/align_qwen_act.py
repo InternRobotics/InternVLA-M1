@@ -201,7 +201,7 @@ class QwenACT(nn.Module):
             del self.ema_diffusion
 
     @classmethod
-    def from_pretrained(
+    def from_pretrained( # TODO 看看怎么和 initial from QWen 合并？
         cls,
         pretrained_checkpoint: Path,
         base_vlm: str,
@@ -232,7 +232,7 @@ class QwenACT(nn.Module):
         model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")["model"]
         # qwen_state_dict = QwenACT_state_dict["model"]
         # Initialize CogACT
-        cogact = QwenACT(vlm,
+        qwenact = QwenACT(vlm, #@Jinhui 是传入逻辑还是好？
                         token_size = vlm.model.config.hidden_size, # 这里的 model 的分成很奇怪
                         action_dim = action_dim,
                         future_action_window_size = future_action_window_size,
@@ -241,25 +241,34 @@ class QwenACT(nn.Module):
                         use_ema = use_ema,
                         norm_stats = norm_stats,
                         )
-        cogact.qwen_processor = qwen_processor
-        # Load VLM from Checkpoint # TODO 后期要对齐 save 的逻辑
+        qwenact.qwen_processor = qwen_processor
+        # Load VLM from Checkpoint 
         # qwen_state_dict = CogACT_Qwen.align_module_names(model_state_dict)
         # assert CogACT_Qwen.check_unexpected_keys(qwen_state_dict,cogact),  "check_point 中有参数没有被 load"
-        cogact.vlm.model.load_state_dict(model_state_dict["model"])  # @Jinhui 任务整个model一起，逻辑写到里面里面
+        
+        qwenact.vlm.model.load_state_dict(model_state_dict["model"])  # @Jinhui 任务整个model一起，逻辑写到里面里面
+        # === Load Projector Weights ===
+        if "image2cognition_projector" in model_state_dict:
+            qwenact.image2cognition_projector.load_state_dict(model_state_dict["image2cognition_projector"])
+        else:
+            overwatch.warning("No projector weights found in checkpoint.")
+            
+        #TODO 后续考虑 auto 判断Key 和 load # TODO 后期要对齐 save 的逻辑
+
         # Freeze Weights
-        if freeze_weights:
+        if freeze_weights: # TODO 不应该把 freeze 逻辑分散
             vlm.requires_grad_(False)
             vlm.eval()
         # Load ActionModel from Checkpoint
         if "action_model" in model_state_dict:
-            cogact.action_model.load_state_dict(model_state_dict["action_model"])
+            qwenact.action_model.load_state_dict(model_state_dict["action_model"])
             if "ema_diffusion" in model_state_dict and use_ema:
-                cogact.ema_diffusion.load_state_dict(model_state_dict["ema_diffusion"])
+                qwenact.ema_diffusion.load_state_dict(model_state_dict["ema_diffusion"])
             elif use_ema:
-                cogact.ema_diffusion.load_state_dict(model_state_dict["action_model"])
+                qwenact.ema_diffusion.load_state_dict(model_state_dict["action_model"])
         else:
             overwatch.warning("No ActionModel found in the pretrained checkpoint. Initializing a new one.")
-        return cogact
+        return qwenact
 
     @torch.inference_mode()
     def predict_action(

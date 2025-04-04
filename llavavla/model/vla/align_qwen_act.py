@@ -245,29 +245,46 @@ class QwenACT(nn.Module):
         # Load VLM from Checkpoint 
         # qwen_state_dict = CogACT_Qwen.align_module_names(model_state_dict)
         # assert CogACT_Qwen.check_unexpected_keys(qwen_state_dict,cogact),  "check_point 中有参数没有被 load"
+        # === Load known modules ===
+        standard_modules = { #TODO 后续考虑 auto 判断Key 和 load # TODO 后期要对齐 save 的逻辑
+            "model": qwenact.vlm.model,
+            "image2cognition_projector": qwenact.image2cognition_projector,
+            "action_model": qwenact.action_model,
+            "ema_diffusion": qwenact.ema_diffusion if use_ema else None
+        }
+
+        # === Attempt to load state_dicts ===
+        for key, module in standard_modules.items():
+            if key in model_state_dict and module is not None:
+                try:
+                    module.load_state_dict(model_state_dict[key])
+                    overwatch.info(f"✅ Loaded weights for `{key}`")
+                except Exception as e:
+                    overwatch.warning(f"⚠️ Failed to load `{key}`: {e}")
+
+        # === Auto-load additional submodules if possible ===
+        loaded_keys = set(standard_modules.keys())
+        remaining_keys = set(model_state_dict.keys()) - loaded_keys
+        for key in remaining_keys:
+            if hasattr(qwenact, key):
+                submodule = getattr(qwenact, key)
+                if hasattr(submodule, 'load_state_dict'):
+                    try:
+                        submodule.load_state_dict(model_state_dict[key])
+                        overwatch.info(f"✅ Auto-loaded extra module `{key}`")
+                    except Exception as e:
+                        overwatch.warning(f"⚠️ Failed to auto-load `{key}`: {e}")
+                else:
+                    overwatch.warning(f"⚠️ Attribute `{key}` exists but is not a loadable module.")
+            else:
+                overwatch.warning(f"⚠️ Unknown key `{key}` in checkpoint. Ignoring.")
         
-        qwenact.vlm.model.load_state_dict(model_state_dict["model"])  # @Jinhui 任务整个model一起，逻辑写到里面里面
-        # === Load Projector Weights ===
-        if "image2cognition_projector" in model_state_dict:
-            qwenact.image2cognition_projector.load_state_dict(model_state_dict["image2cognition_projector"])
-        else:
-            overwatch.warning("No projector weights found in checkpoint.")
-            
-        #TODO 后续考虑 auto 判断Key 和 load # TODO 后期要对齐 save 的逻辑
 
         # Freeze Weights
         if freeze_weights: # TODO 不应该把 freeze 逻辑分散
             vlm.requires_grad_(False)
             vlm.eval()
-        # Load ActionModel from Checkpoint
-        if "action_model" in model_state_dict:
-            qwenact.action_model.load_state_dict(model_state_dict["action_model"])
-            if "ema_diffusion" in model_state_dict and use_ema:
-                qwenact.ema_diffusion.load_state_dict(model_state_dict["ema_diffusion"])
-            elif use_ema:
-                qwenact.ema_diffusion.load_state_dict(model_state_dict["action_model"])
-        else:
-            overwatch.warning("No ActionModel found in the pretrained checkpoint. Initializing a new one.")
+
         return qwenact
 
     @torch.inference_mode()

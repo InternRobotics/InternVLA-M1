@@ -179,7 +179,8 @@ def train(cfg: TrainConfig) -> None:
                         past_action_window_size=cfg.past_action_window_size,
                         use_ema=cfg.use_ema,
                         )
-
+        # reload pretrained module
+        vla.reset_model_pramaeters()
     else:
         # TODO 这里不应该对读取什么 vlm 有假设，应该用接口方法
         # cfg.vla.base_vlm = "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -196,8 +197,7 @@ def train(cfg: TrainConfig) -> None:
                     )
         # del this variable to avoid bugs. The vlm shouldn't be used anymore
         # del vlm
-    # reload pretrained module
-    vla.reset_model_pramaeters()
+
     # [Validate] Model should be in Full Precision! @Jinhui TODO Why?
     for param in vla.parameters():
         if param.dtype != torch.float32: #@Jinhui TODO Check, why?

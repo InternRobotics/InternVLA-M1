@@ -18,7 +18,7 @@ LLaVA-VLA
 │   ├── action_model     # 执行视觉语言动作
 │   ├── vla              # 各种vla 框架 @TODO 这里的模块怎么划分还需要商量
 │
-├── dataloader           # 数据加载与预处理
+├── dataloader           # 收据构建和预处理
 │
 ├── training             # 训练相关代码
 │
@@ -45,13 +45,6 @@ LLaVA-VLA
 4. 支持 单独 training VLM with own vision encode (pending) #直接用QWen
 5. 支持 单独 training ACT with own vision encode (pending) # 直接用openVLA
 
-## 安装与使用
-
-```bash
-git clone https://github.com/your-repo/LLaVA-VLA.git
-cd LLaVA-VLA
-pip install -r requirements.txt
-```
 
 ## 许可证
 

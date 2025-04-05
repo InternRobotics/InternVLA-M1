@@ -101,14 +101,14 @@ def load_qwenvla(
 
     # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
 
-    # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
-    with open(config_json, "r") as f:
-        vla_cfg = json.load(f)["vla"]
-        # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
+        # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
+        with open(config_json, "r") as f:
+            vla_cfg = json.load(f)["vla"]
+            # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
 
-    # Load Dataset Statistics for Action Denormalization
-    with open(dataset_statistics_json, "r") as f:
-        norm_stats = json.load(f)
+        # Load Dataset Statistics for Action Denormalization
+        with open(dataset_statistics_json, "r") as f:
+            norm_stats = json.load(f)
 
     # = Load Individual Components necessary for Instantiating a VLA (via base VLM components) =
     #   =>> Print Minimal Config

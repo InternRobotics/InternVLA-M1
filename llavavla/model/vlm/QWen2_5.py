@@ -104,7 +104,9 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             config = AutoConfig.from_pretrained(model_id)
             model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
 
-        processor = AutoProcessor.from_pretrained(model_id)
+        processor = AutoProcessor.from_pretrained(model_id) #TODO check 
+        processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
+
 
         self.model = model
         self.processor = processor
@@ -388,7 +390,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
 
     @property
     def prompt_builder_fn(self) -> Type[PromptBuilder]:
-        return QwenPromptBuilder
+        return QwenPromptBuilder #@Jinhui TODO 这个可能是个好的实现
     
     @property
     def transformer_layer_cls(self) -> Type[torch.nn.Module]:

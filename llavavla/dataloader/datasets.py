@@ -26,8 +26,9 @@ from prismatic.vla.datasets.rlds.utils.data_utils import NormalizationType
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
-@dataclass
+from llavavla.dataloader.promt_builder import QwenVLPromptHelper
 
+@dataclass
 class RLDSBatchQwenTransform:
     action_tokenizer: ActionTokenizer
     # base_tokenizer: PreTrainedTokenizerBase
@@ -48,32 +49,28 @@ class RLDSBatchQwenTransform:
         # img.shape in rlds_batch = 224,224, 3 = h,w,c
         img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
         lang = rlds_batch["task"]["language_instruction"].decode().lower()
-
+        # <PIL.Image.Image image mode=RGB size=224x224 at 0x7EFFCBD42530>
         # Construct Chat-based Prompt #@Jinhui 其实挺好的， 但是不用它来维护 system prompt, 因为Qwen 有他自己的 system prompt
-        prompt_builder = self.prompt_builder_fn("openvla")
-
+        # prompt_builder = self.prompt_builder_fn("openvla") # 这个应该内聚到 Main model 里面
+        # 这里应该用单例的，因为要保持全文统一 TODO @Jinhui
+        self.promptHelper = QwenVLPromptHelper(processor=self.qwen_VLProcessor, system_prompt="You are a helpful assistant")
         # If action tokenizer is not used, we don't add the action to the chat answer
-        if self.action_tokenizer is None:
-            system_prompt="You are a helpful assistant"
-            conversation = [
-                {"role": "system","content": system_prompt},
-                {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {lang}?"}, {"image": None}]},
-                {"role": "gpt", "content": ""},
-            ]
+        if self.action_tokenizer is None: # 之后考虑是否有更好的方式，其实这个是和模型强绑定的
+            conversation = self.promptHelper.build_conversation(instruction=lang, image = [img], answer=None)
+            
         else:
             # Construct Chat-based Prompt =>> Input is default query + language instruction, output are the action tokens
-            conversation = [
-                {"role": "system","content": system_prompt},
-                {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {lang}?"}, {"image": None}]},
-                {"role": "gpt", "content": self.action_tokenizer(action)},
-            ]
+            conversation = self.promptHelper.build_conversation(instruction=lang, image = [img], answer= self.action_tokenizer(action))
+            
+        
         # TODO emergency check for speedup
         # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
         # 拿到 对话的 text 文本 
-        prompt_text = self.qwen_VLProcessor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-        # Tokenize (w/ `base_tokenizer`)
-        inputs = self.qwen_VLProcessor(text=[prompt_text], images=[img], padding=True, return_tensors="pt")
-
+        # prompt_text = self.qwen_VLProcessor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
+        # # Tokenize (w/ `base_tokenizer`)
+        # inputs = self.qwen_VLProcessor(text=[prompt_text], images=[img], padding=True, return_tensors="pt")
+        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
+        conversation, img, return_prompt_text=True)
         # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
         input_ids = inputs.input_ids[0]
         labels = inputs.input_ids.clone()[0]

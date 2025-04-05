@@ -28,7 +28,8 @@ from prismatic.overwatch import initialize_overwatch
 
 from llavavla.model.action_model.action_model import ActionModel
 from llavavla.model.action_model.models import DiT
-import torch
+from llavavla.dataloader.promt_builder import QwenVLPromptHelper
+
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
@@ -80,6 +81,9 @@ class CogACT_Qwen(nn.Module):
         # Diffusion head is always trainable
         self._trainable_module_keys = ['action_model']
         self.norm_stats = norm_stats
+
+        # 这里应该和 data loader tranfomation 对齐的
+        self.promptHelper = QwenVLPromptHelper(processor=self.vlm.processor, system_prompt="You are a helpful assistant")
 
     @property
     def trainable_module_keys(self) -> List[str]:
@@ -234,7 +238,7 @@ class CogACT_Qwen(nn.Module):
         # index = ... 198, 151644, 77091, 198, 76478, 114218, 112578]
         # gather 取出每个样本的最后有效 token 的 hidden state
         cognition_features = last_hidden.gather(dim=1, index=expanded_indices)  # [B, 1, D]
-
+        # selected_tokens = input_ids[torch.arange(B), max_indices] # training 198
         return cognition_features
 
     def get_fsdp_wrapping_policy(self) -> Callable: 
@@ -291,7 +295,7 @@ class CogACT_Qwen(nn.Module):
         # 加载 Processor（它没有权重，不受影响）
         #TODO 需要更好的逻辑
         qwen_processor = AutoProcessor.from_pretrained(base_vlm)
-
+        # qwen_processor.tokenizer.padding_side = "left"  # ✅ 添加这行, 应该内聚到 VLM
         # put it to interfance:
 
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
@@ -359,13 +363,14 @@ class CogACT_Qwen(nn.Module):
         # TODO 为了保证测试一致性心里应该是 用func, 但是如果预期这里是 template-free, 就应该是这样的
         # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
         # 拿到 对话的 text 文本 
-        conversation = [
-            {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
-            ]
-        
-        prompt_text = self.qwen_processor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-        # Tokenize (w/ `base_tokenizer`)
-        inputs = self.qwen_processor(text=[prompt_text], images=[image], padding=True, return_tensors="pt")
+        # conversation = [
+        #     {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
+        #     ]
+                
+        conversation = self.promptHelper.build_conversation(instruction, image=image, answer=None)
+        #TODO checking @Jinhui 一定要 training对齐 --> training 是 224*224 有图像增强， 来自RLDS
+        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
+        conversation, image, return_prompt_text=True)
 
         # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
         input_ids = inputs.input_ids[0]
@@ -421,7 +426,7 @@ class CogACT_Qwen(nn.Module):
         # be careful about the where the cognition_features comes from would align with training
         # cognition_features = output.hidden_states[0][-1][:,-1,:]  # nexx tokens, layers, B, len, D #@Jinhui to Think 这里为什么每一个 next token 都记录了 全部都 hidden? 不是的，只有第一个会
         last_hidden_states = outputs.hidden_states[0][-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
-        cognition_features = self._get_cognition_features(last_hidden_states, outputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
+        cognition_features = self._get_cognition_features(last_hidden_states, inputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
 
         assert (cognition_features.shape[0], cognition_features.shape[1], cognition_features.shape[-1]) == (1, 1,2048), "Batch size must be 1 for action prediction"
         using_cfg = cfg_scale > 1.0

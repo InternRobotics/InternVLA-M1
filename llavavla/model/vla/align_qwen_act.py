@@ -28,6 +28,7 @@ from prismatic.overwatch import initialize_overwatch
 
 from llavavla.model.action_model.action_model import ActionModel
 from llavavla.model.action_model.models import DiT
+from llavavla.dataloader.promt_builder import QwenVLPromptHelper
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
 
@@ -56,12 +57,14 @@ class QwenACT(nn.Module):
         **kwargs,
     ) -> None:
         super().__init__()
-
+        self.action_features_dim = 4096
         # self.projection = nn.Linear(token_size, 4096)# token_size --> token_size*2
-        self.image2cognition_projector = CNNModelWithMaxPool(hidden_dim=token_size, fc_out_features=4096)
+        self.highLevelVidualer = CNNModelWithMaxPool(hidden_dim=token_size, fc_out_features=self.action_features_dim )
+        self.lowLevelVidualer = LowLevelVidualer(latent_dim=token_size, out_features=self.action_features_dim)
+        # 要维护 all_module_keys， _trainable_module_keys TODO 要实现为 auto 的方式， 整存正取
         # 4096 in cogact
         self.action_model = ActionModel(model_type = action_model_type,  # TODO @Jinhui 应该写到 get_action_model()
-                                            token_size = 4096,  #TODO 应该设置为 config 管理
+                                            token_size = self.action_features_dim ,  #TODO 应该设置为 config 管理
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size)
@@ -76,7 +79,8 @@ class QwenACT(nn.Module):
             self.all_module_keys = ['action_model', 'ema_diffusion']
         else:
             self.all_module_keys = ['action_model']
-        self.all_module_keys.append("image2cognition_projector")
+        self.all_module_keys.append("highLevelVidualer")
+        self.all_module_keys.append("lowLevelVidualer") 
         # TODO check 为什么改文件model 名字么？ 
         for module_keys in self.vlm.all_module_keys: #@Jinhui checking
             self.all_module_keys.append("vlm." + module_keys)
@@ -84,6 +88,10 @@ class QwenACT(nn.Module):
         # Diffusion head is always trainable
         # self._trainable_module_keys = ['action_model']
         self.norm_stats = norm_stats
+
+
+        # 这里应该和 data loader tranfomation 对齐的
+        self.promptHelper = QwenVLPromptHelper(processor=self.vlm.processor, system_prompt="You are a helpful assistant")
 
 
     def forward(
@@ -119,8 +127,8 @@ class QwenACT(nn.Module):
         )
         vlm_loss = output.loss # TODO 需要修改dataloader 这里应该增加 预测 grounding的 loss
         # extract the last hidden state and the learnable EOS token feature
-        last_hidden = output.hidden_states[-1] # B,len,D
-        cognition_features = self._get_cognition_features(last_hidden, input_ids, attention_mask=attention_mask)
+        
+        cognition_features = self._get_cognition_features(output.hidden_states, input_ids, attention_mask=attention_mask)
 
 
         actions_history = actions[:,0:self.past_action_window_size,:]
@@ -137,7 +145,7 @@ class QwenACT(nn.Module):
         loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
         return loss, output
 
-    def _get_cognition_features(self, last_hidden: torch.Tensor, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    def _get_cognition_features(self, hidden_states: torch.Tensor, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
         提取每个样本中最后一个有效 token 的 hidden state，作为 cognition feature。
 
@@ -149,26 +157,29 @@ class QwenACT(nn.Module):
         Returns:
             cognition_features: Tensor, shape [B, 1, D]
         """
+        # test: last_hidden.dtyp == torch.float32
+        last_hidden = hidden_states[-1] # B,len,D
+        low_hidden = hidden_states[1] # B,len,D
+        # 提取图像token的隐藏状态
+        image_token_id = 151655  # 图像token的ID（根据具体任务调整）
+        image_token_positions = (input_ids == image_token_id)  # 获取图像token的位置信息
+        image_high_hidden = last_hidden[image_token_positions].view(last_hidden.size(0), -1, last_hidden.size(-1))  # [B, num_image_tokens, D]
+        image_low_hidden = low_hidden[image_token_positions].view(low_hidden.size(0), -1, low_hidden.size(-1))  # [B, num_image_tokens, D]
+        image_high_hidden = image_low_hidden # Fast try 
+        
+        # 计算 W 和 H（假设图像token的数量是完美的平方数）
+        num_image_tokens = image_high_hidden.shape[1] # 为什么不是 16*16？
+        W = H = int(num_image_tokens ** 0.5) #@Jinhui 这里不能这样做 # W = H = sqrt(num_image_tokens)
+        # inference 这里是 1*19*19*2048
+        # training? 重塑隐藏状态为 [B, W, H, D] = 16,8,8,2048
+        image_high_hidden = image_high_hidden.view(last_hidden.size(0), W, H, last_hidden.size(-1))
 
-        return self.image2cognition_projector(last_hidden, input_ids, attention_mask=attention_mask)
-        # extract the visual token number #@Jinhui 他要拿一个token 去做 下游 TODO 展示不要用关
-        # @Discussion 这个位置需要讨论 --> 其实可以通过检查 visual token 的 indexs 来, 
-        image_token_id, vido_token_id, pad_token_id = 151655, 151654, 151643
-        # assert TODO 需要假设 文本中不带 action 的， 不然需要新的 id 来标记位置
-        # 获取 batch size 和 hidden dim
-        B, T, D = last_hidden.shape
+        # [B, W, H, D] -> [B, D, H, W]
+        image_high_hidden = image_high_hidden.permute(0, 3, 1, 2)
 
-        # 计算每个样本最后一个有效 token 的索引位置
-        # 方法：cumsum + == max
-        cumsum = attention_mask.cumsum(dim=1)  # shape: [B, T]
-        max_indices = (cumsum == cumsum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  # shape: [B]
-        # train --> 198, test --> 198 ✅， 但是这里我想可能不应该是要同一个
-        # 构建 gather 索引：形状 [B, 1, D]
-        expanded_indices = max_indices.unsqueeze(1).unsqueeze(2).expand(-1, 1, D)  # [B, 1, D]
-        # index = ... 198, 151644, 77091, 198, 76478, 114218, 112578]
-        # gather 取出每个样本的最后有效 token 的 hidden state
-        cognition_features = last_hidden.gather(dim=1, index=expanded_indices)  # [B, 1, D]
-
+        cognition_features =  self.highLevelVidualer(image_token_hidden_states=image_high_hidden)
+        # image_feature = self.lowLevelVidualer(image_low_hidden)
+        
         return cognition_features
 
     def get_fsdp_wrapping_policy(self) -> Callable: 
@@ -180,7 +191,7 @@ class QwenACT(nn.Module):
         # Get Prismatic Wrapping Policy =>> just a module wrapping policy around `self.projector` and DiT
         prismatic_fsdp_wrapping_policy = partial(
             _module_wrap_policy,
-            module_classes={DiT, CNNModelWithMaxPool},
+            module_classes={DiT, CNNModelWithMaxPool, LowLevelVidualer}, #@TODO 这里不能每次修改都 异步手动添加
         )
 
         # Return union (_or_) over constituent policies
@@ -248,7 +259,7 @@ class QwenACT(nn.Module):
         # === Load known modules ===
         standard_modules = { #TODO 后续考虑 auto 判断Key 和 load # TODO 后期要对齐 save 的逻辑
             "model": qwenact.vlm.model,
-            "image2cognition_projector": qwenact.image2cognition_projector,
+            "highLevelVidualer": qwenact.highLevelVidualer,
             "action_model": qwenact.action_model,
             "ema_diffusion": qwenact.ema_diffusion if use_ema else None
         }
@@ -316,21 +327,19 @@ class QwenACT(nn.Module):
         # prompt_builder = self.vlm.get_prompt_builder()
         # prompt_builder.add_turn(role="human", message=f"What action should the robot take to {instruction.lower()}?")
 
-        # TODO 为了保证测试一致性心里应该是 用func, 但是如果预期这里是 template-free, 就应该是这样的
+        # TODO 为了保证测试一致性应该是 用func, 但是如果预期这里是 template-free, 就应该是这样的
         # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
         # 拿到 对话的 text 文本 
-        conversation = [
-            {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
-            ]
         
-        prompt_text = self.qwen_processor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-        # Tokenize (w/ `base_tokenizer`)
-        inputs = self.qwen_processor(text=[prompt_text], images=[image], padding=True, return_tensors="pt")
-
-        # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
-        input_ids = inputs.input_ids[0]
-        pixel_values = inputs.pixel_values # value in patch size
-
+        conversation = self.promptHelper.build_conversation(instruction, image=image, answer=None)
+        #TODO checking @Jinhui 一定要 training对齐 --> training 是 224*224 有图像增强， 来自RLDS
+        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
+        conversation, image, return_prompt_text=True)
+        
+        # training: dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) #  --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
+        input_ids = inputs.input_ids[0] 
+        pixel_values = inputs.pixel_values # value in patch size 1176 = 14*14*6? 
+        # inference: pixel_values： [1, 256, 1176] --》 34 × 46 --> image_grid_thw
         if isinstance(pixel_values, torch.Tensor):
             pixel_values = pixel_values[None, ...].to(self.vlm.device)
         elif isinstance(pixel_values, dict):
@@ -380,10 +389,10 @@ class QwenACT(nn.Module):
         # outputs.hidden_states = list = next tokens 
         # be careful about the where the cognition_features comes from would align with training
         # cognition_features = output.hidden_states[0][-1][:,-1,:]  # nexx tokens, layers, B, len, D #@Jinhui to Think 这里为什么每一个 next token 都记录了 全部都 hidden? 不是的，只有第一个会
-        last_hidden_states = outputs.hidden_states[0][-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
-        cognition_features = self._get_cognition_features(last_hidden_states, outputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
+        # last_hidden_states = outputs.hidden_states[0][-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
+        cognition_features = self._get_cognition_features(outputs.hidden_states[0], inputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
 
-        assert (cognition_features.shape[0], cognition_features.shape[1], cognition_features.shape[-1]) == (1, 1,2048), "Batch size must be 1 for action prediction"
+        assert (cognition_features.shape[0], cognition_features.shape[1], cognition_features.shape[-1]) == (1, 1,self.action_features_dim), "Batch size must be 1 for action prediction"
         using_cfg = cfg_scale > 1.0
 
         model_dtype = next(self.action_model.net.parameters()).dtype
@@ -711,28 +720,25 @@ class QwenACT(nn.Module):
     def freeze_backbones(self, stage):
         # self.vlm.freeze_backbones(stage)
         #TODO 之后这里看看这吗写出 策略话。但是本质上是要内聚到这里来的，只是说可以读取一个配置
-        for param in self.image2cognition_projector.parameters():
+        for param in self.highLevelVidualer.parameters():
             if param.dtype != torch.float32:
                 param.data = param.data.float()
         
         # only align peojection between Qwen and DiT
         self.vlm.model.requires_grad_(False)
-        self.action_model.requires_grad_(False)
-        self.image2cognition_projector.requires_grad_(True)
+        self.action_model.requires_grad_(True) 
+        self.highLevelVidualer.requires_grad_(True)
+        self.lowLevelVidualer.requires_grad_(True)
         # Add to `self.trainable_module_keys`
-        self._trainable_module_keys = ["image2cognition_projector"]
-        overwatch.info(f"[TRAINABLE] 🔥 =>> Backbone `{self.image2cognition_projector.__class__.__name__}`", ctx_level=1)
+        self._trainable_module_keys = ["action_model", "highLevelVidualer, lowLevelVidualer"]
+        overwatch.info(f"[TRAINABLE] 🔥 =>> Backbone `{self.highLevelVidualer.__class__.__name__}`", ctx_level=1)
         
 
 
     @property
     def trainable_module_keys(self) -> List[str]:
         # TODO 这里应该实现的事直接去 扫描 trainable_module_keys
-        # keys = []
-        # for module_keys in self.vlm.trainable_module_keys:
-        #     keys.append("vlm." + module_keys)
-        # keys += self._trainable_module_keys
-        self._trainable_module_keys = ["image2cognition_projector"]
+
         return self._trainable_module_keys
     
 
@@ -750,106 +756,13 @@ class QwenACT(nn.Module):
 
         pass
 
+    
 
 # TODO move to other.py
 import torch
 import torch.nn as nn
 
 class CNNModelWithMaxPool(nn.Module):
-    def __init__(self, 
-                 hidden_dim: int = 2048,  # 每个token的隐藏维度
-                 conv_out_channels: int = 64,  # 每个卷积层输出的通道数
-                 kernel_size: int = 3,  # 卷积核大小
-                 stride: int = 1,  # 卷积步幅
-                 pool_kernel_size: int = 2,  # 池化层的卷积核大小
-                 pool_stride: int = 2,  # 池化步幅
-                 fc_out_features: int = 4096):  # 全连接层输出特征数
-        """
-        CNN模型，使用多个Conv2d层，最后通过MaxPool2d压缩成B, D形状，再通过一个线性层输出。
-
-        Args:
-            hidden_dim (int): 每个token的隐藏维度，默认为2048。
-            conv_out_channels (int): 卷积层输出的通道数，默认为64。
-            kernel_size (int): 卷积核大小，默认为3。
-            stride (int): 卷积步幅，默认为1。
-            pool_kernel_size (int): 池化层的卷积核大小，默认为2。
-            pool_stride (int): 池化步幅，默认为2。
-            fc_out_features (int): 全连接层输出的特征数，默认为4096。
-        """
-        super(CNNModelWithMaxPool, self).__init__()
-
-        # 定义卷积层
-        self.conv1 = nn.Conv2d(in_channels=hidden_dim, 
-                               out_channels=conv_out_channels, 
-                               kernel_size=kernel_size, 
-                               stride=stride)
-        
-        self.conv2 = nn.Conv2d(in_channels=conv_out_channels, 
-                               out_channels=conv_out_channels * 2,  # 增加通道数
-                               kernel_size=kernel_size, 
-                               stride=stride)
-        
-        self.conv3 = nn.Conv2d(in_channels=conv_out_channels * 2, 
-                               out_channels=conv_out_channels * 4,  # 增加通道数
-                               kernel_size=kernel_size, 
-                               stride=stride)
-        
-        # 定义池化层
-        self.pool = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride)
-        
-        # 定义全局池化层
-        self.global_pool = nn.AdaptiveMaxPool2d((1, 1))  # 自适应最大池化，将每个通道池化为一个值
-        
-        # 全连接层
-        self.fc1 = nn.Linear(conv_out_channels * 4, fc_out_features)  # 全连接层1
-
-    def forward(self, last_hidden: torch.Tensor, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        """
-        前向传播函数，提取图像token的隐藏状态，并通过CNN和全连接层生成特征。
-
-        Args:
-            last_hidden (torch.Tensor): 输入的隐藏状态，形状为 [B, T, D]。
-            input_ids (torch.Tensor): 输入的token id，形状为 [B, T]。
-            attention_mask (torch.Tensor): 注意力掩码，形状为 [B, T]。
-
-        Returns:
-            torch.Tensor: 模型输出特征，形状为 [B, 1]。
-        """
-
-        # 提取图像token的隐藏状态
-        image_token_id = 151655  # 图像token的ID（根据具体任务调整）
-        image_token_positions = (input_ids == image_token_id)  # 获取图像token的位置信息
-        image_token_hidden_states = last_hidden[image_token_positions].view(last_hidden.size(0), -1, last_hidden.size(-1))  # [B, num_image_tokens, D]
-
-        # 计算 W 和 H（假设图像token的数量是完美的平方数）
-        num_image_tokens = image_token_hidden_states.shape[1]
-        W = H = int(num_image_tokens ** 0.5)  # W = H = sqrt(num_image_tokens)
-
-        # 重塑隐藏状态为 [B, W, H, D]
-        image_token_hidden_states = image_token_hidden_states.view(last_hidden.size(0), W, H, last_hidden.size(-1))
-
-        # 卷积层1
-        x = self.conv1(image_token_hidden_states)  # [B, conv_out_channels, W', H']
-        x = torch.relu(x)
-
-        # 卷积层2
-        x = self.conv2(x)  # [B, conv_out_channels*2, W'', H'']
-        x = torch.relu(x)
-
-        # 卷积层3
-        x = self.conv3(x)  # [B, conv_out_channels*4, W''', H''']
-        x = torch.relu(x)
-
-        # 使用全局最大池化
-        x = self.global_pool(x)  # [B, conv_out_channels*4, 1, 1]
-        
-        # 展平张量
-        x = x.view(x.size(0), -1)  # [B, conv_out_channels*4]
-
-        # 全连接层1
-        x = self.fc1(x)  # [B, fc_out_features]
-        x = torch.relu(x)
-        return x
 
     def __init__(self, 
                  hidden_dim: int = 2048,  # 每个token的隐藏维度
@@ -898,55 +811,104 @@ class CNNModelWithMaxPool(nn.Module):
         # 全连接层
         self.fc1 = nn.Linear(conv_out_channels * 4, fc_out_features)  # 全连接层1
 
-    def forward(self, last_hidden: torch.Tensor, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, image_token_hidden_states: torch.Tensor) -> torch.Tensor:
         """
-        前向传播函数，提取图像token的隐藏状态，并通过CNN和全连接层生成特征。
-
         Args:
-            last_hidden (torch.Tensor): 输入的隐藏状态，形状为 [B, T, D]。
-            input_ids (torch.Tensor): 输入的token id，形状为 [B, T]。
-            attention_mask (torch.Tensor): 注意力掩码，形状为 [B, T]。
+            cognition_features (Tensor): 输入形状为 [B, D, H, W]
 
         Returns:
-            torch.Tensor: 模型输出特征，形状为 [B, 1]。
+            Tensor: 输出特征，形状为 [B, 1, fc_out_features]
         """
+        x = torch.relu(self.conv1(image_token_hidden_states))
+        x = torch.relu(self.conv2(x))
+        x = torch.relu(self.conv3(x))
 
-        # 提取图像token的隐藏状态
-        image_token_id = 151655  # 图像token的ID（根据具体任务调整）
-        image_token_positions = (input_ids == image_token_id)  # 获取图像token的位置信息
-        image_token_hidden_states = last_hidden[image_token_positions].view(last_hidden.size(0), -1, last_hidden.size(-1))  # [B, num_image_tokens, D]
+        x = self.global_pool(x)              # [B, C, 1, 1]
+        x = x.view(x.size(0), -1)            # [B, C]
+        x = torch.relu(self.fc1(x))          # [B, fc_out]
+        return x.unsqueeze(1)                # [B, 1, fc_out]
 
-        # 计算 W 和 H（假设图像token的数量是完美的平方数）
-        num_image_tokens = image_token_hidden_states.shape[1]
-        W = H = int(num_image_tokens ** 0.5)  # W = H = sqrt(num_image_tokens)
 
-        # 重塑隐藏状态为 [B, W, H, D] = 16,8,8,2048
-        image_token_hidden_states = image_token_hidden_states.view(last_hidden.size(0), W, H, last_hidden.size(-1))
 
-        # [B, W, H, D] -> [B, D, H, W]
-        image_token_hidden_states = image_token_hidden_states.permute(0, 3, 1, 2)
-        # 卷积层1
-        x = self.conv1(image_token_hidden_states)  # [B, conv_out_channels, W', H']
-        x = torch.relu(x)
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-        # 卷积层2
-        x = self.conv2(x)  # [B, conv_out_channels*2, W'', H'']
-        x = torch.relu(x)
 
-        # 卷积层3
-        x = self.conv3(x)  # [B, conv_out_channels*4, W''', H''']
-        x = torch.relu(x)
+class LowLevelVidualer(nn.Module):
+    def __init__(self, 
+                 latent_dim: int,       # 输入 latent 的维度，例如 2048
+                 out_features: int,     # 输出 image_feature 的维度
+                 conv_channels: int = 64,  # 卷积 stem 的通道数
+                 num_transformer_blocks: int = 2,  # Transformer block 数量
+                 num_heads: int = 4,      # 自注意力头数
+                 dropout: float = 0.1):
+        """
+        LowLevelVidualer 从 VLM 第二层 latent 表示中提取低层视觉特征，
+        并将其转换为固定维度的 image_feature 供后续条件输入使用。
 
-        # 使用全局最大池化
-        x = self.global_pool(x)  # [B, conv_out_channels*4, 1, 1]
+        Args:
+            latent_dim (int): 输入 latent 特征维度（每个 token 的维度）。
+            out_features (int): 输出特征的维度。
+            conv_channels (int): 卷积 stem 输出通道数。
+            num_transformer_blocks (int): Transformer Block 数量。
+            num_heads (int): 自注意力头数。
+            dropout (float): dropout 比例。
+        """
+        super(LowLevelVidualer, self).__init__()
         
-        # 展平张量
-        x = x.view(x.size(0), -1)  # [B, conv_out_channels*4]
+        # 卷积 Stem: 用于初步整合低层信息
+        self.conv_stem = nn.Sequential(
+            nn.Conv2d(in_channels=latent_dim, out_channels=conv_channels, 
+                      kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(conv_channels),
+            nn.ReLU(inplace=False)  # 使用非 inplace 操作以避免潜在问题
+        )
+        
+        # Transformer Blocks: 局部上下文信息融合
+        encoder_layer = nn.TransformerEncoderLayer(d_model=conv_channels, nhead=num_heads, dropout=dropout)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_blocks)
+        
+        # 全局池化和全连接层，用于生成最终 image_feature
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(conv_channels, out_features)
+    
+    def forward(self, latent: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            latent (Tensor): 输入 latent 表示，形状为 [B, T, D]，其中 T 能 reshape 为 H x W
 
-        # 全连接层1
-        x = self.fc1(x)  # [B, fc_out_features]
-        x = torch.relu(x)
+        Returns:
+            Tensor: 输出 image_feature，形状为 [B, out_features]
+        """
+        B, T, D = latent.shape
+        # 假设 T 为完美平方数
+        H = W = int(math.sqrt(T))
+        if H * W != T:
+            raise ValueError(f"Token count {T} cannot form a perfect square.")
+        
+        # 将 latent reshape 为 [B, D, H, W]，使用 reshape 避免 inplace view 修改问题
+        x = latent.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
 
-        # 输出层
-        return x.unsqueeze(1)  # [B, 1, D]
 
+        # 卷积 Stem 提取局部特征
+        x = self.conv_stem(x)  # [B, conv_channels, H, W]
+        
+        # 将特征转换为 [B, conv_channels, H*W] 并转置为 [H*W, B, conv_channels] 供 Transformer 使用
+        B, C, H, W = x.shape
+        x = x.reshape(B, C, H * W).permute(2, 0, 1).contiguous()  # [H*W, B, conv_channels]
+
+        
+        # Transformer Encoder 处理局部上下文
+        x = self.transformer(x)  # [H*W, B, conv_channels]
+        
+        # 将 Transformer 输出恢复为 [B, conv_channels, H, W]
+        x = x.permute(1, 2, 0).reshape(B, C, H, W)
+        
+        # 全局平均池化
+        x = self.global_pool(x)  # [B, conv_channels, 1, 1]
+        x = x.view(B, -1)        # [B, conv_channels]
+        # 全连接层转换为期望输出
+        image_feature = self.fc(x)  # [B, out_features]
+        return image_feature

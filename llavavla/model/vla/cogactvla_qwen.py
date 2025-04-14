@@ -18,7 +18,7 @@ from torch.distributed.fsdp.wrap import _module_wrap_policy, _or_policy
 from torch.nn.utils.rnn import pad_sequence
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers import LlamaTokenizerFast
-
+import re
 from prismatic.models.backbones.llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import VisionBackbone
@@ -28,7 +28,8 @@ from prismatic.overwatch import initialize_overwatch
 
 from llavavla.model.action_model.action_model import ActionModel
 from llavavla.model.action_model.models import DiT
-import torch
+from llavavla.dataloader.promt_builder import QwenVLPromptHelper
+
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
@@ -41,6 +42,8 @@ IGNORE_INDEX = -100
 
 # get QWen2.5
 from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类
+from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules
+
 
 class CogACT_Qwen(nn.Module):
     def __init__(
@@ -63,39 +66,38 @@ class CogACT_Qwen(nn.Module):
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size)
         self.vlm = vlm
+        self.qwen_processor = vlm.processor # 
         self.future_action_window_size = future_action_window_size
         self.past_action_window_size = past_action_window_size
         self.use_ema = use_ema
         if self.use_ema:
             self.ema_diffusion = deepcopy(self.action_model)
             self.ema_diffusion.requires_grad_(False)
-            self.all_module_keys = ['action_model', 'ema_diffusion']
-        else:
-            self.all_module_keys = ['action_model']
+        #     self.all_module_keys = ['action_model', 'ema_diffusion']
+        # else:
+        #     self.all_module_keys = ['action_model']
         
         # TODO check 为什么改文件model 名字么？ 
-        for module_keys in self.vlm.all_module_keys: #@Jinhui checking
-            self.all_module_keys.append("vlm." + module_keys)
-
+        # for module_keys in self.vlm.all_module_keys: #@Jinhui checking
+        #     self.all_module_keys.append("vlm." + module_keys)
+        self.all_module_keys = auto_get_module_keys(self)
         # Diffusion head is always trainable
-        self._trainable_module_keys = ['action_model']
+        # self._trainable_module_keys = ['action_model'] # 应该放到一个集中的地方
         self.norm_stats = norm_stats
+
+        # 这里应该和 data loader tranfomation 对齐的
+        self.promptHelper = QwenVLPromptHelper(processor=self.vlm.processor, system_prompt="You are a helpful assistant")
 
     @property
     def trainable_module_keys(self) -> List[str]:
-        keys = []
-        for module_keys in self.vlm.trainable_module_keys:
-            keys.append("vlm." + module_keys)
-        keys += self._trainable_module_keys
+        # keys = []
+        # for module_keys in self.vlm.trainable_module_keys:
+        #     keys.append("vlm." + module_keys)
+        # keys += self._trainable_module_keys
+        # TODO check, 原版返回的死 vlm.model, 新的实现是vlm --> 看一下保存逻辑是否发上变化
+        keys = auto_get_trainable_modules(self, max_depth=1)# auto 去判断哪些module是trainable的
         return keys
     
-    @property
-    def llm_backbone(self) -> LLMBackbone:
-        return self.vlm.llm_backbone
-    
-    @property
-    def vision_backbone(self) -> VisionBackbone:
-        return self.vlm.vision_backbone
     
     @staticmethod
     def align_module_names(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -131,7 +133,42 @@ class CogACT_Qwen(nn.Module):
         return aligned_dict
 
     def freeze_backbones(self, stage):
-        self.vlm.freeze_backbones(stage)
+        # self.vlm.freeze_backbones(stage)
+
+        """
+        根据给定的正则模式列表冻结模块。
+        如果某个模块的名称匹配（例如公共前缀匹配），则冻结该模块下所有参数（不再递归冻结子模块），
+        并返回冻结模块名称的有序浅层列表。
+        
+        参数：
+            patterns: 正则表达式字符串列表，模块名称只要匹配其中一个模式，就会被冻结。
+            
+        返回：
+            一个冻结模块名称的列表（按递归顺序）。
+        """
+        # r"^vlm\.model\.visual", r"^action_model"
+        patterns = [] #TODO 时候要参数化
+        def freeze_module(module: nn.Module, prefix: str) -> List[str]:
+            # 如果当前模块名称匹配任一模式，则冻结当前模块，不再递归子模块
+            if any(re.match(pattern, prefix) for pattern in patterns if prefix):
+                for param in module.parameters(recurse=False):
+                    param.requires_grad = False
+                return [prefix]
+            # 否则，递归遍历子模块
+            frozen_keys = []
+            for name, child in module.named_children():
+                full_name = f"{prefix}.{name}" if prefix else name
+                frozen_keys.extend(freeze_module(child, full_name))
+                
+            return frozen_keys
+        
+        # 对整个模块（self）递归检查。注意，根目录通常为空字符串，这里不冻结根模块
+        frozen = []
+        for name, child in self.named_children():
+            full_name = name  # 顶层模块名称
+            frozen.extend(freeze_module(child, full_name))
+        return frozen
+
 
     def forward(
         self,
@@ -202,10 +239,9 @@ class CogACT_Qwen(nn.Module):
         cognition_features = cognition_features.to(torch.bfloat16)
         
         return cognition_features
-
     def _get_cognition_features(self, last_hidden: torch.Tensor, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
-        提取每个样本中最后一个有效 token 的 hidden state，作为 cognition feature。
+        提取每个样本中 cognition_token（🔍）位置的 hidden state，作为 cognition feature。
 
         Args:
             last_hidden: Tensor, shape [B, T, D]
@@ -215,28 +251,27 @@ class CogACT_Qwen(nn.Module):
         Returns:
             cognition_features: Tensor, shape [B, 1, D]
         """
+        cognition_token_id = self.promptHelper.cognition_token_ids
 
-
-        # extract the visual token number #@Jinhui 他要拿一个token 去做 下游 TODO 展示不要用关
-        # @Discussion 这个位置需要讨论 --> 其实可以通过检查 visual token 的 indexs 来, 
-        image_token_id, vido_token_id, pad_token_id = 151655, 151654, 151643
-        # assert TODO 需要假设 文本中不带 action 的， 不然需要新的 id 来标记位置
-        # 获取 batch size 和 hidden dim
         B, T, D = last_hidden.shape
 
-        # 计算每个样本最后一个有效 token 的索引位置
-        # 方法：cumsum + == max
-        cumsum = attention_mask.cumsum(dim=1)  # shape: [B, T]
-        max_indices = (cumsum == cumsum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  # shape: [B]
-        # train --> 198, test --> 198 ✅， 但是这里我想可能不应该是要同一个
-        # 构建 gather 索引：形状 [B, 1, D]
-        expanded_indices = max_indices.unsqueeze(1).unsqueeze(2).expand(-1, 1, D)  # [B, 1, D]
-        # index = ... 198, 151644, 77091, 198, 76478, 114218, 112578]
-        # gather 取出每个样本的最后有效 token 的 hidden state
-        cognition_features = last_hidden.gather(dim=1, index=expanded_indices)  # [B, 1, D]
+        # 找到每个样本中 cognition_token_id 出现的位置
+        cognition_indices = (input_ids == cognition_token_id).int()  # [B, T]，为1的位置是 cognition
+        has_cognition_token = cognition_indices.any(dim=1)
+
+        if not has_cognition_token.all():
+            raise ValueError("Not all samples contain the cognition token 🔍")
+
+        # 获取每行 cognition_token 的位置（只取第一个匹配的 token index）
+        cognition_pos = cognition_indices.argmax(dim=1)  # [B]
+        
+        # 构建用于 gather 的索引
+        gather_index = cognition_pos.unsqueeze(1).unsqueeze(2).expand(-1, 1, D)  # [B, 1, D]
+        cognition_features = last_hidden.gather(dim=1, index=gather_index)  # [B, 1, D]
 
         return cognition_features
 
+    
     def get_fsdp_wrapping_policy(self) -> Callable: 
         """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
         # vision_fsdp_wrapping_policy = self.vlm.vision_backbone.get_fsdp_wrapping_policy()
@@ -285,14 +320,10 @@ class CogACT_Qwen(nn.Module):
 
         # 仅加载模型配置，而不加载权重
         base_vlm = "/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct" #TODO 需要调整training 和测试的工作目录
-        # config = AutoConfig.from_pretrained(base_vlm)
-        # vlm = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
+        # 只初始化模型结构，不加载参数
         vlm = _QWen_VL_Interface(model_id=base_vlm, load_for_training=False)
-        # 加载 Processor（它没有权重，不受影响）
-        #TODO 需要更好的逻辑
-        qwen_processor = AutoProcessor.from_pretrained(base_vlm)
-
-        # put it to interfance:
+   
+        
 
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
         model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")["model"]
@@ -307,24 +338,30 @@ class CogACT_Qwen(nn.Module):
                         use_ema = use_ema,
                         norm_stats = norm_stats,
                         )
-        cogact.qwen_processor = qwen_processor
+        cogact.qwen_processor = vlm.processor # @Jinhui TODO 为什么不放到 inital
         # Load VLM from Checkpoint # TODO 后期要对齐 save 的逻辑
         # qwen_state_dict = CogACT_Qwen.align_module_names(model_state_dict)
         # assert CogACT_Qwen.check_unexpected_keys(qwen_state_dict,cogact),  "check_point 中有参数没有被 load"
-        cogact.vlm.model.load_state_dict(model_state_dict["model"])  # @Jinhui 任务整个model一起，逻辑写到里面里面
-        # Freeze Weights
-        if freeze_weights:
-            vlm.requires_grad_(False)
-            vlm.eval()
-        # Load ActionModel from Checkpoint
-        if "action_model" in model_state_dict:
-            cogact.action_model.load_state_dict(model_state_dict["action_model"])
-            if "ema_diffusion" in model_state_dict and use_ema:
-                cogact.ema_diffusion.load_state_dict(model_state_dict["ema_diffusion"])
-            elif use_ema:
-                cogact.ema_diffusion.load_state_dict(model_state_dict["action_model"])
-        else:
-            overwatch.warning("No ActionModel found in the pretrained checkpoint. Initializing a new one.")
+        # cogact.vlm.load_state_dict(model_state_dict["vlm"])  # @Jinhui 任务整个model一起，逻辑写到里面里面
+ 
+        # 自动加载 checkpoint 中的权重到对应模块 #@Jinhui TODO 怎么保证全部trainable参数被save 了？
+        # 遍历 checkpoint 中的每个键，若 cogact 有相应属性且该属性支持 load_state_dict，则加载权重
+        for key, state in model_state_dict.items():
+            if hasattr(cogact, key):
+                submodule = getattr(cogact, key)
+                if hasattr(submodule, "load_state_dict"):
+                    try:
+                        submodule.load_state_dict(state)
+                        overwatch.info(f"✅ Successfully loaded weights for module '{key}'")
+                    except Exception as e:
+                        overwatch.warning(f"⚠️ Failed to load weights for module '{key}': {e}")
+                else:
+                    overwatch.warning(f"⚠️ Attribute '{key}' exists but is not a loadable module.")
+            else:
+                overwatch.warning(f"⚠️ Unknown key '{key}' in checkpoint. Ignoring.")
+
+        # TODO 需要一个逻辑检查是否全部参数就load 好了？ --> 不直接 cogact.load 的原因
+        # TODO Jinhui 很必要有个检查流程，保证 all tranable 参数被 save 了, all tranable  被load 了
         return cogact
 
     @torch.inference_mode()
@@ -359,13 +396,14 @@ class CogACT_Qwen(nn.Module):
         # TODO 为了保证测试一致性心里应该是 用func, 但是如果预期这里是 template-free, 就应该是这样的
         # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
         # 拿到 对话的 text 文本 
-        conversation = [
-            {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
-            ]
-        
-        prompt_text = self.qwen_processor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-        # Tokenize (w/ `base_tokenizer`)
-        inputs = self.qwen_processor(text=[prompt_text], images=[image], padding=True, return_tensors="pt")
+        # conversation = [
+        #     {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
+        #     ]
+                
+        conversation = self.promptHelper.build_conversation(instruction, image=image, answer=None)
+        #TODO checking @Jinhui 一定要 training对齐 --> training 是 224*224 有图像增强， 来自RLDS
+        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
+        conversation, image, return_prompt_text=True)
 
         # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
         input_ids = inputs.input_ids[0]
@@ -421,7 +459,7 @@ class CogACT_Qwen(nn.Module):
         # be careful about the where the cognition_features comes from would align with training
         # cognition_features = output.hidden_states[0][-1][:,-1,:]  # nexx tokens, layers, B, len, D #@Jinhui to Think 这里为什么每一个 next token 都记录了 全部都 hidden? 不是的，只有第一个会
         last_hidden_states = outputs.hidden_states[0][-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
-        cognition_features = self._get_cognition_features(last_hidden_states, outputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
+        cognition_features = self._get_cognition_features(last_hidden_states, inputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
 
         assert (cognition_features.shape[0], cognition_features.shape[1], cognition_features.shape[-1]) == (1, 1,2048), "Batch size must be 1 for action prediction"
         using_cfg = cfg_scale > 1.0

@@ -18,7 +18,7 @@ LLaVA-VLA
 │   ├── action_model     # 执行视觉语言动作
 │   ├── vla              # 各种vla 框架 @TODO 这里的模块怎么划分还需要商量
 │
-├── dataloader           # 数据加载与预处理
+├── dataloader           # 收据构建和预处理
 │
 ├── training             # 训练相关代码
 │
@@ -45,15 +45,57 @@ LLaVA-VLA
 4. 支持 单独 training VLM with own vision encode (pending) #直接用QWen
 5. 支持 单独 training ACT with own vision encode (pending) # 直接用openVLA
 
-## 安装与使用
-
-```bash
-git clone https://github.com/your-repo/LLaVA-VLA.git
-cd LLaVA-VLA
-pip install -r requirements.txt
-```
 
 ## 许可证
 
 MIT License
 
+
+
+## cmd
+
+### 测试QWen 是否还是 ok 的
+
+
+
+from qwen_vl_utils import process_vision_info
+model = cogact.vlm.model
+model.to("cuda")
+processor = cogact.vlm.processor
+
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "image": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
+            },
+            {"type": "text", "text": "Describe this image."},
+        ],
+    }
+]
+
+# Preparation for inference
+text = processor.apply_chat_template(
+    messages, tokenize=False, add_generation_prompt=True
+)
+image_inputs, video_inputs = process_vision_info(messages)
+inputs = processor(
+    text=[text],
+    images=image_inputs,
+    videos=video_inputs,
+    padding=True,
+    return_tensors="pt",
+)
+inputs = inputs.to("cuda")
+
+# Inference: Generation of the output
+generated_ids = model.generate(**inputs, max_new_tokens=128)
+generated_ids_trimmed = [
+    out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+]
+output_text = processor.batch_decode(
+    generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+)
+print(output_text)

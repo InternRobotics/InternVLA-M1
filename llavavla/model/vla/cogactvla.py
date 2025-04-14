@@ -294,7 +294,7 @@ class CogACT(nn.Module):
             raise ValueError(f"Unsupported `tokenizer` type = {type(tokenizer)}")
 
         # Preprocess Image
-        pixel_values = image_transform(image)
+        pixel_values = image_transform(image) #dino & siglip feature #3,224,224
         if isinstance(pixel_values, torch.Tensor):
             pixel_values = pixel_values[None, ...].to(self.vlm.device)
         elif isinstance(pixel_values, dict):
@@ -317,9 +317,9 @@ class CogACT(nn.Module):
                 **kwargs
             )
             # fmt: on
-
-        # Extract cognition feature
-        cognition_features = output.hidden_states[0][-1][:,-1,:] # nexx tokens, layers, B, layers, D
+        # 它自己 hard code 了， 很差劲ugly implementation
+        # Extract cognition feature 它怎么知道一定是最后一个？不用system prompt?
+        cognition_features = output.hidden_states[0][-1][:,-1,:] # next tokens, layers, B, layers, D
         assert (cognition_features.shape[0], cognition_features.shape[1]) == (1,4096), "Batch size must be 1 for action prediction"
         using_cfg = cfg_scale > 1.0
 

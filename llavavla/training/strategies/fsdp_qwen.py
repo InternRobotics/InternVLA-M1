@@ -64,7 +64,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
         state_dict_type: StateDictType = StateDictType.FULL_STATE_DICT,
     ) -> None:
         super().__init__(
-            vlm=vlm,
+            vlm=vlm, #TODO 这里vlm 明明是 vla， 这里导致了大量起义，和不必要的rename 操作
             device_id=device_id,
             stage=stage,
             epochs=epochs,
@@ -111,8 +111,8 @@ class FSDPStrategy_QWen(TrainingStrategy):
         with FSDP.state_dict_type(self.vlm, self.fsdp_state_dict_type, self.fsdp_save_policy, self.fsdp_save_optimizer_policy):
             full_vlm_state_dict = self.vlm.state_dict()
             model_state_dicts = {
-                mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
-            }
+                mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys) # 这里可以保证 params 一定save?  2. auto_get_trainable_modules 和     1. auto_get_module_keys
+            } # need to save
 
             # Iterate through `full_vlm_state_dict` and split `mkey.{full_dotted_path}` -> `mkey: {full_dotted_path}`
             for key, param in full_vlm_state_dict.items():
@@ -130,10 +130,10 @@ class FSDPStrategy_QWen(TrainingStrategy):
                         checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss={train_loss:.4f}.pt"
                     )
                 
-                for key in list(model_state_dicts.keys()):
-                    if key.startswith("vlm."):
-                        value = model_state_dicts.pop(key)
-                        model_state_dicts[key[4:]] = value
+                # for key in list(model_state_dicts.keys()):
+                #     if key.startswith("vlm."): # 为什么你要hard code 因为这个人乱叫vla as vlm 
+                #         value = model_state_dicts.pop(key)
+                #         model_state_dicts[key[4:]] = value # 还有这个，你在干什么？
 
                 # Save Checkpoint & Copy Latest to `latest-checkpoint.pt`
                 torch.save({"model": model_state_dicts}, checkpoint_path)
@@ -188,7 +188,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
             # When running FSDP with a frozen vision backbone --> move to half precision!
             if self.stage not in {"full-finetune", "vla-full-train", "vla-sandwich-train"}:
                 overwatch.info("Casting Vision Backbone to *Half Precision* via `.to(dtype=...)`")
-                self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
+                self.vlm.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
 
         else:
             # If we're not using mixed precision, everything is in default full precision!
@@ -206,7 +206,7 @@ class FSDPStrategy_QWen(TrainingStrategy):
             sharding_strategy=self.fsdp_sharding_strategy,
             device_id=torch.cuda.current_device(),
             limit_all_gathers=True,
-            use_orig_params=False, # @Jinhui  True -> False, 为什么要用原始参数？
+            use_orig_params=False, # @Jinhui  True -> False, 为什么要用原始参数？ TODO check
         )
         # Gradient Checkpoint Setup
         if self.enable_gradient_checkpointing:

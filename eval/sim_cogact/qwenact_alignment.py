@@ -16,10 +16,12 @@ from transformers import AutoModelForVision2Seq, AutoProcessor
 
 
 from llavavla.model.vla import CogACT_Qwen
-from llavavla.model.vla import load_qwenvla
-from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
-class QwenACTInference:
+from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
+from llavavla.model.vla import load_qwenvla
+from llavavla.model.vla.load_qwenvla import QwenACT, load_qwenact
+
+class QwenACTInference_align:
     def __init__(
         self,
         saved_model_path: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
@@ -66,7 +68,7 @@ class QwenACTInference:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-        self.vla = load_qwenvla(
+        self.vla = load_qwenact(
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
           load_for_training=False, 
           action_model_type=action_model_type,              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight
@@ -74,14 +76,14 @@ class QwenACTInference:
           action_dim=action_dim,
         )
 
-        if use_bf16: # False
+        if use_bf16:
             self.vla.vlm = self.vla.vlm.to(torch.bfloat16)
         self.vla = self.vla.to("cuda").eval()
-        self.cfg_scale = cfg_scale # 1.5
+        self.cfg_scale = cfg_scale
 
         self.image_size = image_size
-        self.action_scale = action_scale # 1.0
-        self.horizon = horizon #0
+        self.action_scale = action_scale
+        self.horizon = horizon
         self.action_ensemble = action_ensemble
         self.adaptive_ensemble_alpha = adaptive_ensemble_alpha
         self.action_ensemble_horizon = action_ensemble_horizon
@@ -135,7 +137,7 @@ class QwenACTInference:
 
         assert image.dtype == np.uint8
         self._add_image_to_history(self._resize_image(image))
-        image: Image.Image = Image.fromarray(image)
+        image: Image.Image = Image.fromarray(image) #image=640x480x3
         raw_actions, normalized_actions = self.vla.predict_action(image=image, 
                                                                 instruction=self.task_description,
                                                                 unnorm_key=self.unnorm_key,

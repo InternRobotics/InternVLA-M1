@@ -41,6 +41,7 @@ from llavavla.conf import VLAConfig, VLARegistry
 from llavavla.model.vla import load_qwenvl, load_qwenvla
 from llavavla.model.vla import CogACT_Qwen
 from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
+from llavavla.model.tools import * #TODO just for fast debug, remove later
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"

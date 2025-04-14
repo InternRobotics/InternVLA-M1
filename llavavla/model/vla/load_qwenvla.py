@@ -49,7 +49,7 @@ def get_model_description(model_id_or_name: str) -> str:
 # === Load Pretrained Model ===
 def load_qwenvl(
     model_id_or_path: Union[str, Path],
-    hf_token: Optional[str] = None,
+    hf_token: Optional[str] = None, #TODO mv, 这些不应该由代码控制，而是变为系统变量
     cache_dir: Optional[Union[str, Path]] = None,
     load_for_training: bool = False,
 ) -> _QWen_VL_Interface:
@@ -57,7 +57,7 @@ def load_qwenvl(
     """Loads a pretrained PrismaticVLM from either local disk or the HuggingFace Hub."""
         # Load Vision Backbone
 
-    qwen_vl = _QWen_VL_Interface.from_pretrained(model_id_or_path, enable_mixed_precision_training=False)
+    qwen_vl = _QWen_VL_Interface.from_pretrained(model_id_or_path, enable_mixed_precision_training=True)
     # del qwen_vl.model.lm_head  # Remove LM Head for Inference
     # Load Model Config from `config.json`
     model_cfg = qwen_vl.model.config.to_dict()

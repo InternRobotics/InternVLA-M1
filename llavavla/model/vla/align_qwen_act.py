@@ -292,9 +292,9 @@ class QwenACT(nn.Module):
         
 
         # Freeze Weights
-        if freeze_weights: # TODO 不应该把 freeze 逻辑分散
-            vlm.requires_grad_(False)
-            vlm.eval()
+        # if freeze_weights: # TODO 不应该把 freeze 逻辑分散
+        #     vlm.requires_grad_(False)
+        #     vlm.eval()
 
         return qwenact
 

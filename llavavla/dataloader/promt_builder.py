@@ -111,7 +111,8 @@ class QwenVLPromptHelper:
         """
         self.processor = processor
         self.system_prompt = system_prompt.strip()
-
+        self.cognition_emoj = "🔍"
+        self.cognition_token_ids = self.processor.tokenizer("🔍", add_special_tokens=False)["input_ids"][0]
     def build_conversation(
         self,
         instruction: str,
@@ -142,8 +143,10 @@ class QwenVLPromptHelper:
 
         # 用户指令
         user_msg = [
-            {"type": "text", "text": f"Please locate the most relevant point in the image to {instruction.strip().lower()}."},
-            {"type": "image", "image": image}
+            {"type": "image", "image": image},
+            {"type": "text", "text": f"{instruction.strip().lower()}."},
+            {"type": "text", "text": f"{self.cognition_emoj}"}, #TODO add more grounding here
+            
         ]
         conversation.append({"role": "user", "content": user_msg})
 

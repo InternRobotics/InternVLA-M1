@@ -29,7 +29,7 @@ from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
 from llavavla.dataloader.promt_builder import QwenVLPromptHelper
 
 @dataclass
-class RLDSBatchQwenTransform:
+class RLDSBatchQwenTransform: 
     action_tokenizer: ActionTokenizer
     # base_tokenizer: PreTrainedTokenizerBase
     # image_transform: ImageTransform #qwen 是合并到了 @Jinhui TODO mv them

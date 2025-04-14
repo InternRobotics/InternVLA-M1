@@ -99,7 +99,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         )
         # QWen 原生模型
         if load_for_training: #TODO model -> vlm
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu") # 只能到CPU先 # 
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu") # 只能到 cpu 先 # 试试auto --> FSDP 还是报错了
         else:
             config = AutoConfig.from_pretrained(model_id)
             model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
@@ -110,9 +110,9 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
 
         self.model = model
         self.processor = processor
-        # 仅做示例：给出与 PrismaticVLM 接口对应的一些占位属性
-        self.trainable_module_keys = ["model.model"] # TODO 尝试设计更加flexible  的diy 方式
-        self.all_module_keys = ["model"]
+        # 仅做示例：给出与 PrismaticVLM 接口对应的一些占位属性 # 为什么不统一？
+        # self.trainable_module_keys = ["model"] # TODO 尝试设计更加flexible  的diy 方式
+        # self.all_module_keys = ["model"] # 不应该由这里向外传递到
         # 这里还全部都不是 FSDP
     def forward(
         self,
@@ -186,14 +186,6 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
                 **kwargs
             )
         return generation_output
-
-    def freeze_backbones(self, stage: str):
-        """
-        原本在 PrismaticVLM 里可能会冻住 vision_backbone 或 llm_backbone 的权重。
-        如果 Qwen2.5 也需要分阶段冻结，可以在这里自定义逻辑。
-        """
-        # 如果不需要就留空
-        pass
 
     @classmethod
     def from_pretrained(

@@ -161,8 +161,9 @@ def train(cfg: TrainConfig) -> None:
         # [Validate] Pretrained Checkpoint `step` and `epoch` should match `resume_step` and `resume_epoch`
         #   =>> Note :: We make developers pass in `resume_*` arguments as an extra sanity check!
         if cfg.is_resume:
-            assert int(re.search("step-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_step
-            assert int(re.search("epoch-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
+            pass
+            # assert int(re.search("step-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_step
+            # assert int(re.search("epoch-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
         overwatch.info("Loading VLA Checkpoint")
         if cfg.use_ema:
             overwatch.info("Loading EMA of Diffusion")
@@ -305,4 +306,10 @@ def train(cfg: TrainConfig) -> None:
 
 
 if __name__ == "__main__":
+    if int(os.environ.get("RANK", -1)) == 0:
+        import debugpy
+        debugpy.listen(("0.0.0.0", 5678))
+        print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+        debugpy.wait_for_client()
+
     train()

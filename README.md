@@ -46,6 +46,25 @@ LLaVA-VLA
 5. 支持 单独 training ACT with own vision encode (pending) # 直接用openVLA
 
 
+
+### setup envs
+'''bash
+
+cd llavavla/model/openvla 
+pip install -e .
+<!-- 他们的 pyproject.toml 里面已经有很多包的版本很难install， 比如python 版本绑定为 3.10 -->
+<!-- 移除 presmiatic 之后将不需要 -->
+
+cd /mnt/petrelfs/yejinhui/Projects/llavavla/llavavla
+
+pip install -e .
+
+
+<!-- hard to pip flash_attn-->
+pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+
+
+'''
 ## 许可证
 
 MIT License

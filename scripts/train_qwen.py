@@ -97,6 +97,7 @@ class TrainConfig:
     action_dim: int = 7                                             # Dimension of action space
 
     #@Jinhui overwrite 
+    is_debug: Optional[bool] = False                              # Epoch to Resume (should match checkpoint)
 
     def __post_init__(self) -> None:
         """Lift optimization parameters from `self.vla` for ease of use =>> validate on `expected_world_size`"""
@@ -126,6 +127,13 @@ class TrainConfig:
 @draccus.wrap()
 def train(cfg: TrainConfig) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
+    if cfg.is_debug:
+        if int(os.environ.get("RANK", -1)) == 0:
+            import debugpy
+            debugpy.listen(("0.0.0.0", 5878))
+            print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+            debugpy.wait_for_client()
+
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
     torch.cuda.set_device(device_id := overwatch.local_rank())
@@ -185,7 +193,8 @@ def train(cfg: TrainConfig) -> None:
 
     else:
         # TODO 这里不应该对读取什么 vlm 有假设，应该用接口方法
-        # cfg.vla.base_vlm = "Qwen/Qwen2.5-VL-3B-Instruct"
+        # cfg.vla.base_vlm = "playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"
+        # print(cfg.vla.base_vlm)
         vlm = load_qwenvl(cfg.vla.base_vlm, hf_token=hf_token, load_for_training=True) # @Jinhui True
         overwatch.info("Creating VLA from Base VLM")
         if cfg.use_ema:

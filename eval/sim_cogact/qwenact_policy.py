@@ -66,7 +66,7 @@ class QwenACTInference:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-        self.vla = load_qwenvla(
+        self.vla = load_qwenvla( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
           load_for_training=False, 
           action_model_type=action_model_type,              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight
@@ -76,7 +76,7 @@ class QwenACTInference:
 
         if use_bf16: # False
             self.vla.vlm = self.vla.vlm.to(torch.bfloat16)
-        self.vla = self.vla.to("cuda").eval()
+        self.vla = self.vla.to("cuda").eval() # 无法 to gpu? check envs
         self.cfg_scale = cfg_scale # 1.5
 
         self.image_size = image_size

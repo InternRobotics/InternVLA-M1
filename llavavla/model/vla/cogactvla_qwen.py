@@ -319,7 +319,7 @@ class CogACT_Qwen(nn.Module):
         # Load VLM backbone, borrowed from PrismaticVLM
 
         # 仅加载模型配置，而不加载权重
-        base_vlm = "/fs-computility/efm/yejinhui/Projects/CogACT/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct" #TODO 需要调整training 和测试的工作目录
+        base_vlm = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct" # Jinhui Can be a bug TODO 需要调整training 和测试的工作目录
         # 只初始化模型结构，不加载参数
         vlm = _QWen_VL_Interface(model_id=base_vlm, load_for_training=False)
    

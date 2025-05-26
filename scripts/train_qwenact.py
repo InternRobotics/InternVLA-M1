@@ -30,13 +30,18 @@ import wandb
 
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util import set_global_seed
-from prismatic.vla import get_vla_dataset_and_collator
+# from prismatic.vla import get_vla_dataset_and_collator
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
-from llavavla.training import VLAMetrics, get_train_strategy
+# from llavavla.training import VLAMetrics, get_train_strategy
+from llavavla.training.materialize_qwen import get_train_strategy
+from llavavla.training import VLAMetrics
+
 from llavavla.conf import VLAConfig, VLARegistry
-from llavavla.model.vla import load, load_vla
-from llavavla.model.vla import CogACT
+from llavavla.model.vla import load_qwenvl, load_qwenvla
+from llavavla.model.vla import CogACT_Qwen
+from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
+from llavavla.model.tools import * #TODO just for fast debug, remove later
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -92,6 +97,7 @@ class TrainConfig:
     action_dim: int = 7                                             # Dimension of action space
 
     #@Jinhui overwrite 
+    is_debug: Optional[bool] = False                              # Epoch to Resume (should match checkpoint)
 
     def __post_init__(self) -> None:
         """Lift optimization parameters from `self.vla` for ease of use =>> validate on `expected_world_size`"""
@@ -121,6 +127,13 @@ class TrainConfig:
 @draccus.wrap()
 def train(cfg: TrainConfig) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
+    if cfg.is_debug:
+        if int(os.environ.get("RANK", -1)) == 0:
+            import debugpy
+            debugpy.listen(("0.0.0.0", 5878))
+            print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+            debugpy.wait_for_client()
+
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
     torch.cuda.set_device(device_id := overwatch.local_rank())
@@ -157,18 +170,19 @@ def train(cfg: TrainConfig) -> None:
     # Load VLA checkpoint (if resuming from training) or Base VLM otherwise (from `cfg.vla.base_vlm` ID or Path)
     #   =>> Note :: Verifies that all parameters are loaded in FP32 on load!
     overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
-    if cfg.pretrained_checkpoint is not None:
+    if cfg.pretrained_checkpoint is not None: #这里还没有检查过
         # [Validate] Pretrained Checkpoint `step` and `epoch` should match `resume_step` and `resume_epoch`
         #   =>> Note :: We make developers pass in `resume_*` arguments as an extra sanity check!
         if cfg.is_resume:
-            pass
-            # assert int(re.search("step-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_step
-            # assert int(re.search("epoch-(.+?)-", cfg.pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
+            pretrained_checkpoint = Path(cfg.pretrained_checkpoint) #@Jinhui TODO Check cfg.pretrained_checkpoint 的参数类型为什么一直对不上
+            # cfg.pretrained_checkpoint = pretrained_checkpoint #TO MV 看一下为什么要检查这个
+            assert int(re.search("step-(.+?)-", pretrained_checkpoint.name).group(1)) == cfg.resume_step
+            assert int(re.search("epoch-(.+?)-", pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
         overwatch.info("Loading VLA Checkpoint")
         if cfg.use_ema:
             overwatch.info("Loading EMA of Diffusion")
-        vla = load_vla(cfg.pretrained_checkpoint, 
-                        hf_token=hf_token, 
+        vla = load_qwenvla(cfg.pretrained_checkpoint,
+                        hf_token=hf_token,
                         load_for_training=True,  #jinhui False
                         action_model_type=cfg.action_model_type, 
                         action_dim=cfg.action_dim,
@@ -178,11 +192,14 @@ def train(cfg: TrainConfig) -> None:
                         )
 
     else:
-        vlm = load(cfg.vla.base_vlm, hf_token=hf_token, load_for_training=True) # @Jinhui True
+        # TODO 这里不应该对读取什么 vlm 有假设，应该用接口方法
+        # cfg.vla.base_vlm = "playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"
+        # print(cfg.vla.base_vlm)
+        vlm = load_qwenvl(cfg.vla.base_vlm, hf_token=hf_token, load_for_training=True) # @Jinhui True
         overwatch.info("Creating VLA from Base VLM")
         if cfg.use_ema:
-            overwatch.info("Creating EMA for Diffusion")
-        vla = CogACT(vlm, 
+            overwatch.info("Creating EMA for Diffusion") 
+        vla = CogACT_Qwen(vlm, 
                     action_model_type=cfg.action_model_type,
                     action_dim=cfg.action_dim,
                     future_action_window_size=cfg.future_action_window_size,
@@ -190,10 +207,12 @@ def train(cfg: TrainConfig) -> None:
                     use_ema=cfg.use_ema,
                     )
         # del this variable to avoid bugs. The vlm shouldn't be used anymore
-        del vlm
+        # del vlm
 
-    # [Validate] Model should be in Full Precision!
+    # [Validate] Model should be in Full Precision! @Jinhui TODO Why?
     for param in vla.parameters():
+        if param.dtype != torch.float32: #@Jinhui TODO Check, why?
+            param.data = param.data.float()
         assert param.dtype == torch.float32, f"Loaded VLM parameter not in full precision: {param}"
 
     # Determine training "stage" based on frozen vs unfrozen parameters --> supports different fine-tuning schemes!
@@ -226,21 +245,24 @@ def train(cfg: TrainConfig) -> None:
         f"# Parameters (in millions): {num_params / 10**6:.3f} Total, {num_trainable_params / 10**6:.3f} Trainable"
     )
 
+
     overwatch.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.vla.data_mix}`")
+    #   text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     vla_dataset, _, collator = get_vla_dataset_and_collator(
         cfg.data_root_dir,
         cfg.vla.data_mix,
-        image_transform=vla.vision_backbone.get_image_transform(),
-        tokenizer=vla.llm_backbone.get_tokenizer(),
-        prompt_builder_fn=vla.llm_backbone.prompt_builder_fn,
-        default_image_resolution=vla.vision_backbone.default_image_resolution,
+        vlp_processor=vla.vlm.processor, #这个实现很不好，其实现在已经开始和模型绑定了
+        tokenizer=vla.vlm.processor.tokenizer,
+        prompt_builder_fn=vla.vlm.prompt_builder_fn, #add_turn
+        default_image_resolution=(3, 224, 224),
         shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
         image_aug=cfg.image_aug,
         load_all_data_for_training=cfg.load_all_data_for_training,
         future_action_window_size=cfg.future_action_window_size,
         past_action_window_size=cfg.past_action_window_size,
     )
-    # sample = next(iter(vla_dataset))
+
+    # sample = next(iter(vla_dataset)) #for debug
 
     # Save dataset statistics for de-normalization at inference time
     if overwatch.is_rank_zero():
@@ -306,9 +328,4 @@ def train(cfg: TrainConfig) -> None:
 
 
 if __name__ == "__main__":
-    if os.environ.get("DEBUG", None):
-        import debugpy
-        debugpy.listen(("0.0.0.0", 5678))
-        print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-        debugpy.wait_for_client()
     train()

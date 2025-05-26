@@ -1,6 +1,15 @@
 gpu_id=0
+MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
 
-declare -a arr=("CogACT/CogACT-Base")
+cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
+# conda activate simpler_env4 # make sure you are in the right conda env
+export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
+
+declare -a arr=(
+"/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt"
+)
+
+
 # CogACT/CogACT-Large CogACT/CogACT-Small
 for ckpt_path in "${arr[@]}"; do echo "$ckpt_path"; done
 

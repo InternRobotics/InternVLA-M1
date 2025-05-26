@@ -29,7 +29,7 @@ from prismatic.overwatch import initialize_overwatch
 from llavavla.model.action_model.action_model import ActionModel
 from llavavla.model.action_model.models import DiT
 from llavavla.dataloader.promt_builder import QwenVLPromptHelper
-
+import torch.distributed as dist
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
@@ -41,14 +41,14 @@ IGNORE_INDEX = -100
 
 
 # get QWen2.5
-from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类
+from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类, TODO 不要实现 hard 接口类， 使用 **kwargs
 from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules
 
 
 class CogACT_Qwen(nn.Module):
     def __init__(
         self,
-        vlm:_QWen_VL_Interface,
+        vlm:_QWen_VL_Interface, # 这是不好的实现， 一定不能是互相依赖
         action_model_type: str = 'DiT-B',
         token_size: int = 2048,
         action_dim: int = 7,
@@ -66,6 +66,11 @@ class CogACT_Qwen(nn.Module):
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size)
         self.vlm = vlm
+
+        print("Freezing QWEN-VL model parameters")
+        for param in self.vlm.parameters():
+            param.requires_grad = False
+        
         self.qwen_processor = vlm.processor # 
         self.future_action_window_size = future_action_window_size
         self.past_action_window_size = past_action_window_size
@@ -185,23 +190,26 @@ class CogACT_Qwen(nn.Module):
         return_dict: Optional[bool] = None,
         repeated_diffusion_steps: int = 4,
         action_masks = None,
+        **kwargs,  # 👈 敏捷代码的灵活性， 允许任何形式的传参数
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         # @Jinhui TBD TODO 
         # pixel_values = pixel_values["pixel_values"] # labeles = pixel_values["labels"]
+        dist.barrier()
         output: CausalLMOutputWithPast = self.vlm( #system 
             input_ids=input_ids,
+            image_grid_thw=kwargs.get("image_grid_thw", None),  # 可能是一个图像网格
             attention_mask=attention_mask,
             pixel_values=pixel_values,
-            labels=labels,
+            labels=labels, # label 全是 -100 @Jinhui TODO Bug here, input 也全是一样的
             inputs_embeds=inputs_embeds,
             past_key_values=past_key_values,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
+            output_attentions=False,
+            output_hidden_states=True,
+            return_dict=True,
         )
-        vlm_loss = output.loss
+        vlm_loss = output.loss # @Jinhui TODO 这里是可以study 的地方， 是否 training lang
         # extract the last hidden state and the learnable EOS token feature
         last_hidden = output.hidden_states[-1] # B,len,D
         cognition_features = self._get_cognition_features(last_hidden, input_ids, attention_mask=attention_mask)
@@ -216,7 +224,7 @@ class CogACT_Qwen(nn.Module):
         cognition_features_repeated = cognition_features.repeat(repeated_diffusion_steps, 1, 1) # [repeated_diffusion_steps*B, 1, D]
 
         # Action model forward and compute loss
-        loss = self.action_model.loss(actions_repeated, cognition_features_repeated)
+        loss = self.action_model.loss(actions_repeated, cognition_features_repeated) # TODO loss 应该放到另一个函数
         return loss, output
 
     def _get_cognition_features_old(self, last_hidden, input_ids) -> torch.Tensor:

@@ -25,8 +25,22 @@ from typing import Optional, Tuple, Union
 import draccus
 import torch
 import torch.distributed as dist
+
 import yaml
 import wandb
+
+from accelerate import Accelerator
+from accelerate.logging import get_logger
+from accelerate.utils import set_seed
+from transformers import AutoProcessor, PreTrainedTokenizerBase, Qwen2_5_VLForConditionalGeneration
+from transformers import SchedulerType, get_scheduler
+from qwen_vl_utils import process_vision_info
+import math
+import numpy as np
+from tqdm import tqdm
+import wandb
+from torch.utils.data import Dataset, DataLoader
+from typing import List, Dict, Any, Callable, Optional
 
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util import set_global_seed
@@ -42,14 +56,15 @@ from llavavla.model.vla import load_qwenvl, load_qwenvla
 from llavavla.model.vla import CogACT_Qwen
 from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
 from llavavla.model.tools import * #TODO just for fast debug, remove later
+from accelerate import Accelerator, DeepSpeedPlugin
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
-
+overwatch = initialize_overwatch(__name__) # 后期移除， 不要基于 prismatic 来玩输出
+logger = get_logger(__name__)
 
 @dataclass
 class TrainConfig:
@@ -121,54 +136,7 @@ class TrainConfig:
 
     # fmt: on
 
-
-
-
-@draccus.wrap()
-def train(cfg: TrainConfig) -> None:
-    overwatch.info("CogACT-VLA Training :: Warming Up")
-    if cfg.is_debug:
-        if int(os.environ.get("RANK", -1)) == 0:
-            import debugpy
-            debugpy.listen(("0.0.0.0", 5878))
-            print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-            debugpy.wait_for_client()
-
-
-    # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
-    torch.cuda.set_device(device_id := overwatch.local_rank())
-    torch.cuda.empty_cache()
-
-    # Configure Unique Run Name & Save Directory
-    vla_id = cfg.vla.vla_id
-    cfg.run_id = (
-        f"{vla_id}+n{cfg.vla.expected_world_size // 8}+b{cfg.per_device_batch_size}+x{cfg.seed}"
-        if cfg.run_id is None
-        else cfg.run_id
-    )
-    if cfg.run_id_note is not None:
-        cfg.run_id += f"--{cfg.run_id_note}"
-    if cfg.image_aug:
-        cfg.run_id += "--image_aug"
-
-    # Start =>> Build Directories and Set Randomness
-    overwatch.info('"Do or do not; there is no try."', ctx_level=1)
-    hf_token = Path(cfg.hf_token).read_text().strip() if "/" in cfg.hf_token else os.environ[cfg.hf_token]
-    
-    worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
-    os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
-    os.makedirs(cfg.run_root_dir / cfg.run_id / "checkpoints", exist_ok=True)
-
-    # Save Configuration =>> additionally save a JSON version for later HF Integration
-    if overwatch.is_rank_zero():
-        draccus.dump(cfg, open(run_dir / "config.yaml", "w"))
-        with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
-            yaml_cfg = yaml.safe_load(f_yaml)
-            json.dump(yaml_cfg, f_json, indent=2)
-    
-    dist.barrier()
-    # Load VLA checkpoint (if resuming from training) or Base VLM otherwise (from `cfg.vla.base_vlm` ID or Path)
-    #   =>> Note :: Verifies that all parameters are loaded in FP32 on load!
+def load_model(cfg, hf_token):
     overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
     if cfg.pretrained_checkpoint is not None: #这里还没有检查过
         # [Validate] Pretrained Checkpoint `step` and `epoch` should match `resume_step` and `resume_epoch`
@@ -208,33 +176,183 @@ def train(cfg: TrainConfig) -> None:
                     )
         # del this variable to avoid bugs. The vlm shouldn't be used anymore
         # del vlm
+    
 
+    return vla
+
+def load_fast_tokenizer():
+    fast_tokenizer = AutoProcessor.from_pretrained(
+        "physical-intelligence/fast", trust_remote_code=True
+    )
+    return fast_tokenizer
+
+def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
+
+    cfg.logging_frequency = 10
+    cfg.checkpoint_save_frequency = 5000
+    cfg.gradient_accumulation_steps = 1
+    cfg.gradient_clipping = 1.0
+    cfg.vla.max_steps = 135000
+
+    # Resume from checkpoint if provided
+    if cfg.pretrained_checkpoint and cfg.is_resume:
+        accelerator.load_state(cfg.resume_from_checkpoint)
+        accelerator.print(f"Resumed from local checkpoint: {cfg.resume_from_checkpoint}")
+
+    
+    # Training loop
+    # Right now we assume single node training. I did not test on multi node training.
+    total_batch_size = cfg.vla.per_device_batch_size * accelerator.num_processes * cfg.gradient_accumulation_steps
+    logger.info("***** Running training *****")
+    # logger.info(f"  Num examples = {len(train_dataset)}")
+    max_train_steps = 100000
+    logger.info(f"  Num steps = {cfg.vla.max_steps}") # cfg.vla.max_train_steps 
+    logger.info(f"  Instantaneous batch size per device = {cfg.vla.per_device_batch_size}")
+    logger.info(f"  Total train batch size = {total_batch_size}")
+    logger.info(f"  Gradient Accumulation steps = {cfg.gradient_accumulation_steps}")
+    logger.info(f"  Total optimization steps = {cfg.vla.max_steps}")
+
+    completed_steps = 0
+
+    progress_bar = tqdm(range(cfg.vla.max_steps), disable=not accelerator.is_local_main_process)
+    total_loss = 0.0
+    cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id, "checkpoints")
+
+    
+    while completed_steps < max_train_steps:
+        for batch in train_dataloader:
+            with accelerator.accumulate(model):
+                optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
+                # dist.barrier()
+                action_loss, output = model.forward(**batch) # TODO make vlm and action loss
+                # dist.barrier()
+                # vlm_loss = output.vlm_loss
+                # dist.barrier()
+                total_loss += action_loss.detach().float()
+
+                
+                accelerator.backward(action_loss)
+
+                if cfg.gradient_clipping is not None:
+                    accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
+
+                if accelerator.sync_gradients:
+                    progress_bar.update(1)
+                    completed_steps += 1
+
+                optimizer.step()
+                lr_scheduler.step()
+
+            # Logging
+            if completed_steps % cfg.logging_frequency == 0:
+                if accelerator.is_main_process:
+                    
+                    total_norm = 0.0
+                    for p in model.parameters():
+                        if p.grad is not None:
+                            total_norm += p.grad.data.norm(2).item() ** 2
+                    total_norm = total_norm**0.5
+                    lr = lr_scheduler.get_last_lr()[0]
+                    logger.info(f"Step {completed_steps}, Loss: {vlm_loss.item()}, Grad Norm: {total_norm}")
+                    lr = lr_scheduler.get_last_lr()[0]
+                    result = {
+                        "train_loss": vlm_loss.item(),
+                        "grad_norm": total_norm,
+                        "learning_rate": lr,
+                    }
+                    wandb.log({"train_loss": vlm_loss.item(), "learning_rate": lr}, step=completed_steps)
+
+            # Checkpointing
+            if completed_steps% cfg.checkpoint_save_frequency == 0 and completed_steps > 0:
+                if accelerator.is_main_process:
+                    accelerator.save_state(os.path.join(cfg.output_dir, f"steps_{completed_steps}"))
+                    summary_data = {"steps": completed_steps, "train_loss": total_loss/cfg.checkpoint_save_frequency}
+                    with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
+                        f.write(json.dumps(summary_data) + "\n")
+                    logger.info(f"Checkpoint saved at step {completed_steps}")
+                    total_loss = 0.0
+                    
+            if completed_steps >= max_train_steps:
+                break
+
+
+
+    # Save final checkpoint
+    if accelerator.is_main_process:
+        accelerator.save_state(os.path.join(cfg.output_dir, f"steps_{completed_steps}"))
+        checkpoint_path = os.path.join(cfg.output_dir, f"steps_{completed_steps}")
+        logger.info(f"Training finished. Final checkpoint saved at {checkpoint_path}")
+        wandb.finish()
+
+@draccus.wrap()
+def train(cfg: TrainConfig) -> None:
+    overwatch.info("CogACT-VLA Training :: Warming Up")
+    gradient_accumulation_steps = 1
+    # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
+    if cfg.is_debug:
+        if int(os.environ.get("RANK", -1)) == 0:
+            import debugpy
+            debugpy.listen(("0.0.0.0", 5878))
+            print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+            debugpy.wait_for_client()
+    # 显式传递 DeepSpeed 配置 # @Jinhui accelerator 没有找到 合理是使用方式， 像torhrun 之类的可以自动管理这些，而不会有错误出现
+    # deepspeed_plugin = DeepSpeedPlugin(
+    #     zero_stage=2,
+    #     offload_optimizer_device="none",
+    #     offload_param_device="none",
+    #     logging_level="info",  # 可选：设置为 "debug" 以获取更多日志
+    # )
+
+    accelerator = Accelerator()  # plugins auto-injected based on your YAML
+    accelerator.print(accelerator.state)
+
+
+    # accelerator.dataloader_config.dispatch_batches =  False
+    # Configure Unique Run Name & Save Directory
+    # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
+    # torch.cuda.set_device(device_id := overwatch.local_rank())
+    # torch.cuda.empty_cache() # 全权交给 Accelerator 管理多机多卡
+    
+
+    vla_id = cfg.vla.vla_id
+    cfg.run_id = (
+        f"{vla_id}+n{cfg.vla.expected_world_size // 8}+b{cfg.vla.per_device_batch_size}+x{cfg.seed}"
+        if cfg.run_id is None
+        else cfg.run_id
+    )
+
+    # Start =>> Build Directories and Set Randomness
+    overwatch.info('"Do or do not; there is no try."', ctx_level=1)
+    hf_token = Path(cfg.hf_token).read_text().strip() if "/" in cfg.hf_token else os.environ[cfg.hf_token]
+    
+    worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
+    os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
+    os.makedirs(cfg.run_root_dir / cfg.run_id / "checkpoints", exist_ok=True)
+
+    # Save Configuration =>> additionally save a JSON version for later HF Integration
+    if overwatch.is_rank_zero():
+        draccus.dump(cfg, open(run_dir / "config.yaml", "w"))
+        with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
+            yaml_cfg = yaml.safe_load(f_yaml)
+            json.dump(yaml_cfg, f_json, indent=2)
+    
+    dist.barrier()
+    # Load VLA checkpoint (if resuming from training) or Base VLM otherwise (from `cfg.vla.base_vlm` ID or Path)
+    #   =>> Note :: Verifies that all parameters are loaded in FP32 on load!
+
+    overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
+    vla = load_model(cfg, hf_token)
+    fast_tokenizer = load_fast_tokenizer()
+    processor = vla.vlm.processor # @Jinhui TODO 不应该在这个地方 赋值， 数据准备应该和 封装类绑定为函数
     # [Validate] Model should be in Full Precision! @Jinhui TODO Why?
     for param in vla.parameters():
         if param.dtype != torch.float32: #@Jinhui TODO Check, why?
             param.data = param.data.float()
         assert param.dtype == torch.float32, f"Loaded VLM parameter not in full precision: {param}"
 
-    # Determine training "stage" based on frozen vs unfrozen parameters --> supports different fine-tuning schemes!
-    if not cfg.vla.freeze_vision_backbone and not cfg.vla.freeze_llm_backbone:
-        stage = "full-finetune"  # Full fine-tuning
-    elif cfg.vla.freeze_vision_backbone and not cfg.vla.freeze_llm_backbone:
-        stage = "finetune"  # Frozen vision encoder
-    elif cfg.vla.freeze_vision_backbone and cfg.vla.freeze_llm_backbone:
-        stage = "align"  # Fine-tuning projector
-    elif not cfg.vla.freeze_vision_backbone and cfg.vla.freeze_llm_backbone and cfg.vla.unfreeze_last_llm_layer:
-        stage = "vla-sandwich-train"  # Fine-tuning vision encoder, projector, and LLM last layer
-    elif cfg.vla.freeze_vision_backbone and cfg.vla.freeze_llm_backbone and cfg.vla.unfreeze_last_llm_layer:
-        stage = "vla-last-layer-train"  # Fine-tuning LLM last layer only
-    else:
-        raise ValueError(
-            "Weight freezing configuration not supported. VLA config has the following parameters: "
-            f"freeze_vision_backbone: {cfg.vla.freeze_vision_backbone}"
-            f"freeze_llm_backbone: {cfg.vla.freeze_llm_backbone}"
-            f"unfreeze_last_llm_layer: {cfg.vla.unfreeze_last_llm_layer}"
-        )
 
     # [Explicit] Call to `freeze_backbones` here for clarity =>> will log exactly what is/is not frozen
+    stage = "full-finetune"  # Full fine-tuning
     overwatch.info(f"Invoking `VLM.freeze_backbones()` for `{vla_id}` => Stage: `{stage}`")
     vla.freeze_backbones(stage)
 
@@ -248,7 +366,7 @@ def train(cfg: TrainConfig) -> None:
 
     overwatch.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.vla.data_mix}`")
     #   text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    vla_dataset, _, collator = get_vla_dataset_and_collator(
+    vla_dataset, _, collate_fn = get_vla_dataset_and_collator( # 拒绝任何内部转换
         cfg.data_root_dir,
         cfg.vla.data_mix,
         vlp_processor=vla.vlm.processor, #这个实现很不好，其实现在已经开始和模型绑定了
@@ -262,6 +380,14 @@ def train(cfg: TrainConfig) -> None:
         past_action_window_size=cfg.past_action_window_size,
     )
 
+    # Create DataLoader
+    
+    train_dataloader = DataLoader(
+        vla_dataset,
+        batch_size=cfg.vla.per_device_batch_size,
+        collate_fn=lambda examples: collate_fn(examples, processor,fast_tokenizer)
+    )
+
     # sample = next(iter(vla_dataset)) #for debug
 
     # Save dataset statistics for de-normalization at inference time
@@ -271,55 +397,64 @@ def train(cfg: TrainConfig) -> None:
     dist.barrier()
     # Create Train Strategy
     overwatch.info(f"Initializing Train Strategy `{cfg.train_strategy}`")
-    train_strategy = get_train_strategy(
-        train_strategy=cfg.train_strategy,
-        vlm=vla,
-        device_id=device_id,
-        stage=stage,
-        epochs=cfg.epochs,
-        max_steps=cfg.max_steps,
-        global_batch_size=cfg.global_batch_size,
-        per_device_batch_size=cfg.per_device_batch_size,
-        learning_rate=cfg.learning_rate,
-        weight_decay=cfg.weight_decay,
-        max_grad_norm=cfg.max_grad_norm,
-        lr_scheduler_type=cfg.lr_scheduler_type,
-        warmup_ratio=cfg.warmup_ratio,
-        enable_gradient_checkpointing=cfg.vla.enable_gradient_checkpointing,
-        enable_mixed_precision_training=cfg.vla.enable_mixed_precision_training,
-        reduce_in_full_precision=cfg.vla.reduce_in_full_precision,
-        worker_init_fn=worker_init_fn,
+    # Prepare everything with Accelerator
+    gradient_accumulation_steps = 1
+    
+    accelerator.dataloader_config.dispatch_batches =  False
+
+    # Initialize optimizer
+    learning_rate = 1e-4
+
+    optimizer = torch.optim.AdamW(
+        vla.parameters(),
+        lr=learning_rate,
+        betas=(0.9, 0.95),
+        weight_decay=1e-8,
+        eps=1e-8,
     )
-    train_strategy.run_setup(run_dir=run_dir, n_train_examples=len(vla_dataset))
-    if cfg.pretrained_checkpoint is not None and cfg.is_resume:
-        train_strategy.load_optimizer_and_scheduler(cfg.pretrained_checkpoint)
+    # Initialize learning rate scheduler
+    
+    max_train_steps = 135000
+    cfg.vla.max_steps = max_train_steps
+    num_warmup_steps = 1000
+    cfg.num_warmup_steps = num_warmup_steps
+
+    lr_scheduler = get_scheduler(
+        name="cosine",
+        optimizer=optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=max_train_steps
+    )
+
+    # Prepare everything with Accelerator, setup
+    vla, optimizer, train_dataloader = accelerator.prepare( # @JinhuiYE 第三方工具 or DDP？
+        vla, optimizer, train_dataloader
+    )
+    # @Jinhui 推荐用 accelerator， 这里用DDP是因为之前的脚本是torch run
+
 
     # Create Metrics =>> Handles on the fly tracking, logging to specified trackers (e.g., JSONL, Weights & Biases)
     overwatch.info(f"Creating Metrics with Active Trackers => `{cfg.trackers}`")
-    metrics = VLAMetrics(
-        cfg.trackers,
-        cfg.run_id,
-        run_dir,
-        draccus.encode(cfg),
-        wandb_project=cfg.wandb_project,
-        wandb_entity=cfg.wandb_entity,
-        resume_step=cfg.resume_step,
-        resume_epoch=cfg.resume_epoch,
-    )
+    # metrics = VLAMetrics(
+    #     cfg.trackers,
+    #     cfg.run_id,
+    #     run_dir,
+    #     draccus.encode(cfg),
+    #     wandb_project=cfg.wandb_project,
+    #     wandb_entity=cfg.wandb_entity,
+    #     resume_step=cfg.resume_step,
+    #     resume_epoch=cfg.resume_epoch,
+    # )
 
-    # Run VLA Training
-    overwatch.info("Starting VLA Training Loop")
-    train_strategy.run_vla_training(
-        vla_dataset,
-        collator,
-        metrics,
-        save_interval=cfg.save_interval,
-        action_model=True,
+    # Run VLA Training # TODO move them to class tainer 
+    trainer(
+        model=vla,
+        train_dataloader=train_dataloader,
+        optimizer=optimizer,
+        lr_scheduler=lr_scheduler,
+        accelerator=accelerator,
+        cfg=cfg
     )
-
-    # Finalize
-    overwatch.info("Done with Training =>> Finalizing Metrics")
-    metrics.finalize()
 
     # And... we're done!
     overwatch.info("... and that's all, folks!")
@@ -328,4 +463,5 @@ def train(cfg: TrainConfig) -> None:
 
 
 if __name__ == "__main__":
+    
     train()

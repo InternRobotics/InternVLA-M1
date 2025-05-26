@@ -29,7 +29,40 @@ from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
 from llavavla.dataloader.promt_builder import QwenVLPromptHelper
 
 @dataclass
-class RLDSBatchQwenTransform: 
+class RLDSBatchTransform: #
+    def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
+        """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
+        dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
+        
+        # For future action predictions
+        if rlds_batch["action"].shape[0] > 1:
+            dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"]
+        else:
+            dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
+        # img.shape in rlds_batch = 224,224, 3 = h,w,c
+        img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
+        lang = rlds_batch["task"]["language_instruction"].decode().lower() + "🔍" #cognition token
+        # <PIL.Image.Image image mode=RGB size=224x224 at 0x7EFFCBD42530>
+        # Construct Chat-based Prompt #@Jinhui 其实挺好的， 但是不用它来维护 system prompt, 因为Qwen 有他自己的 system prompt
+        # prompt_builder = self.prompt_builder_fn("openvla") # 这个应该内聚到 Main model 里面
+        # 这里应该用单例的，因为要保持全文统一 TODO @Jinhui
+
+        # Add future actions to batch  # 好像action achunk 不在这？
+        # if rlds_batch["action"].shape[0] > 1:
+        #     action = torch.tensor(action, dtype=torch.float32)
+        #     action_mask = None
+        #     # if "action_mask" in rlds_batch: # 好像action achunk 不在这？
+        #         action_mask = torch.tensor(rlds_batch["action_mask"], dtype=torch.bool)
+
+        #@Jinhui TODO add new keys for Qwen # Jinhui 你应该涉及为一个 inputs 的参数，保持灵活传参数
+        # 不要在这里做任何数据处理
+  
+        return dict(action=action,image=img,lang=lang, dataset_name=dataset_name)
+
+
+
+@dataclass
+class RLDSBatchQwenTransform: # @Jinhui TODO 这里要实现一个和模型无关的 Transform
     action_tokenizer: ActionTokenizer
     # base_tokenizer: PreTrainedTokenizerBase
     # image_transform: ImageTransform #qwen 是合并到了 @Jinhui TODO mv them
@@ -186,7 +219,7 @@ class RLDSDataset(IterableDataset):
 
     def __iter__(self) -> Dict[str, Any]:
         for rlds_batch in self.dataset.as_numpy_iterator():
-            yield self.batch_transform(rlds_batch)
+            yield self.batch_transform(rlds_batch) # 这个感觉上是个很不好的实现
 
     def __len__(self) -> int:
         return self.dataset_length

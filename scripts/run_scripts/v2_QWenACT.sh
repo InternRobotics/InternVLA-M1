@@ -9,7 +9,7 @@ cd /mnt/petrelfs/yejinhui/Projects/llavavla
 MODEL_PATH=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
 data_root_dir=./playground/Datasets/OXE_openvla
 run_root_dir=./playground/Checkpoints
-run_id=produce_qwenact_bridge
+run_id=0526_qwenact_bridge
 export WANDB_MODE=disabled
 
 output_dir=${run_root_dir}/${run_id}
@@ -18,14 +18,17 @@ mkdir -p ${output_dir}
 cp $0 ${output_dir}/
 
   # --pretrained_checkpoint ${MODEL_PATH} \
+# CUDA_VISIBLE_DEVICES=0 
 
-torchrun --standalone --nnodes 1 --nproc-per-node 8 scripts/train_qwen.py \
+accelerate launch \
+  --config_file ./scripts/run_scripts/nora.yaml \
+  --num_processes=8 scripts/train_qwenact.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.data_mix bridge \
   --vla.expected_world_size 8 \
-  --vla.global_batch_size 256 \
-  --vla.per_device_batch_size 16 \
+  --vla.global_batch_size 16 \
+  --vla.per_device_batch_size 2 \
   --vla.learning_rate 2e-5 \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \
@@ -39,7 +42,7 @@ torchrun --standalone --nnodes 1 --nproc-per-node 8 scripts/train_qwen.py \
   --future_action_window_size 15 \
   --action_model_type DiT-B \
   --is_resume False \
-  # --is_debug True
+  --is_debug True
 
 
 

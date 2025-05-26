@@ -1,8 +1,13 @@
 # shader_dir=rt means that we turn on ray-tracing rendering; this is quite crucial for the open / close drawer task as policies often rely on shadows to infer depth
 gpu_id=0
+MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
+
+cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
+# conda activate simpler_env4 # make sure you are in the right conda env
+export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
 
 declare -a ckpt_paths=(
-"CogACT/CogACT-Base"
+"/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt"
 )
 
 declare -a env_names=(

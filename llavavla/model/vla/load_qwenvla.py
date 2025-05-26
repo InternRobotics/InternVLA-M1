@@ -119,7 +119,7 @@ def load_qwenvla(
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
-    vla = CogACT_Qwen.from_pretrained(
+    vla = CogACT_Qwen.from_pretrained( # 这个位置就会报错
         checkpoint_pt,
         base_vlm = vla_cfg["base_vlm"],
         freeze_weights=not load_for_training, 

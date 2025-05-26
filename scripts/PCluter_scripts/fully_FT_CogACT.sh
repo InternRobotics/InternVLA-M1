@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cogact_pd        # name
+#SBATCH --job-name=test_bond0        # name
 #SBATCH -p efm_p
 #SBATCH -N 2                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
@@ -14,10 +14,16 @@
 # source ~/envs4jinhui.sh
 # proxy_on
 
-conda activate llavavla310  # 替换为你的环境名
+# conda activate llavavla310  # 替换为你的环境名
 
-export NCCL_SOCKET_IFNAME=ib0
-export NCCL_IB_HCA=mlx5_bond_0
+# export NCCL_SOCKET_IFNAME=ib0
+# export NCCL_IB_HCA=mlx5_bond_0
+
+# export NCCL_SOCKET_IFNAME=eth0
+# export NCCL_IB_HCA=mlx5_0
+
+export NCCL_SOCKET_IFNAME=bond0
+export NCCL_IB_HCA=mlx5_2,mlx5_3
 
 export GPUS_PER_NODE=8
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
@@ -45,19 +51,24 @@ conda activate llavavla310
 proxy_on
 
 # <model_id/local_path_to_model,e.g,"CogACT/CogACT-Base">
-MODEL_PATH=./playground/Pretrained_models/openvla-7b-prismatic/checkpoints/step-295000-epoch-40-loss=0.2200.pt
+export MODEL_PATH=./playground/Pretrained_models/openvla-7b-prismatic/checkpoints/step-295000-epoch-40-loss=0.2200.pt
+export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
 
-data_root_dir=./playground/Datasets/OXE_openvla
-run_root_dir=./playground/Checkpoints
-run_id=pd_cogact_bridge_rt
+export data_root_dir=./playground/Datasets/OXE_openvla
+export run_root_dir=./results/Checkpoints
+export run_id=0526_resume_cogact_16gpus_test_bond0
 
-output_dir=${run_root_dir}/${run_id}
+#尝试加速 实验周期
+
+export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
+echo "Total GPUs: $TOTAL_GPUS"
+
+output_dir=${run_root_dir}/${run_id}--image_aug
 mkdir -p ${output_dir}
 # mv this script to the output dir
 cp $0 ${output_dir}/
 
-TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
-echo "Total GPUs: $TOTAL_GPUS"
+
 
 #   --vla.expected_world_size ${TOTAL_GPUS} \ 后续这些要从代码中移除
 #   --vla.global_batch_size 512 \
@@ -65,16 +76,16 @@ echo "Total GPUs: $TOTAL_GPUS"
 srun --jobid $SLURM_JOBID bash -c 'torchrun --nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank $SLURM_PROCID \
  --master_addr $MASTER_ADDR --master_port $MASTER_PORT \
  scripts/train.py \
-  --pretrained_checkpoint ./playground/Pretrained_models/openvla-7b-prismatic/checkpoints/step-295000-epoch-40-loss=0.2200.pt \
+  --pretrained_checkpoint ${MODEL_PATH} \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.data_mix bridge_rt_1 \
   --vla.expected_world_size 16 \
-  --vla.global_batch_size 512 \
-  --vla.per_device_batch_size 32 \
+  --vla.global_batch_size 256 \
+  --vla.per_device_batch_size 16 \
   --vla.learning_rate 2e-5 \
   --data_root_dir ./playground/Datasets/OXE_openvla \
   --run_root_dir ./playground/Checkpoints \
-  --run_id pd_cogact_bridge_rt \
+  --run_id ${run_id} \
   --image_aug True \
   --wandb_project llavavla \
   --wandb_entity jinhuiye \

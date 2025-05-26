@@ -77,7 +77,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, Auto
 
 
 #@TODO emergency fix @Jinhui more readable and flexible way for VLM interface
-class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对齐， 思考更加flexible做法， --》 接口class的实现
+class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对齐， 思考更加flexible做法， --》 接口class的实现， TODO 要直接在 model 中扁平的 初始化全部 modules, 不能递归
     """
     这是对 Qwen2_5_VLForConditionalGeneration 的简单封装，使其在接口层面上更接近 PrismaticVLM，
     例如能够返回类似 CausalLMOutputWithPast 的结构，需要一个 class 来包装是因为 不同的VLM 有不一样的api, 但是要保证对外的功能是一致的
@@ -99,7 +99,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         )
         # QWen 原生模型
         if load_for_training: #TODO model -> vlm
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cpu") # 只能到 cpu 先 # 试试auto --> FSDP 还是报错了
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cuda") # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了
         else:
             config = AutoConfig.from_pretrained(model_id)
             model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
@@ -120,6 +120,7 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
+        image_grid_thw: Optional[torch.FloatTensor] = None, 
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
@@ -135,11 +136,12 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
         with torch.autocast("cuda", enabled=self.enable_mixed_precision_training, dtype=torch.float16):
             # @Jinhui TBD TODO 
             # pixel_values = pixel_values["pixel_values"]
+            # print(kwargs["image_grid_thw"])
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                pixel_values=pixel_values["pixel_values"],
-                image_grid_thw =pixel_values["image_grid_thw"].reshape(-1, 3), #@Jinhui TODO mv to RLDSTransform
+                pixel_values=pixel_values,
+                image_grid_thw =image_grid_thw,
                 labels=labels,
                 use_cache=use_cache,
                 output_attentions=output_attentions,

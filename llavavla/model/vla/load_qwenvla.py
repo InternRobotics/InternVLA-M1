@@ -91,7 +91,7 @@ def load_qwenvla(
         overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(model_id_or_path))}`")
 
         # [Validate] Checkpoint Path should look like `.../<RUN_ID>/checkpoints/<CHECKPOINT_PATH>.pt`
-        assert (checkpoint_pt.suffix == ".pt") and (checkpoint_pt.parent.name == "checkpoints"), "Invalid checkpoint!"
+        assert (checkpoint_pt.suffix == ".pt")
         run_dir = checkpoint_pt.parents[1]
 
         # Get paths for `config.json`, `dataset_statistics.json` and pretrained checkpoint

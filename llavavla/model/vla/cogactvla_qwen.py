@@ -67,9 +67,9 @@ class CogACT_Qwen(nn.Module):
                                             past_action_window_size = past_action_window_size)
         self.vlm = vlm
 
-        print("Freezing QWEN-VL model parameters")
-        for param in self.vlm.parameters():
-            param.requires_grad = False
+        # print("Freezing QWEN-VL model parameters") # @Jinhui Bug, 应该统一位置来 设置这个
+        # for param in self.vlm.parameters():
+        #     param.requires_grad = False
         
         self.qwen_processor = vlm.processor # 
         self.future_action_window_size = future_action_window_size

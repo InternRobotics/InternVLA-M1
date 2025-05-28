@@ -58,6 +58,12 @@ from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
 from llavavla.model.tools import * #TODO just for fast debug, remove later
 from accelerate import Accelerator, DeepSpeedPlugin
 
+# 设置 DeepSpeed 插件
+deepspeed_plugin = DeepSpeedPlugin(zero_stage=2, gradient_accumulation_steps=4)
+accelerator = Accelerator(mixed_precision='bf16', deepspeed_plugin=deepspeed_plugin)
+accelerator.print(accelerator.state)
+
+
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -193,6 +199,22 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
     cfg.gradient_accumulation_steps = 1
     cfg.gradient_clipping = 1.0
     cfg.vla.max_steps = 135000
+    cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id)
+
+
+    # Initialize Weights and Biases
+    if accelerator.is_main_process: # @Jinhui TODO 这里可以查看Openvla 之类的，把它坐着tools
+        # wandb.init(project=cfg.wandb_project_name)
+
+        wandb.init(
+            name=cfg.run_id,
+            dir=os.path.join(cfg.output_dir, "wandb"),
+            # config=self.hparams,
+            project=cfg.wandb_project,
+            entity=cfg.wandb_entity,
+            group="vla-train",
+        )
+
 
     # Resume from checkpoint if provided
     if cfg.pretrained_checkpoint and cfg.is_resume:
@@ -216,32 +238,32 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
 
     progress_bar = tqdm(range(cfg.vla.max_steps), disable=not accelerator.is_local_main_process)
     total_loss = 0.0
-    cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id, "checkpoints")
 
     
     while completed_steps < max_train_steps:
         for batch in train_dataloader:
-            with accelerator.accumulate(model):
-                optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
-                # dist.barrier()
+            # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
+            optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
+            # dist.barrier()
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
                 action_loss, output = model.forward(**batch) # TODO make vlm and action loss
                 # dist.barrier()
                 # vlm_loss = output.vlm_loss
                 # dist.barrier()
                 total_loss += action_loss.detach().float()
 
-                
-                accelerator.backward(action_loss)
+            
+            accelerator.backward(action_loss)
 
-                if cfg.gradient_clipping is not None:
-                    accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
+            if cfg.gradient_clipping is not None:
+                accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
 
-                if accelerator.sync_gradients:
-                    progress_bar.update(1)
-                    completed_steps += 1
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                completed_steps += 1
 
-                optimizer.step()
-                lr_scheduler.step()
+            optimizer.step()
+            lr_scheduler.step()
 
             # Logging
             if completed_steps % cfg.logging_frequency == 0:
@@ -253,24 +275,26 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                             total_norm += p.grad.data.norm(2).item() ** 2
                     total_norm = total_norm**0.5
                     lr = lr_scheduler.get_last_lr()[0]
-                    logger.info(f"Step {completed_steps}, Loss: {vlm_loss.item()}, Grad Norm: {total_norm}")
+                    logger.info(f"Step {completed_steps}, Loss: {action_loss.item()}, Grad Norm: {total_norm}")
                     lr = lr_scheduler.get_last_lr()[0]
                     result = {
-                        "train_loss": vlm_loss.item(),
+                        "train_loss": action_loss.item(),
                         "grad_norm": total_norm,
                         "learning_rate": lr,
                     }
-                    wandb.log({"train_loss": vlm_loss.item(), "learning_rate": lr}, step=completed_steps)
-
+                    wandb.log({"train_loss": action_loss.item(), "learning_rate": lr}, step=completed_steps)
+               
             # Checkpointing
-            if completed_steps% cfg.checkpoint_save_frequency == 0 and completed_steps > 0:
+            if completed_steps% cfg.save_interval == 0 and completed_steps > 0:
                 if accelerator.is_main_process:
-                    accelerator.save_state(os.path.join(cfg.output_dir, f"steps_{completed_steps}"))
-                    summary_data = {"steps": completed_steps, "train_loss": total_loss/cfg.checkpoint_save_frequency}
+                    accelerator.save_state(os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}"))
+                    summary_data = {"steps": completed_steps, "train_loss": total_loss/cfg.save_interval}
                     with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
                         f.write(json.dumps(summary_data) + "\n")
                     logger.info(f"Checkpoint saved at step {completed_steps}")
                     total_loss = 0.0
+                
+            # dist.barrier()  # Ensure all processes log at the same time
                     
             if completed_steps >= max_train_steps:
                 break
@@ -303,8 +327,8 @@ def train(cfg: TrainConfig) -> None:
     #     logging_level="info",  # 可选：设置为 "debug" 以获取更多日志
     # )
 
-    accelerator = Accelerator()  # plugins auto-injected based on your YAML
-    accelerator.print(accelerator.state)
+    # accelerator = Accelerator()  # plugins auto-injected based on your YAML
+    
 
 
     # accelerator.dataloader_config.dispatch_batches =  False

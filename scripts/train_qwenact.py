@@ -59,7 +59,7 @@ from llavavla.model.tools import * #TODO just for fast debug, remove later
 from accelerate import Accelerator, DeepSpeedPlugin
 
 # 设置 DeepSpeed 插件
-deepspeed_plugin = DeepSpeedPlugin(zero_stage=2, gradient_accumulation_steps=4)
+deepspeed_plugin = DeepSpeedPlugin(zero_stage=2, gradient_accumulation_steps=1)# 这个插件是否能使用到 config 的参数呢？
 accelerator = Accelerator(mixed_precision='bf16', deepspeed_plugin=deepspeed_plugin)
 accelerator.print(accelerator.state)
 

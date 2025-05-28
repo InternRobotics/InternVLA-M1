@@ -2,6 +2,9 @@
 export HF_HOME=/mnt/petrelfs/share/yejinhui/Models/huggingface_cache
 export HF_TOKEN=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
 
+export NCCL_SOCKET_IFNAME=bond0
+export NCCL_IB_HCA=mlx5_2,mlx5_3
+
 # 用于check save 的时候的通信
 export NCCL_BLOCKING_WAIT=1
 export NCCL_ASYNC_ERROR_HANDLING=1
@@ -14,7 +17,7 @@ cd /mnt/petrelfs/yejinhui/Projects/llavavla
 MODEL_PATH=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
 data_root_dir=./playground/Datasets/OXE_openvla
 run_root_dir=./playground/Checkpoints
-run_id=0528_qwenact_bridge_ftqwen_ds_2gpus
+run_id=0528_qwenact_bridge_ftqwen_ds_8gpus
 # export WANDB_MODE=disabled
 
 output_dir=${run_root_dir}/${run_id}
@@ -27,12 +30,12 @@ cp $0 ${output_dir}/
 
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2.yaml \
-  --num_processes=6 scripts/train_qwenact.py \
+  --num_processes=8 scripts/train_qwenact.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.data_mix bridge \
-  --vla.expected_world_size 6 \
-  --vla.global_batch_size 96 \
+  --vla.expected_world_size 8 \
+  --vla.global_batch_size 128 \
   --vla.per_device_batch_size 16 \
   --vla.learning_rate 2e-5 \
   --data_root_dir ${data_root_dir} \
@@ -42,7 +45,7 @@ accelerate launch \
   --wandb_project llavavla \
   --wandb_entity jinhuiye \
   --hf_token HF_TOKEN \
-  --save_interval 50 \
+  --save_interval 10000 \
   --repeated_diffusion_steps 8 \
   --future_action_window_size 15 \
   --action_model_type DiT-B \

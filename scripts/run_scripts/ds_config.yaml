@@ -1,0 +1,23 @@
+{
+  "train_batch_size": "auto",
+  "gradient_accumulation_steps": 1,
+  "communication_data_type": "fp32",
+  "comms_logger": {
+    "enabled": true,
+    "verbose": false
+  },
+  "zero_optimization": {
+    "stage": 2,
+    "allgather_bucket_size": 5e8,
+    "reduce_bucket_size": 5e8,
+    "offload_optimizer": {
+      "device": "cpu"
+    },
+    "offload_param": {
+      "device": "cpu"
+    }
+  },
+  "bf16": {
+    "enabled": true
+  }
+}

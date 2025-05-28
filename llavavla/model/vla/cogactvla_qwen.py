@@ -31,7 +31,7 @@ from llavavla.model.action_model.models import DiT
 from llavavla.dataloader.promt_builder import QwenVLPromptHelper
 import torch.distributed as dist
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
-
+from qwen_vl_utils import process_vision_info
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
@@ -195,7 +195,7 @@ class CogACT_Qwen(nn.Module):
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         # @Jinhui TBD TODO 
         # pixel_values = pixel_values["pixel_values"] # labeles = pixel_values["labels"]
-        dist.barrier()
+        # dist.barrier()
         output: CausalLMOutputWithPast = self.vlm( #system 
             input_ids=input_ids,
             image_grid_thw=kwargs.get("image_grid_thw", None),  # 可能是一个图像网格
@@ -334,7 +334,7 @@ class CogACT_Qwen(nn.Module):
         
 
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
-        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")["model"]
+        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu") #["model"]
         # qwen_state_dict = QwenACT_state_dict["model"]
         # Initialize CogACT
         cogact = CogACT_Qwen(vlm,
@@ -354,20 +354,18 @@ class CogACT_Qwen(nn.Module):
  
         # 自动加载 checkpoint 中的权重到对应模块 #@Jinhui TODO 怎么保证全部trainable参数被save 了？
         # 遍历 checkpoint 中的每个键，若 cogact 有相应属性且该属性支持 load_state_dict，则加载权重
+        model_keys = cogact.state_dict().keys()
+
         for key, state in model_state_dict.items():
-            if hasattr(cogact, key):
-                submodule = getattr(cogact, key)
-                if hasattr(submodule, "load_state_dict"):
-                    try:
-                        submodule.load_state_dict(state)
-                        overwatch.info(f"✅ Successfully loaded weights for module '{key}'")
-                    except Exception as e:
-                        overwatch.warning(f"⚠️ Failed to load weights for module '{key}': {e}")
-                else:
-                    overwatch.warning(f"⚠️ Attribute '{key}' exists but is not a loadable module.")
+            if key in model_keys:
+                try:
+                    cogact.state_dict()[key].copy_(state)
+                    # overwatch.info(f"✅ Successfully loaded weights for key '{key}'")
+                except Exception as e:
+                    overwatch.warning(f"⚠️ Failed to copy weight for key '{key}': {e}")
             else:
                 overwatch.warning(f"⚠️ Unknown key '{key}' in checkpoint. Ignoring.")
-
+        
         # TODO 需要一个逻辑检查是否全部参数就load 好了？ --> 不直接 cogact.load 的原因
         # TODO Jinhui 很必要有个检查流程，保证 all tranable 参数被 save 了, all tranable  被load 了
         return cogact
@@ -408,22 +406,33 @@ class CogACT_Qwen(nn.Module):
         #     {"role": "user", "content": [{"type": "text", "text":f"What action should the robot take to {instruction.lower()}?"}, {"image": None}]},
         #     ]
                 
-        conversation = self.promptHelper.build_conversation(instruction, image=image, answer=None)
-        #TODO checking @Jinhui 一定要 training对齐 --> training 是 224*224 有图像增强， 来自RLDS
-        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
-        conversation, image, return_prompt_text=True)
+        # @之后写入模型内部， 变成私有化方法
+        # img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
+        # image resize to 224*224
+        img = image.resize((224, 224))  # Resize to Qwen-VL default input size
+        lang = instruction.lower() + "🔍" #cognition token
+        messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": img}, # rgb
+                {"type": "text", "text": lang},
+            ],
+        },]
+        text = self.qwen_processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=False
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self.qwen_processor(
+            text=text,
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        )
 
-        # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
-        input_ids = inputs.input_ids[0]
-        pixel_values = inputs.pixel_values # value in patch size
 
-        if isinstance(pixel_values, torch.Tensor):
-            pixel_values = pixel_values[None, ...].to(self.vlm.device)
-        elif isinstance(pixel_values, dict):
-            pixel_values = {k: v[None, ...].to(self.vlm.device) for k, v in pixel_values.items()}
-        else:
-            raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
-        
+
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
         autocast_dtype = self.vlm.half_precision_dtype # 为什么用半精度推理
         
@@ -447,26 +456,24 @@ class CogACT_Qwen(nn.Module):
         # Generate cognition feature through vlm
         with torch.autocast("cuda", dtype=autocast_dtype, enabled=self.vlm.enable_mixed_precision_training):
             # fmt: off
-            outputs = self.vlm.generate(
+            outputs = self.vlm(
                 **inputs,
-                max_new_tokens=3, #@Jinhui Checking TODO: 这里很不科学
                 output_hidden_states=True, 
-                return_dict_in_generate=True,
-                **kwargs
+                return_dict=True,
             ) # generation 拿不到前面token 的信息，考虑使用 forward?
 
             # Jinhui see text # outputs.sequences.shape: B, len with prefix
-            outputs.input_ids = outputs.sequences # 为了和 input dict 保持一致， 方便调用 self._get_cognition_features# 还真不太一样，因为generation的逻辑和 forward不一样
-            generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, outputs.sequences)]
-            output_text = self.qwen_processor.batch_decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            print("output:\n",output_text[0])
+            # outputs.input_ids = outputs.sequences # 为了和 input dict 保持一致， 方便调用 self._get_cognition_features# 还真不太一样，因为generation的逻辑和 forward不一样
+            # generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, outputs.sequences)]
+            # output_text = self.qwen_processor.batch_decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            # print("output:\n",output_text[0])
             # fmt: on
             # 我们training的时候是 image 不固定在最前面没，是没办法只max_new = 1 的
         # Extract cognition feature
         # outputs.hidden_states = list = next tokens 
         # be careful about the where the cognition_features comes from would align with training
         # cognition_features = output.hidden_states[0][-1][:,-1,:]  # nexx tokens, layers, B, len, D #@Jinhui to Think 这里为什么每一个 next token 都记录了 全部都 hidden? 不是的，只有第一个会
-        last_hidden_states = outputs.hidden_states[0][-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
+        last_hidden_states = outputs.hidden_states[-1] #torch.Size([1, 428, 2048]) # last hidden_states for next token generation
         cognition_features = self._get_cognition_features(last_hidden_states, inputs.input_ids, attention_mask=inputs.attention_mask) # [B,1,D] TODO carefully checking with align training
 
         assert (cognition_features.shape[0], cognition_features.shape[1], cognition_features.shape[-1]) == (1, 1,2048), "Batch size must be 1 for action prediction"

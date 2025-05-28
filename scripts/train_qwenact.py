@@ -59,8 +59,13 @@ from llavavla.model.tools import * #TODO just for fast debug, remove later
 from accelerate import Accelerator, DeepSpeedPlugin
 
 # 设置 DeepSpeed 插件
-deepspeed_plugin = DeepSpeedPlugin(zero_stage=2, gradient_accumulation_steps=1)# 这个插件是否能使用到 config 的参数呢？
-accelerator = Accelerator(mixed_precision='bf16', deepspeed_plugin=deepspeed_plugin)
+# if int(os.environ.get("RANK", -1)) == 0:
+#     import debugpy
+#     debugpy.listen(("0.0.0.0", 5878))
+#     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+#     debugpy.wait_for_client()
+deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
+accelerator = Accelerator(deepspeed_plugin=deepspeed_plugin)
 accelerator.print(accelerator.state)
 
 
@@ -286,13 +291,21 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                
             # Checkpointing
             if completed_steps% cfg.save_interval == 0 and completed_steps > 0:
+                accelerator.wait_for_everyone()
                 if accelerator.is_main_process:
-                    accelerator.save_state(os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}"))
-                    summary_data = {"steps": completed_steps, "train_loss": total_loss/cfg.save_interval}
+                    # dist.barrier()
+                    # accelerator.save_state(os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}"))
+                    state_dict = accelerator.get_state_dict(model)
+                    output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    torch.save(state_dict, output_path+"/pytorch_model.pt")
+                    print(f"✅ Saved state_dict to {output_path}")
+                    summary_data = {"steps": completed_steps, "train_loss": total_loss.item()/cfg.save_interval}
                     with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
                         f.write(json.dumps(summary_data) + "\n")
                     logger.info(f"Checkpoint saved at step {completed_steps}")
                     total_loss = 0.0
+                accelerator.wait_for_everyone()
                 
             # dist.barrier()  # Ensure all processes log at the same time
                     
@@ -303,8 +316,12 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
 
     # Save final checkpoint
     if accelerator.is_main_process:
-        accelerator.save_state(os.path.join(cfg.output_dir, f"steps_{completed_steps}"))
+        # accelerator.save_state(os.path.join(cfg.output_dir, f"steps_{completed_steps}"))
         checkpoint_path = os.path.join(cfg.output_dir, f"steps_{completed_steps}")
+        state_dict = accelerator.get_state_dict(model)
+        output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
+        os.makedirs(checkpoint_path, exist_ok=True)
+        torch.save(state_dict, os.path.join(checkpoint_path, "pytorch_model.pt"))
         logger.info(f"Training finished. Final checkpoint saved at {checkpoint_path}")
         wandb.finish()
 

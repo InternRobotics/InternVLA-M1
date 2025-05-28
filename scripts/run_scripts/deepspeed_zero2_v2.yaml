@@ -2,9 +2,8 @@ compute_environment: LOCAL_MACHINE
 debug: false
 deepspeed_config:
   deepspeed_config_file: "./scripts/run_scripts/ds_config.yaml"  # 关键修改
-  zero_stage: 2
-  offload_optimizer_device: cpu
-  offload_param_device: cpu
-  gradient_accumulation_steps: 1
+  deepspeed_multinode_launcher: standard
+  zero3_init_flag: false
 distributed_type: DEEPSPEED
-mixed_precision: bf16
+num_machines: 1
+num_processes: 8

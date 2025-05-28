@@ -37,7 +37,8 @@ cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 # export DEBUG=1
 
 MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0523_pd_qwenact_bridge_rt--image_aug/checkpoints/step-020000-epoch-00-loss=0.0811.pt
-MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0523_pd_qwenact_bridge_rt--image_aug/checkpoints/step-040000-epoch-01-loss=0.0977.pt
+MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0528_qwenact_bridge_ds_16gpus/checkpoints/pytorch_model_steps_10000.pt
+
 
 gpu_id=6
 policy_model=qwenact

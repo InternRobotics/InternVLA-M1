@@ -98,12 +98,12 @@ class _QWen_VL_Interface(VLM): #TODO @Jinhui 后期不能再向 PrismaticVLM 对
             enable_mixed_precision_training=enable_mixed_precision_training,
         )
         # QWen 原生模型
-        if load_for_training: #TODO model -> vlm
+        if load_for_training or True: #TODO model -> vlm 
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cuda") # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了
         else:
             config = AutoConfig.from_pretrained(model_id)
-            model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数
-
+            model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数, @Jinhui 发现load 空模型需要更多的时间
+            # 这里会卡住
         processor = AutoProcessor.from_pretrained(model_id) #TODO check 
         processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
 

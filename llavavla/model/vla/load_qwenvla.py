@@ -51,31 +51,31 @@ def load_qwenvl(
     model_id_or_path: Union[str, Path],
     hf_token: Optional[str] = None, #TODO mv, 这些不应该由代码控制，而是变为系统变量
     cache_dir: Optional[Union[str, Path]] = None,
-    load_for_training: bool = False,
-) -> _QWen_VL_Interface:
+    load_for_training: bool = False):
     
     """Loads a pretrained PrismaticVLM from either local disk or the HuggingFace Hub."""
         # Load Vision Backbone
 
-    qwen_vl = _QWen_VL_Interface.from_pretrained(model_id_or_path, enable_mixed_precision_training=True)
-    # del qwen_vl.model.lm_head  # Remove LM Head for Inference
-    # Load Model Config from `config.json`
-    model_cfg = qwen_vl.model.config.to_dict()
-    # processing_cfg = qwen_vl.processor
-    # = Load Individual Components necessary for Instantiating a VLM =
+            # QWen 原生模型
+    if load_for_training or True: #TODO model -> vlm 
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id_or_path,  torch_dtype="auto", device_map="cuda") # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了
+    else:
+        config = AutoConfig.from_pretrained(model_id)
+        model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数, @Jinhui 发现load 空模型需要更多的时间
+        # 这里会卡住
+    processor = AutoProcessor.from_pretrained(model_id_or_path) #TODO check 
+    processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
+
     #   =>> Print Minimal Config
     overwatch.info(
         f"Found Config =>> Loading & Freezing [bold blue]{model_cfg['_name_or_path']}[/] with:\n"
         f"             Vision Backbone =>> [bold]{model_cfg['model_type']}[/]\n"
-        # f"             LLM Backbone    =>> [bold]{model_cfg['model_type']}[/]\n"
-        # f"             Arch Specifier  =>> [bold]{model_cfg['model_type']}[/]\n"
-        # f"             Checkpoint Path =>> [underline]`{_name_or_path}`[/]"
     )  
 
     return qwen_vl
  
 # === Load Pretrained VLA Model ===
-def load_qwenvla(
+def load_qwenvla( # 感觉应该放到 arc 上面，
     model_id_or_path: Union[str, Path],
     hf_token: Optional[str] = None,
     cache_dir: Optional[Union[str, Path]] = None,

@@ -6,6 +6,7 @@ and strategy configurations.
 """
 
 from typing import Callable, Optional, Union
+from torch.utils.data import Dataset, DataLoader
 
 import torch
 
@@ -138,82 +139,13 @@ def map_fast_token_to_vlm_action(tokens: List[str]) -> str:
 
 from typing import List, Dict, Any, Callable, Optional
 from transformers import AutoProcessor, PreTrainedTokenizerBase, Qwen2_5_VLForConditionalGeneration
-def process_example(example: Dict[str, Any], fast_tokenizer: AutoProcessor) -> Dict[str, Any]:
-    """Processes a single example from the dataset."""
-    pixel_values = example['image']
-    action = example['action']
-    lang = example['lang']
-    if "action" in example:
-        fast_tokens = fast_tokenizer(action)
-        vlm_action = map_fast_token_to_vlm_action(fast_tokens[0])
-    # @Jinhui TODO 这个应该是要和 main model 封装在一起的
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image", "image": pixel_values},
-                {"type": "text", "text": lang},
-            ],
-        },
-        # { #@Jinhui TODO 这里是值得study 的点， 是否加入 robot message
-        #     "role": "assistant",
-        #     "content": [
-        #         {"type": "text", "text": vlm_action},
-        #     ],
-        # },
-    ]
-    return messages
 
-from qwen_vl_utils import process_vision_info
 
-def collate_fn(examples,processor,fast_tokenizer): # @Jinhui TODO 要想清楚这个应该放到那个位置，他应该是和模型绑定的内容, 包括各种mask 策略， 其实是和每个模型相关的， 而且都是逻辑代码，没必要复用
-        messages = [process_example(example,fast_tokenizer) for example in examples]
-        actions = [example["action"] for example in examples]
-        text = processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False
-        )
-        image_inputs, video_inputs = process_vision_info(messages)
-        batch_input = processor(
-            text=text,
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt",
-        )
-        action_token_min = 151665
-        action_token_max = 153712
-        labels = batch_input['input_ids'].clone()
-        # For each sequence in the batch, find the first occurrence of an action token.
-        
-        # @Jinhui TODO 看是否要处理这个，这个的意思是这处理 answer 上的loss
-        # for i in range(labels.size(0)): # TODO 这里是先要mask vlm message， 不要参与 VLA training
-        #     seq = labels[i]
-        #     # Create a mask for tokens within the action token range.
-        #     mask_seq = (seq >= action_token_min) & (seq <= action_token_max)
-        #     nonzero_indices = torch.nonzero(mask_seq, as_tuple=False)
-        #     if nonzero_indices.numel() > 0:
-        #         first_action_index = nonzero_indices[0].item()
-        #         # Mask out all tokens before the first action token.
-        #         seq[:first_action_index] = -100
 
-        #     else:
-        #         # If no action token is found, mask the entire sequence.
-        #         seq[:] = -100
-        
-        labels[labels == processor.tokenizer.pad_token_id] = -100 ## mask out pad tokens as well
-        batch_input['labels'] = labels # 确认确实是又对齐的
-        batch_input["actions"] = torch.stack([torch.tensor(a) for a in actions], dim=0)  # numpy -> tensor shape: (B, 16, 7)
-        return batch_input
-
-def get_vla_dataset_and_collator(
+def get_vla_dataset(
     data_root_dir: Path,
     data_mix: str,
-    vlp_processor: Qwen2_5_VLProcessor,
-    tokenizer: PreTrainedTokenizerBase,
-    prompt_builder_fn: Type[PromptBuilder],
     default_image_resolution: Tuple[int, int, int],
-    padding_side: str = "left", # 很有可能是这里导致了 bug
-    predict_stop_token: bool = True,
     shuffle_buffer_size: int = 100_000,
     train: bool = True,
     episodic: bool = False,
@@ -221,14 +153,10 @@ def get_vla_dataset_and_collator(
     future_action_window_size: int = 0,
     past_action_window_size: int = 1,         # Concatenated `past_action_window_size-1' actions and the current action for the input
     load_all_data_for_training: bool = True,  # Load all data for training, or only a subset
-    base_action_tokenizer: PreTrainedTokenizerBase = None
+    **kwargs: Any,  # Additional arguments for RLDSBatchTransform
 ) -> Tuple[Dataset, ActionTokenizer, PaddedCollatorForActionPrediction]:
     """Initialize RLDS Dataset (wraps TFDS), ActionTokenizer, and initialize transform/collation functions."""
-    if base_action_tokenizer is None:
-        action_tokenizer = None
-    else:
-        action_tokenizer = ActionTokenizer(base_action_tokenizer)
-    # action_tokenizer = ActionTokenizer(tokenizer)
+
     batch_transform = RLDSBatchTransform( # TODO 不能和数据集耦合，应该实现高内聚
     )
     
@@ -248,8 +176,45 @@ def get_vla_dataset_and_collator(
         load_all_data_for_training=load_all_data_for_training,
     )
 
-    return dataset, action_tokenizer, collate_fn
+    return dataset
+
+from torch.utils.data._utils.collate import default_collate
+from torchvision.transforms import ToTensor
+
+import torch.distributed as dist
+
+def collate_fn(batch):
+    # batch: list of items, 假设每个 item 是 (PIL.Image, other_info)
+
+    pass # TODO 如果要动态 input， 就不能用 default_collate
+    # dist.barrier()  # 确保所有进程都在同一时间点
+
+    return batch # 我们宁愿返回一个 list_of_dict for 动态的 inputs
 
 if __name__ == "__main__":
     pass
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
+
+    # test  get_vla_dataset
+    cfg = {}
+
+    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
+        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+        cfg.vla.data_mix,
+        default_image_resolution=(3, 224, 224),
+        shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
+        image_aug=cfg.image_aug,
+        future_action_window_size=cfg.future_action_window_size,
+        past_action_window_size=cfg.past_action_window_size,
+        load_all_data_for_training=cfg.load_all_data_for_training,
+    )
+    
+
+    train_dataloader = DataLoader(
+        vla_dataset,
+        batch_size=cfg.vla.per_device_batch_size,
+        collate_fn=collate_fn,
+    )
+
+    batch_samples = next(iter(vla_dataset)) #for debug
+

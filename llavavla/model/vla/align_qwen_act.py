@@ -64,7 +64,7 @@ class QwenACT(nn.Module):
         # 要维护 all_module_keys， _trainable_module_keys TODO 要实现为 auto 的方式， 整存正取
         # 4096 in cogact
         self.action_model = ActionModel(model_type = action_model_type,  # TODO @Jinhui 应该写到 get_action_model()
-                                            token_size = self.action_features_dim ,  #TODO 应该设置为 config 管理
+                                            action_hidden_dim = self.action_features_dim ,  #TODO 应该设置为 config 管理
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size)

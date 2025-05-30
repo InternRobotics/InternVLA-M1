@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=qwenact_ds        # name
 #SBATCH -p efm_p
-#SBATCH -N 4                    # nodes
+#SBATCH -N 2                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
 #SBATCH --cpus-per-task=128          # number of cores per tasks
 #SBATCH --gres=gpu:8                 # number of gpus
@@ -48,7 +48,7 @@ proxy_on
 export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # 必须是绝对路径，因为simper 会在其他工程测试，需要这个路径， @请在后续版本修复这个东西
 export data_root_dir=./playground/Datasets/OXE_openvla
 export run_root_dir=./results/Checkpoints
-export run_id=0528_qwenact_bridge_ds_32gpus
+export run_id=0529_qwenact_freezeqwen_16gpus2
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -64,18 +64,18 @@ echo "Total GPUs: $TOTAL_GPUS"
 # 这个地方很😡直觉，需要check一下, 确认了官方的说法确实 total
 
 srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
-  --config_file scripts/run_scripts/deepspeed_zero2.yaml \
+  --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
   --main_process_ip $MASTER_ADDR \
   --main_process_port $MASTER_PORT \
   --machine_rank $SLURM_PROCID \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
-  scripts/train_qwenact.py \
+  scripts/train_qwen_qformer_dit.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.data_mix bridge \
   --vla.expected_world_size ${TOTAL_GPUS} \
-  --vla.global_batch_size 128 \
+  --vla.global_batch_size 256 \
   --vla.per_device_batch_size 16 \
   --vla.learning_rate 2e-5 \
   --data_root_dir ${data_root_dir} \

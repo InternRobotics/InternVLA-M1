@@ -54,7 +54,7 @@ from llavavla.training import VLAMetrics
 from llavavla.conf import VLAConfig, VLARegistry
 from llavavla.model.vla import load_qwenvl, load_qwenvla
 from llavavla.model.vla import CogACT_Qwen
-from llavavla.training.materialize_qwen import get_vla_dataset_and_collator
+from llavavla.training.materialize_qwen import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from llavavla.model.tools import * #TODO just for fast debug, remove later
 from accelerate import Accelerator, DeepSpeedPlugin
 
@@ -66,7 +66,8 @@ from accelerate import Accelerator, DeepSpeedPlugin
 #     debugpy.wait_for_client()
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
 accelerator = Accelerator(deepspeed_plugin=deepspeed_plugin)
-accelerator.print(accelerator.state)
+accelerator.print(accelerator.state) # TODO 之后要移动到trainer 内部， --> 直接搬LLaVA trainer
+
 
 
 # Sane Defaults
@@ -147,51 +148,7 @@ class TrainConfig:
 
     # fmt: on
 
-
-
-def load_model(cfg, hf_token):
-    overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
-    if cfg.pretrained_checkpoint is not None: #这里还没有检查过
-        # [Validate] Pretrained Checkpoint `step` and `epoch` should match `resume_step` and `resume_epoch`
-        #   =>> Note :: We make developers pass in `resume_*` arguments as an extra sanity check!
-        if cfg.is_resume:
-            pretrained_checkpoint = Path(cfg.pretrained_checkpoint) #@Jinhui TODO Check cfg.pretrained_checkpoint 的参数类型为什么一直对不上
-            # cfg.pretrained_checkpoint = pretrained_checkpoint #TO MV 看一下为什么要检查这个
-            assert int(re.search("step-(.+?)-", pretrained_checkpoint.name).group(1)) == cfg.resume_step
-            assert int(re.search("epoch-(.+?)-", pretrained_checkpoint.name).group(1)) == cfg.resume_epoch
-        overwatch.info("Loading VLA Checkpoint")
-        if cfg.use_ema:
-            overwatch.info("Loading EMA of Diffusion")
-        vla = load_qwenvla(cfg.pretrained_checkpoint,
-                        hf_token=hf_token,
-                        load_for_training=True,  #jinhui False
-                        action_model_type=cfg.action_model_type, 
-                        action_dim=cfg.action_dim,
-                        future_action_window_size=cfg.future_action_window_size,
-                        past_action_window_size=cfg.past_action_window_size,
-                        use_ema=cfg.use_ema,
-                        )
-
-    else:
-        # TODO 这里不应该对读取什么 vlm 有假设，应该用接口方法
-        # cfg.vla.base_vlm = "playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"
-        # print(cfg.vla.base_vlm)
-        vlm = load_qwenvl(cfg.vla.base_vlm, hf_token=hf_token, load_for_training=True) # @Jinhui True
-        overwatch.info("Creating VLA from Base VLM")
-        if cfg.use_ema:
-            overwatch.info("Creating EMA for Diffusion") 
-        vla = CogACT_Qwen(vlm, 
-                    action_model_type=cfg.action_model_type,
-                    action_dim=cfg.action_dim,
-                    future_action_window_size=cfg.future_action_window_size,
-                    past_action_window_size=cfg.past_action_window_size,
-                    use_ema=cfg.use_ema,
-                    )
-        # del this variable to avoid bugs. The vlm shouldn't be used anymore
-        # del vlm
-    
-
-    return vla
+from llavavla.model.vla.qwenact import build_model_framework
 
 def load_fast_tokenizer():
     fast_tokenizer = AutoProcessor.from_pretrained(
@@ -253,7 +210,7 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
             optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
             # dist.barrier()
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                action_loss, output = model.forward(**batch) # TODO make vlm and action loss
+                action_loss, output = model.forward(batch) # TODO make vlm and action loss
                 # dist.barrier()
                 # vlm_loss = output.vlm_loss
                 # dist.barrier()
@@ -300,7 +257,8 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                     state_dict = accelerator.get_state_dict(model)
                     output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    torch.save(state_dict, output_path+"/pytorch_model.pt")
+                    
+                    torch.save(state_dict, output_path+"_pytorch_model.pt")
                     print(f"✅ Saved state_dict to {output_path}")
                     summary_data = {"steps": completed_steps, "train_loss": total_loss.item()/cfg.save_interval}
                     with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
@@ -313,6 +271,8 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                     
             if completed_steps >= max_train_steps:
                 break
+
+
 
     # Save final checkpoint
     if accelerator.is_main_process:
@@ -328,7 +288,6 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
 @draccus.wrap()
 def train(cfg: TrainConfig) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
-    gradient_accumulation_steps = 1
     # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
     if cfg.is_debug:
         if int(os.environ.get("RANK", -1)) == 0:
@@ -336,17 +295,6 @@ def train(cfg: TrainConfig) -> None:
             debugpy.listen(("0.0.0.0", 5878))
             print("🔍 Rank 0 waiting for debugger attach on port 5678...")
             debugpy.wait_for_client()
-    # 显式传递 DeepSpeed 配置 # @Jinhui accelerator 没有找到 合理是使用方式， 像torhrun 之类的可以自动管理这些，而不会有错误出现
-    # deepspeed_plugin = DeepSpeedPlugin(
-    #     zero_stage=2,
-    #     offload_optimizer_device="none",
-    #     offload_param_device="none",
-    #     logging_level="info",  # 可选：设置为 "debug" 以获取更多日志
-    # )
-
-    # accelerator = Accelerator()  # plugins auto-injected based on your YAML
-    
-
 
     # accelerator.dataloader_config.dispatch_batches =  False
     # Configure Unique Run Name & Save Directory
@@ -364,9 +312,6 @@ def train(cfg: TrainConfig) -> None:
 
     # Start =>> Build Directories and Set Randomness
     overwatch.info('"Do or do not; there is no try."', ctx_level=1)
-    hf_token = Path(cfg.hf_token).read_text().strip() if "/" in cfg.hf_token else os.environ[cfg.hf_token]
-    
-    worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
     os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
     os.makedirs(cfg.run_root_dir / cfg.run_id / "checkpoints", exist_ok=True)
 
@@ -382,9 +327,9 @@ def train(cfg: TrainConfig) -> None:
     #   =>> Note :: Verifies that all parameters are loaded in FP32 on load!
 
     overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
-    vla = load_model(cfg, hf_token)
-    fast_tokenizer = load_fast_tokenizer()
-    processor = vla.vlm.processor # @Jinhui TODO 不应该在这个地方 赋值， 数据准备应该和 封装类绑定为函数
+    vla = build_model_framework(cfg)
+    fast_tokenizer = load_fast_tokenizer() # TODO 考虑架构时候的事情
+    # processor = vla.vlm.processor # @Jinhui TODO 不应该在这个地方 赋值， 数据准备应该和 封装类绑定为函数
     # [Validate] Model should be in Full Precision! @Jinhui TODO Why?
     for param in vla.parameters():
         if param.dtype != torch.float32: #@Jinhui TODO Check, why?
@@ -397,7 +342,7 @@ def train(cfg: TrainConfig) -> None:
     overwatch.info(f"Invoking `VLM.freeze_backbones()` for `{vla_id}` => Stage: `{stage}`")
     vla.freeze_backbones(stage)
 
-    # Print number of total/trainable model parameters
+    # Print number of total/trainable model parameters # TODO 应该集成到trainer 中
     num_params = sum(p.numel() for p in vla.parameters())
     num_trainable_params = sum(p.numel() for p in vla.parameters() if p.requires_grad)
     overwatch.info(
@@ -407,26 +352,23 @@ def train(cfg: TrainConfig) -> None:
 
     overwatch.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.vla.data_mix}`")
     #   text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    vla_dataset, _, collate_fn = get_vla_dataset_and_collator( # 拒绝任何内部转换
-        cfg.data_root_dir,
+    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
+        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
         cfg.vla.data_mix,
-        vlp_processor=vla.vlm.processor, #这个实现很不好，其实现在已经开始和模型绑定了
-        tokenizer=vla.vlm.processor.tokenizer,
-        prompt_builder_fn=vla.vlm.prompt_builder_fn, #add_turn
         default_image_resolution=(3, 224, 224),
         shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
         image_aug=cfg.image_aug,
-        load_all_data_for_training=cfg.load_all_data_for_training,
         future_action_window_size=cfg.future_action_window_size,
         past_action_window_size=cfg.past_action_window_size,
+        load_all_data_for_training=cfg.load_all_data_for_training,
     )
 
     # Create DataLoader
     
     train_dataloader = DataLoader(
         vla_dataset,
-        batch_size=cfg.vla.per_device_batch_size,
-        collate_fn=lambda examples: collate_fn(examples, processor,fast_tokenizer)
+        batch_size=cfg.vla.per_device_batch_size, # @Jinhui TODO 感觉即使有个空的 collate_fn 也会让代码 扩展性 更好
+        collate_fn=collate_fn
     )
 
     # sample = next(iter(vla_dataset)) #for debug

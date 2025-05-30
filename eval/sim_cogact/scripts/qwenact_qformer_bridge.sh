@@ -1,46 +1,15 @@
-# export XDG_RUNTIME_DIR=/tmp/runtime-root
-# mkdir -p $XDG_RUNTIME_DIR
-# chmod 700 $XDG_RUNTIME_DIR
-
-# export SAPIEN_USE_EGL=1
-# export DISPLAY=  # 确保不用 X
-
-
-# # TODO make it as Personal Key file
-# export HF_TOKEN=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
-# export WANDB_API_KEY=943ecb8d26fc2b3879cbc2d667414974906aebb9
-# export HUGGINGFACE_HUB_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
-# export TRANSFORMERS_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
-# export HF_HOME=/fs-computility/efm/yejinhui/.cache/huggingface_cache
-# export HF_TOKEN=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
-# export WANDB_API_KEY=943ecb8d26fc2b3879cbc2d667414974906aebb9
-
-
-# export VK_ICD_FILENAMES=$HOME/.local/share/vulkan/icd.d/nvidia_icd.json
-# export VK_LAYER_PATH=$HOME/.local/share/vulkan/explicit_layer.d  # 可为空
-# export VK_LAYER_PATH=$HOME/.local/share/vulkan/implicit_layer.d
-
-# # 假设你使用的是 simpler_env conda 环境
-# export DISPLAY=                       # 避免调用 X11
-# export SAPIEN_USE_EGL=1              # 使用离屏 EGL 渲染
-# export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH  # 确保使用 conda 中的 vulkan
-
-# export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-# echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
 echo `which python`
 
 cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
-# conda activate simpler_env # make sure you are in the right conda env
-# export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
 
-# export DEBUG=1
+export DEBUG=1
 
 MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0523_pd_qwenact_bridge_rt--image_aug/checkpoints/step-020000-epoch-00-loss=0.0811.pt
 MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0529_qwenact_freezeqwen_16gpus/checkpoints/steps_40000_pytorch_model.pt
 
 gpu_id=6
-policy_model=qwenact
+policy_model=QwenACTAFormer
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small
 
 scene_name=bridge_table_1_v1
@@ -51,9 +20,9 @@ robot_init_y=0.028
 
 # 任务列表，每行指定一个 env-name
 declare -a ENV_NAMES=(
-  StackGreenCubeOnYellowCubeBakedTexInScene-v0
-  PutCarrotOnPlateInScene-v0
-  PutSpoonOnTableClothInScene-v0
+  # StackGreenCubeOnYellowCubeBakedTexInScene-v0
+  # PutCarrotOnPlateInScene-v0
+  # PutSpoonOnTableClothInScene-v0
 )
 
 # 遍历任务，依次分配 GPU

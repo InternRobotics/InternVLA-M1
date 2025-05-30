@@ -39,27 +39,13 @@ class RLDSBatchTransform: #
             dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"]
         else:
             dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
-        # img.shape in rlds_batch = 224,224, 3 = h,w,c
+        # img.shape in rlds_batch = 224,224, 3 = h,w,c, RGB
         img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
-        lang = rlds_batch["task"]["language_instruction"].decode().lower() + "🔍" #cognition token
-        # <PIL.Image.Image image mode=RGB size=224x224 at 0x7EFFCBD42530>
-        # Construct Chat-based Prompt #@Jinhui 其实挺好的， 但是不用它来维护 system prompt, 因为Qwen 有他自己的 system prompt
-        # prompt_builder = self.prompt_builder_fn("openvla") # 这个应该内聚到 Main model 里面
-        # 这里应该用单例的，因为要保持全文统一 TODO @Jinhui
+        
+        # img = torch.tensor(img, dtype=torch.float32)  # TODO Check 这里要看是否执行了数据增强 h,w,c
+        lang = rlds_batch["task"]["language_instruction"].decode().lower() #+ "🔍" #cognition token
 
-        # Add future actions to batch  # 好像action achunk 不在这？
-        # if rlds_batch["action"].shape[0] > 1:
-        #     action = torch.tensor(action, dtype=torch.float32)
-        #     action_mask = None
-        #     # if "action_mask" in rlds_batch: # 好像action achunk 不在这？
-        #         action_mask = torch.tensor(rlds_batch["action_mask"], dtype=torch.bool)
-
-        #@Jinhui TODO add new keys for Qwen # Jinhui 你应该涉及为一个 inputs 的参数，保持灵活传参数
-        # 不要在这里做任何数据处理
-  
-        return dict(action=action,image=img,lang=lang, dataset_name=dataset_name)
-
-
+        return dict(action=action,image=[img],lang=lang, dataset_name=dataset_name)
 
 @dataclass
 class RLDSBatchQwenTransform: # @Jinhui TODO 这里要实现一个和模型无关的 Transform
@@ -306,3 +292,20 @@ class DummyDataset(Dataset):
         labels[: -(len(action) + 1)] = IGNORE_INDEX
 
         return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels)
+
+
+def get_dummy_dataset(dataconfig: dict):
+
+    pass
+
+
+if __name__ == "__main__":
+    # Example usage of DummyDataset
+    action_tokenizer = ActionTokenizer()
+    base_tokenizer = PreTrainedTokenizerBase.from_pretrained("bert-base-uncased")
+    image_transform = ImageTransform(resize_resolution=(224, 224))
+    prompt_builder_fn = QwenVLPromptHelper
+
+    dummy_dataset = DummyDataset(action_tokenizer, base_tokenizer, image_transform, prompt_builder_fn)
+    print(len(dummy_dataset))
+    print(dummy_dataset[0])

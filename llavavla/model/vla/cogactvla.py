@@ -54,7 +54,7 @@ class CogACT(nn.Module):
         super().__init__()
         
         self.action_model = ActionModel(model_type = action_model_type, 
-                                            token_size = token_size, 
+                                            action_hidden_dim = token_size, 
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size)

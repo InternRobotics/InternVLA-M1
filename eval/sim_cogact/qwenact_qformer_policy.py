@@ -12,14 +12,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from transforms3d.euler import euler2axangle
-from transformers import AutoModelForVision2Seq, AutoProcessor
 
-
-from llavavla.model.vla import CogACT_Qwen
-from llavavla.model.vla import load_qwenvla
+from llavavla.model.vla.qwenact import QwenQFormerDiT
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
-class QwenACTInference:
+
+class QwenACTAFormerInference:
     def __init__(
         self,
         saved_model_path: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
@@ -70,16 +68,12 @@ class QwenACTInference:
         # debugpy.listen(("0.0.0.0", 5878))
         # print("🔍 Rank 0 waiting for debugger attach on port 5678...")
         # debugpy.wait_for_client()
-        self.vla = load_qwenvla( # a lot of Missing key(s) in state_dict:
+        self.vla = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
-          load_for_training=False, 
-          action_model_type=action_model_type,              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight
-          future_action_window_size=future_action_window_size,
-          action_dim=action_dim,
         )
 
         if use_bf16: # False
-            self.vla.vlm = self.vla.vlm.to(torch.bfloat16)
+            self.vla = self.vla.to(torch.bfloat16)
         self.vla = self.vla.to("cuda").eval() # 无法 to gpu? check envs
         self.cfg_scale = cfg_scale # 1.5
 
@@ -140,6 +134,8 @@ class QwenACTInference:
         assert image.dtype == np.uint8
         self._add_image_to_history(self._resize_image(image))
         image: Image.Image = Image.fromarray(image)
+
+
         raw_actions, normalized_actions = self.vla.predict_action(image=image, 
                                                                 instruction=self.task_description,
                                                                 unnorm_key=self.unnorm_key,

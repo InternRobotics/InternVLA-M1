@@ -37,9 +37,9 @@ proxy_on
 export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # 必须是绝对路径，因为simper 会在其他工程测试，需要这个路径， @请在后续版本修复这个东西
 export data_root_dir=./playground/Datasets/OXE_openvla
 export run_root_dir=./results/Checkpoints
-export rl=1e-1 # defualt export rl=2e-5
+export lr=1e-1 # defualt export lr=1e-4
 
-export run_id=0531_qwenact_fixqwen_16gpus_rl_${rl}
+export run_id=0531_qwenact_fixqwen_16gpus_lr_${lr}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -61,14 +61,14 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --machine_rank $SLURM_PROCID \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
-  scripts/train_qwen_qformer_dit.py \
+  llavavla/training/train_qwen_qformer_dit.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.data_mix bridge \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size 256 \
   --vla.per_device_batch_size 16 \
-  --vla.learning_rate ${rl} \
+  --vla.learning_rate ${lr} \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \

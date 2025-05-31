@@ -15,11 +15,11 @@ from transforms3d.euler import euler2axangle
 from transformers import AutoModelForVision2Seq, AutoProcessor
 
 
-from llavavla.model.vla import CogACT_Qwen
+from llavavla.model.framework import CogACT_Qwen
 
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
-from llavavla.model.vla import load_qwenvla
-from llavavla.model.vla.load_qwenvla import QwenACT, load_qwenact
+from llavavla.model.framework import load_qwenvla
+from llavavla.model.framework.load_qwenvla import QwenACT, load_qwenact
 
 class QwenACTInference_align:
     def __init__(

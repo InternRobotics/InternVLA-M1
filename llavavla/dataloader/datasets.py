@@ -223,14 +223,83 @@ def get_dummy_dataset(dataconfig: dict):
 
     pass
 
+from typing import List, Dict, Any, Callable, Optional
+from transformers import AutoProcessor, PreTrainedTokenizerBase, Qwen2_5_VLForConditionalGeneration
+
+
+
+def get_vla_dataset(
+    data_root_dir: Path,
+    data_mix: str,
+    default_image_resolution: Tuple[int, int, int],
+    shuffle_buffer_size: int = 100_000,
+    train: bool = True,
+    episodic: bool = False,
+    image_aug: bool = False,
+    future_action_window_size: int = 0,
+    past_action_window_size: int = 1,         # Concatenated `past_action_window_size-1' actions and the current action for the input
+    load_all_data_for_training: bool = True,  # Load all data for training, or only a subset
+    **kwargs: Any,  # Additional arguments for RLDSBatchTransform
+) -> Tuple[Dataset]:
+    """Initialize RLDS Dataset (wraps TFDS), ActionTokenizer, and initialize transform/collation functions."""
+
+    batch_transform = RLDSBatchTransform( # TODO 不能和数据集耦合，应该实现高内聚
+    )
+    
+
+    # Build RLDS Iterable Dataset
+    cls = RLDSDataset if not episodic else EpisodicRLDSDataset
+    dataset = cls(
+        data_root_dir,
+        data_mix,
+        batch_transform,
+        resize_resolution=default_image_resolution[1:],
+        shuffle_buffer_size=shuffle_buffer_size,
+        train=train,
+        future_action_window_size=future_action_window_size,
+        past_action_window_size=past_action_window_size,
+        image_aug=image_aug,
+        load_all_data_for_training=load_all_data_for_training,
+    )
+
+    return dataset
+
+from torch.utils.data._utils.collate import default_collate
+from torchvision.transforms import ToTensor
+
+import torch.distributed as dist
+
+def collate_fn(batch):
+    # batch: list of items, 假设每个 item 是 (PIL.Image, other_info)
+
+    pass # TODO 如果要动态 input， 就不能用 default_collate
+    # dist.barrier()  # 确保所有进程都在同一时间点
+
+    return batch # 我们宁愿返回一个 list_of_dict for 动态的 inputs
 
 if __name__ == "__main__":
-    # Example usage of DummyDataset
-    action_tokenizer = ActionTokenizer()
-    base_tokenizer = PreTrainedTokenizerBase.from_pretrained("bert-base-uncased")
-    image_transform = ImageTransform(resize_resolution=(224, 224))
-    prompt_builder_fn = QwenVLPromptHelper
+    pass
+    #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
 
-    dummy_dataset = DummyDataset(action_tokenizer, base_tokenizer, image_transform, prompt_builder_fn)
-    print(len(dummy_dataset))
-    print(dummy_dataset[0])
+    # test  get_vla_dataset
+    cfg = {}
+
+    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
+        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+        cfg.vla.data_mix,
+        default_image_resolution=(3, 224, 224),
+        shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
+        image_aug=cfg.image_aug,
+        future_action_window_size=cfg.future_action_window_size,
+        past_action_window_size=cfg.past_action_window_size,
+        load_all_data_for_training=cfg.load_all_data_for_training,
+    )
+    
+
+    train_dataloader = DataLoader(
+        vla_dataset,
+        batch_size=cfg.vla.per_device_batch_size,
+        collate_fn=collate_fn,
+    )
+
+    batch_samples = next(iter(vla_dataset)) #for debug

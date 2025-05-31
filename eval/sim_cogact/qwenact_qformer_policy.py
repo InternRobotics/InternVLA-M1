@@ -13,7 +13,7 @@ import numpy as np
 
 from transforms3d.euler import euler2axangle
 
-from llavavla.model.vla.qwenact import QwenQFormerDiT
+from llavavla.model.framework.qwenact import QwenQFormerDiT
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
 

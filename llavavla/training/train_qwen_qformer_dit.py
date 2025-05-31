@@ -17,7 +17,6 @@ Run with:
 
 import json
 import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Tuple, Union
@@ -32,43 +31,30 @@ import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from transformers import AutoProcessor, PreTrainedTokenizerBase, Qwen2_5_VLForConditionalGeneration
-from transformers import SchedulerType, get_scheduler
-from qwen_vl_utils import process_vision_info
-import math
-import numpy as np
+from transformers import AutoProcessor
+from transformers import get_scheduler
+
 from tqdm import tqdm
 import wandb
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Dict, Any, Callable, Optional
+from typing import Optional
 
 from prismatic.overwatch import initialize_overwatch
-from prismatic.util import set_global_seed
 # from prismatic.vla import get_vla_dataset_and_collator
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
 # from llavavla.training import VLAMetrics, get_train_strategy
-from llavavla.training.materialize_qwen import get_train_strategy
+
 from llavavla.training import VLAMetrics
 
 from llavavla.conf import VLAConfig, VLARegistry
-from llavavla.model.vla import load_qwenvl, load_qwenvla
-from llavavla.model.vla import CogACT_Qwen
-from llavavla.training.materialize_qwen import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
-from llavavla.model.tools import * #TODO just for fast debug, remove later
+
+from llavavla.dataloader.datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin
 
-# 设置 DeepSpeed 插件
-# if int(os.environ.get("RANK", -1)) == 0:
-#     import debugpy
-#     debugpy.listen(("0.0.0.0", 5878))
-#     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-#     debugpy.wait_for_client()
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
 accelerator = Accelerator(deepspeed_plugin=deepspeed_plugin)
 accelerator.print(accelerator.state) # TODO 之后要移动到trainer 内部， --> 直接搬LLaVA trainer
-
-
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -148,7 +134,7 @@ class TrainConfig:
 
     # fmt: on
 
-from llavavla.model.vla.qwenact import build_model_framework
+from llavavla.model.framework.qwenact import build_model_framework
 
 def load_fast_tokenizer():
     fast_tokenizer = AutoProcessor.from_pretrained(
@@ -386,11 +372,11 @@ def train(cfg: TrainConfig) -> None:
     accelerator.dataloader_config.dispatch_batches =  False
 
     # Initialize optimizer
-    learning_rate = 1e-4
+    # learning_rate = 1e-4
 
     optimizer = torch.optim.AdamW(
         vla.parameters(),
-        lr=learning_rate,
+        lr=cfg.vla.learning_rate,
         betas=(0.9, 0.95),
         weight_decay=1e-8,
         eps=1e-8,

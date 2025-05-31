@@ -17,7 +17,7 @@ cd /mnt/petrelfs/yejinhui/Projects/llavavla
 MODEL_PATH=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
 data_root_dir=./playground/Datasets/OXE_openvla
 run_root_dir=./playground/Checkpoints
-run_id=0528_qwenact_bridge_ftqwen_ds_8gpus_debug
+run_id=0528_debug
 export WANDB_MODE=disabled
 
 output_dir=${run_root_dir}/${run_id}
@@ -30,7 +30,7 @@ cp $0 ${output_dir}/
 
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
-  --num_processes=8 scripts/train_qwen_qformer_dit.py \
+  --num_processes=8 llavavla/training/train_qwen_qformer_dit.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.data_mix bridge \
@@ -50,7 +50,7 @@ accelerate launch \
   --future_action_window_size 15 \
   --action_model_type DiT-B \
   --is_resume False \
-  --is_debug True
+  # --is_debug True
 
 
 

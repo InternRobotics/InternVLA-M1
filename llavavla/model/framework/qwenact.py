@@ -5,10 +5,9 @@ cogactvla.py
 
 from __future__ import annotations
 
-from functools import partial
 from pathlib import Path, os
-from typing import Callable, Dict, List, Optional, Type, Union, Tuple
-from copy import deepcopy
+from typing import Dict, List, Optional, Tuple
+
 
 import torch, json
 import torch.nn as nn
@@ -29,9 +28,9 @@ IGNORE_INDEX = -100
 
 # get QWen2.5
 from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类, TODO 不要实现 hard 接口类， 使用 **kwargs
-from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules
+from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
 from llavavla.model.vlm.QWen2_5 import get_qwen2_5_interface
-from llavavla.model.projector.QDormer import get_layerwise_qformer
+from llavavla.model.projector.QFormer import get_layerwise_qformer
 
 class QwenQFormerDiT(nn.Module):
     def __init__(

@@ -47,81 +47,6 @@ class RLDSBatchTransform: #
 
         return dict(action=action,image=[img],lang=lang, dataset_name=dataset_name)
 
-@dataclass
-class RLDSBatchQwenTransform: # @Jinhui TODO 这里要实现一个和模型无关的 Transform
-    action_tokenizer: ActionTokenizer
-    # base_tokenizer: PreTrainedTokenizerBase
-    # image_transform: ImageTransform #qwen 是合并到了 @Jinhui TODO mv them
-    qwen_VLProcessor: Qwen2_5_VLProcessor
-    prompt_builder_fn: Type[PromptBuilder]
-    predict_stop_token: bool = True
-
-    def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
-        """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
-        dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
-        
-        # For future action predictions
-        if rlds_batch["action"].shape[0] > 1:
-            dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"]
-        else:
-            dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
-        # img.shape in rlds_batch = 224,224, 3 = h,w,c
-        img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
-        lang = rlds_batch["task"]["language_instruction"].decode().lower()
-        # <PIL.Image.Image image mode=RGB size=224x224 at 0x7EFFCBD42530>
-        # Construct Chat-based Prompt #@Jinhui 其实挺好的， 但是不用它来维护 system prompt, 因为Qwen 有他自己的 system prompt
-        # prompt_builder = self.prompt_builder_fn("openvla") # 这个应该内聚到 Main model 里面
-        # 这里应该用单例的，因为要保持全文统一 TODO @Jinhui
-        self.promptHelper = QwenVLPromptHelper(processor=self.qwen_VLProcessor, system_prompt="You are a helpful assistant")
-        # If action tokenizer is not used, we don't add the action to the chat answer
-        if self.action_tokenizer is None: # 之后考虑是否有更好的方式，其实这个是和模型强绑定的
-            conversation = self.promptHelper.build_conversation(instruction=lang, image = [img], answer=None)
-            
-        else:
-            # Construct Chat-based Prompt =>> Input is default query + language instruction, output are the action tokens
-            conversation = self.promptHelper.build_conversation(instruction=lang, image = [img], answer= self.action_tokenizer(action))
-            
-        
-        # TODO emergency check for speedup
-        # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
-        # 拿到 对话的 text 文本 
-        # prompt_text = self.qwen_VLProcessor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-        # # Tokenize (w/ `base_tokenizer`)
-        # inputs = self.qwen_VLProcessor(text=[prompt_text], images=[img], padding=True, return_tensors="pt")
-        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
-        conversation, img, return_prompt_text=True)
-        # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
-        input_ids = inputs.input_ids[0]
-        labels = inputs.input_ids.clone()[0]
-        attention_mask = inputs.attention_mask[0]
-
-        image_grid_thw = inputs.image_grid_thw
-        pixel_values = inputs.pixel_values # value in patch size
-
-        # Add future actions to batch
-        if rlds_batch["action"].shape[0] > 1:
-            action = torch.tensor(action, dtype=torch.float32)
-            action_mask = None
-            if "action_mask" in rlds_batch:
-                action_mask = torch.tensor(rlds_batch["action_mask"], dtype=torch.bool)
-
-        if self.action_tokenizer is None:
-            labels[: -1] = IGNORE_INDEX
-        else:
-            # [CRITICAL] We do not want to take the loss for anything but the predicted action tokens!
-            labels[: -(len(action) + 1)] = IGNORE_INDEX
-
-        if not self.predict_stop_token:
-            labels[-1] = IGNORE_INDEX
-        #@Jinhui TODO add new keys for Qwen # Jinhui 你应该涉及为一个 inputs 的参数，保持灵活传参数
-
-        qwen_inputs = {
-            "pixel_values": pixel_values,
-            "image_grid_thw": image_grid_thw,
-            
-        }
-        return dict(pixel_values=qwen_inputs, input_ids=input_ids, attention_mask=attention_mask,
-                    labels=labels, dataset_name=dataset_name, actions=action, action_masks=action_mask)
 
 
 class RLDSDataset(IterableDataset):
@@ -129,7 +54,7 @@ class RLDSDataset(IterableDataset):
         self,
         data_root_dir: Path,
         data_mix: str,
-        batch_transform: RLDSBatchQwenTransform,
+        batch_transform: RLDSBatchTransform,
         resize_resolution: Tuple[int, int],
         shuffle_buffer_size: int = 256_000,
         future_action_window_size: int = 0,

@@ -54,7 +54,7 @@ class CogACT(nn.Module):
         super().__init__()
         
         self.action_model = ActionModel(model_type = action_model_type, 
-                                            action_hidden_dim = token_size, 
+                                            token_size = token_size, 
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size)
@@ -334,11 +334,11 @@ class CogACT(nn.Module):
         # Setup classifier-free guidance:
         if using_cfg:
             noise = torch.cat([noise, noise], 0)
-            uncondition = self.action_model.net.z_embedder.uncondition
-            uncondition = uncondition.unsqueeze(0)  #[1, D]
+            uncondition = self.action_model.net.z_embedder.uncondition [1,4096]
+            uncondition = uncondition.unsqueeze(0)  #[1, 1, D]
             uncondition = uncondition.expand(B, 1, -1) #[B, 1, D]
-            z = torch.cat([cognition_features, uncondition], 0)
-            cfg_scale = cfg_scale
+            z = torch.cat([cognition_features, uncondition], 0) [B*2, 1, D]
+            cfg_scale = cfg_scale # 1.5
             model_kwargs = dict(z=z, cfg_scale=cfg_scale)
             sample_fn = self.action_model.net.forward_with_cfg
         else:
@@ -347,7 +347,7 @@ class CogACT(nn.Module):
 
         # DDIM Sampling
         if use_ddim and num_ddim_steps is not None:
-            if self.action_model.ddim_diffusion is None:
+            if self.action_model.ddim_diffusion is None: # num_ddim_steps=10
                 self.action_model.create_ddim(ddim_step=num_ddim_steps)
             samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
                                                                 noise.shape, 
@@ -368,7 +368,7 @@ class CogACT(nn.Module):
                                                                     progress=False,
                                                                     device=cognition_features.device
                                                                     )
-        if using_cfg:
+        if using_cfg: # 1 # [2,26,17] --> [1,16,17]
             samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
         normalized_actions = samples[0].cpu().numpy()
 
@@ -376,9 +376,9 @@ class CogACT(nn.Module):
         action_norm_stats = self.get_action_stats(unnorm_key)
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
-        normalized_actions = np.clip(normalized_actions, -1, 1)
+        normalized_actions = np.clip(normalized_actions, -1, 1) # (16, 7)
         normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
-        actions = np.where(
+        actions = np.where( 
             mask,
             0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
             normalized_actions,
@@ -557,6 +557,22 @@ class CogACT(nn.Module):
             0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
             normalized_actions,
         )
+        # normalized_actions[0]
+        # array([-0.08422613,  0.04917024, -0.4205962 ,  0.08750041,  0.5148907 ,
+        #         0.05425372,  1.0099194 ], dtype=float32)
+        # normalized_actions[1]
+        # array([-0.21670553, -0.7007976 , -0.7320646 ,  0.12531033, -0.13904606,
+        #     -0.17131151,  0.9905775 ], dtype=float32)
+        # normalized_actions[10]
+        # array([ 0.08925748, -0.0394637 , -0.41219988, -0.08268084,  0.37317863,
+        #     -0.00424275,  0.00385029], dtype=float32)
+        # normalized_actions[15]
+        # array([ 0.17590998,  0.4903444 ,  0.83176476,  0.09765037, -0.5852522 ,
+        #         0.16051492, -0.00619619], dtype=float32)
+
+        # actions[10]
+        # array([ 0.0023367 , -0.00205316, -0.00662138, -0.00623222,  0.0243931 ,
+        #     -0.00255042,  0.        ])
         return actions, normalized_actions
 
     @staticmethod

@@ -7,7 +7,9 @@
 #SBATCH --gres=gpu:8                 # number of gpus
 #SBATCH --output=/mnt/petrelfs/yejinhui/Projects/llavavla/results/logs/%x-%j.out           # output file name
 #SBATCH --error=/mnt/petrelfs/yejinhui/Projects/llavavla/results/logs/%x-%j.err
-#SBATCH --exclude=SH-IDCA1404-10-140-54-77
+#SBATCH --exclude=SH-IDCA1404-10-140-54-49
+
+# [8,34,47,49,93-94]
 
 # source ~/.bashrc     # 确保 conda 命令可用
 # source ~/.zshrc
@@ -23,19 +25,6 @@ export GPUS_PER_NODE=8
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=$((RANDOM % 101 + 20000))
 
-# @yangshuai: My keys are listed below, but they may no longer be usable.
-
-# proxy_on
-# to test if you can access ceph, you are expected to see:
-#                            PRE open_x_embodiment_origin/
-
-# to fix: libcudnn_ops_infer.so.8 with link time referencesymbol _ZN15TracebackLoggerC1EPKc
-# export LD_LIBRARY_PATH=~/miniconda3/envs/openvla-simpler/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
-# export LD_PRELOAD=~/miniconda3/envs/openvla-simpler/lib/python3.10/site-packages/nvidia/cudnn/lib/libcudnn_ops_infer.so.8
-# export hf_token=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
-
-# envs for llavavla
-
 export HF_HOME=/mnt/petrelfs/share/yejinhui/Models/huggingface_cache
 export HF_TOKEN=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
 
@@ -48,7 +37,9 @@ proxy_on
 export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # 必须是绝对路径，因为simper 会在其他工程测试，需要这个路径， @请在后续版本修复这个东西
 export data_root_dir=./playground/Datasets/OXE_openvla
 export run_root_dir=./results/Checkpoints
-export run_id=0529_qwenact_freezeqwen_16gpus2
+export rl=1e-1 # defualt export rl=2e-5
+
+export run_id=0531_qwenact_fixqwen_16gpus_rl_${rl}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -77,7 +68,7 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size 256 \
   --vla.per_device_batch_size 16 \
-  --vla.learning_rate 2e-5 \
+  --vla.learning_rate ${rl} \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \

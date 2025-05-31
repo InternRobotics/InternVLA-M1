@@ -26,7 +26,7 @@ from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import ImageTransform
 from prismatic.util.data_utils import PaddedCollatorForActionPrediction
 from prismatic.vla.action_tokenizer import ActionTokenizer
-from llavavla.dataloader import EpisodicRLDSDataset, RLDSBatchQwenTransform, RLDSDataset,RLDSBatchTransform
+from llavavla.dataloader import EpisodicRLDSDataset, RLDSDataset,RLDSBatchTransform
 
 from pathlib import Path
 from typing import Tuple, Type

@@ -14,16 +14,11 @@ import torch, json
 import torch.nn as nn
 import numpy as np
 from PIL import Image
-from transformers.modeling_outputs import CausalLMOutputWithPast
-from transformers import LlamaTokenizerFast
 import re
 from prismatic.overwatch import initialize_overwatch
 
 from llavavla.model.action_model.action_model import ActionModel
-from llavavla.model.action_model.models import DiT
 import torch.distributed as dist
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoConfig
-from qwen_vl_utils import process_vision_info
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
@@ -95,7 +90,7 @@ class QwenQFormerDiT(nn.Module):
         # images: Optional[torch.FloatTensor] = None,
         # instructions: Optional[List] = None,
         # actions: Optional[torch.FloatTensor] = None,
-        images = [example["image"] for example in examples]  # [B, H, W, C]
+        images = [example["image"] for example in examples]  #  TODO check 是什么
         instructions = [example["lang"] for example in examples]  # [B, str]
         actions = [example["action"] for example in examples]
         
@@ -155,31 +150,10 @@ class QwenQFormerDiT(nn.Module):
         """
 
         # @之后写入模型内部， 变成私有化方法
-        # img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
-        # image resize to 224*224
-        img = image.resize((224, 224))  # Resize to Qwen-VL default input size
-        lang = instruction.lower()
-        # messages = [
-        # {
-        #     "role": "user",
-        #     "content": [
-        #         {"type": "image", "image": img}, # 224*224 rgb
-        #         {"type": "text", "text": lang},
-        #     ],
-        # },]
-        # text = self.qwen_vl_interface.processor.apply_chat_template( # TODO check if align with training
-        #     messages, tokenize=False, add_generation_prompt=False
-        # )
-        # image_inputs, video_inputs = process_vision_info(messages) # image_inputs = list of PIL
-        # inputs = self.qwen_vl_interface.processor(
-        #     text=text,
-        #     images=image_inputs, # inputs["pixel_values"].shape [256, 1176]
-        #     videos=video_inputs,
-        #     padding=True,
-        #     return_tensors="pt",
-        # )
+        imgs = [image.resize((224, 224))]  # list of PLT RGB for one instruction
+        lang = instruction.lower() 
 
-        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[[img]], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
+        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[imgs], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
         qwen_inputs = inferface_inputs
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
 
@@ -222,7 +196,7 @@ class QwenQFormerDiT(nn.Module):
 
         # Setup classifier-free guidance:
         if using_cfg:
-            noise = torch.cat([noise, noise], 0)
+            noise = torch.cat([noise, noise], 0) #[2,16,7]
             uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
             uncondition_shape = uncondition.shape
             uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
@@ -235,11 +209,11 @@ class QwenQFormerDiT(nn.Module):
             model_kwargs = dict(z=action_latent_feature)
             sample_fn = self.action_model.net.forward
         
-        if os.environ.get("DEBUG"):
-            print(z .shape)
+        # if os.environ.get("DEBUG"):
+        #     print(z .shape)
         # DDIM Sampling
         if use_ddim and num_ddim_steps is not None:
-            if self.action_model.ddim_diffusion is None:
+            if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
                 self.action_model.create_ddim(ddim_step=num_ddim_steps)
             samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
                                                                 noise.shape, 
@@ -275,7 +249,7 @@ class QwenQFormerDiT(nn.Module):
             0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
             normalized_actions,
         )
-
+        # actions max 1, min -0.05 # 感觉不再一个 scale
         return actions, normalized_actions
 
 
@@ -294,6 +268,7 @@ class QwenQFormerDiT(nn.Module):
             一个冻结模块名称的列表（按递归顺序）。
         """
         # r"^vlm\.model\.visual", r"^action_model"
+        # return []
         patterns = ["qwen_vl_interface"] #TODO 时候要参数化
         def freeze_module(module: nn.Module, prefix: str) -> List[str]:
             # 如果当前模块名称匹配任一模式，则冻结当前模块，不再递归子模块

@@ -7,9 +7,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from transformers.modeling_outputs import CausalLMOutputWithPast
 # from prismatic.models.vlms.base_vlm import VLM
 from prismatic.overwatch import initialize_overwatch
-from torchvision.transforms import ToTensor
-
-to_tensor = ToTensor()
+from qwen_vl_utils import process_vision_info
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -133,9 +131,9 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
         Args:
-            images: list B*(N, H, W, 3), image format: RGB, value in [0, 255] or float32 in [0, 1]
+            images: list B*list of PIL, image format: RGB, value in [0, 255
             processor: Qwen2.5 VL processor (AutoProcessor.from_pretrained)
-            prompt: Text prompt to use for each image set
+            instructions: Text prompt to use for each instruction
             device: Target device (default: "cuda")
 
         Returns:
@@ -143,22 +141,12 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         """
         # TODO 这里要和 QWen 官方对齐
         pass
-        # B, N, H, W, C = images.shape
-        # assert C == 3, "Expected 3-channel RGB images"
-        
-        # Convert to list of list of PIL images or numpy arrays
-        # @Jinhui TODO check 这个转换必须和QWen 的处理保持一致
-        image_inputs = []
-        for image_set in images: 
-            # Convert each image set to a tensors
-            image_inputs.append([to_tensor(image) for image in image_set]) # TODO 考虑能否并行
-
         # Create messages: one message per sample
         messages = []
-        for instruction in instructions:
-            img_list = [0]
-            content = [{"type": "image", "image": img} for img in img_list] # 其实是支持多图的
-            prompt = f"what is the key object to finish the thask: {instruction}. output the bbox to local the object"
+        assert len(images) == len(instructions), "Images and instructions must have the same length"
+        for imgs, instruction in zip(images,instructions):
+            content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
+            prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             messages.append(msg)
@@ -169,12 +157,14 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             for m in messages
         ]
 
+        # image_inputs = list of PIL
+        image_inputs, video_inputs = process_vision_info(messages)
         # Prepare visual inputs
         # Tokenize all together
         inputs = self.processor( # @JinhuiYE TODO 这里需要检查是否图片是否放到的指定地方， 要去对比 官方dataloader
             text=texts,
-            images=image_inputs,
-            # videos=video_inputs,
+            images=image_inputs, # list of PIL, can not to tensor by ourself? yes, will be a bug
+            videos=video_inputs,
             padding=True,
             return_tensors="pt"
         )

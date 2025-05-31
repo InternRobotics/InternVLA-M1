@@ -3,10 +3,10 @@ echo `which python`
 
 cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 
-export DEBUG=1
+# export DEBUG=1
 
 MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0523_pd_qwenact_bridge_rt--image_aug/checkpoints/step-020000-epoch-00-loss=0.0811.pt
-MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0529_qwenact_freezeqwen_16gpus/checkpoints/steps_40000_pytorch_model.pt
+MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0530_qwenact_freezeqwen_16gpus/checkpoints/steps_60000_pytorch_model.pt
 
 gpu_id=6
 policy_model=QwenACTAFormer
@@ -20,14 +20,14 @@ robot_init_y=0.028
 
 # 任务列表，每行指定一个 env-name
 declare -a ENV_NAMES=(
-  # StackGreenCubeOnYellowCubeBakedTexInScene-v0
-  # PutCarrotOnPlateInScene-v0
-  # PutSpoonOnTableClothInScene-v0
+  StackGreenCubeOnYellowCubeBakedTexInScene-v0
+  PutCarrotOnPlateInScene-v0
+  PutSpoonOnTableClothInScene-v0
 )
 
 # 遍历任务，依次分配 GPU
 for i in "${!ENV_NAMES[@]}"; do
-  gpu_id=$((i + 4 % 8))  # 假设 GPU 0–7 共 8 个
+  gpu_id=$((i + 0 % 8))  # 假设 GPU 0–7 共 8 个
   ckpt_dir=$(dirname "${ckpt_path}")
   ckpt_base=$(basename "${ckpt_path}")
   
@@ -73,7 +73,7 @@ robot_init_y=0.06
 
 # 遍历任务，依次分配 GPU
 for i in "${!ENV_NAMES[@]}"; do
-  gpu_id=$(((i + 7) % 8))  # 假设 GPU 0–7 共 8 个
+  gpu_id=$(((i + 3) % 8))  # 假设 GPU 0–7 共 8 个
   ckpt_dir=$(dirname "${ckpt_path}")
   ckpt_base=$(basename "${ckpt_path}")
   ckpt_name="${ckpt_base%.*}"  # 去掉 .pt 或 .bin 后缀

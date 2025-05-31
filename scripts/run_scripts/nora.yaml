@@ -1,9 +1,0 @@
-compute_environment: LOCAL_MACHINE
-debug: false
-deepspeed_config:
-  deepspeed_config_file: "./scripts/run_scripts/ds_config.yaml"  # 关键修改
-  zero_stage: 2
-  offload_optimizer_device: cpu
-  offload_param_device: cpu
-  gradient_accumulation_steps: 1
-distributed_type: DEEPSPEED

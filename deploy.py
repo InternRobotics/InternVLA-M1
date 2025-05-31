@@ -58,7 +58,7 @@ import math
 from flask import Flask, request, jsonify
 import tempfile
 import torch
-from llavavla.model.vla import load_qwenvla
+from llavavla.model.framework import load_qwenvla
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
 app = Flask(__name__)

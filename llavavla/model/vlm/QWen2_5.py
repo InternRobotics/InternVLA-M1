@@ -16,8 +16,7 @@ overwatch = initialize_overwatch(__name__)
 # Registry =>> Support Qwen-2.5 Models (from HF Transformers)
 
 # add by jinhui
-from llavavla.model.vlm.qwen_prompter import QwenPromptBuilder
-from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
+
 import torch.nn as nn
 #@TODO emergency fix @Jinhui more readable and flexible way for VLM interface
 # @Jinhui 这里需要讨论是否需要一个 强制要求的 模版类？ TODO @Jinhui：不需要， 不对架构做任何假设

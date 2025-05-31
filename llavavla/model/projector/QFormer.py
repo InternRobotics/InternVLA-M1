@@ -166,13 +166,17 @@ def get_layerwise_qformer(
     output_hidden_dim=768, #TODO 这里要和action model 对齐的
     num_query_tokens=64,
     num_layers=6,
-    num_heads=8
+    num_heads=8,
     # 你应该全程允许参数config 进来 @Jinhui TODO 
+    config=None
 ):
     """
     Returns a LayerwiseQFormer model with specified parameters.
 
     """
     # dist.barrier()
+    num_layers = config.vla.qformer_end_layer - config.vla.qformer_start_layer  if config else num_layers
+    num_query_tokens = 64 # 这里还没有参数化
+
     qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads) 
     return qformer

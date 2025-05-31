@@ -44,20 +44,21 @@ class QwenQFormerDiT(nn.Module):
         past_action_window_size: int = 0,
         use_ema: bool = False,
         norm_stats: Dict[str, Dict[str, Dict[str, Dict[str, List[float]]]]] = None,
+        config: Optional[dict] = None,  # @Jinhui TODO 这里应该是config, 但是现在是直接传入参数
         **kwargs,
     ) -> None:
         super().__init__()
         
         # TODO 全部转 全局config, 要面向对象编程
         self.qwen_vl_interface = get_qwen2_5_interface(qwen_model_name) 
-        self.layer_qformer = get_layerwise_qformer(input_hidden_dim=vl_token_dim, output_hidden_dim=action_hidden_dim) # @Jinhui 需要逻辑从QWen 中对齐 hidden
+        self.layer_qformer = get_layerwise_qformer(input_hidden_dim=vl_token_dim, output_hidden_dim=action_hidden_dim,config=config) # @Jinhui 需要逻辑从QWen 中对齐 hidden
         self.action_model = ActionModel(model_type = action_model_type,  # TODO @Jinhui 应该写到 get_action_model()
                                             action_hidden_dim = action_hidden_dim, # 这些参数关系要 TODO集中 设置到config
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size) # 也应该用 函数封装
         # TODO ActionModel 需要和qformer 一起设计
-
+        self.config = config
         # self.qwen_processor = vlm.processor # 要面向对象编程， 不要 属性外泄
         # 这些是 action chunck 的参数
         self.future_action_window_size = future_action_window_size
@@ -65,7 +66,6 @@ class QwenQFormerDiT(nn.Module):
 
         self.all_module_keys = auto_get_module_keys(self) #  TODO 这个是trainer的 funx
         self.norm_stats = norm_stats # 这个是 inference 时候用到的， 不应该是放到这个位置？
-
 
     @property
     def trainable_module_keys(self) -> List[str]:
@@ -112,7 +112,9 @@ class QwenQFormerDiT(nn.Module):
         
         vlm_loss = qwenvl_outputs.loss # @Jinhui TODO 这里是可以study 的地方， 是否 training lang
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[-6:]) # [B, 64, D_action]
+            start_layer = self.config.vla.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
+            end_layer = self.config.vla.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
+            action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
             
         actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
         actions_future = actions[:, -(self.future_action_window_size+1):, :]
@@ -174,7 +176,10 @@ class QwenQFormerDiT(nn.Module):
             ) # generation 拿不到前面token 的信息，考虑使用 forward?
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[-6:]) # [B, 64, D_action]
+            start_layer = self.config.vla.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
+            end_layer = self.config.vla.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
+            
+            action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
             
             # Jinhui see text # outputs.sequences.shape: B, len with prefix
             # outputs.input_ids = outputs.sequences # 为了和 input dict 保持一致， 方便调用 self._get_cognition_features# 还真不太一样，因为generation的逻辑和 forward不一样
@@ -308,6 +313,7 @@ class QwenQFormerDiT(nn.Module):
         pretrained_checkpoint = Path(pretrained_checkpoint)
         model_config, norm_stats = read_mode_config(pretrained_checkpoint) # 读取 config 和 norm_stats
         # Initialize CogACT
+        # model_config TODO DEBUE @JinhuiYE 这里应该保证training infer 的参数和模型🔗是一致的 （特别是 QFormer)
         qwenQFormerACT = build_model_framework(model_config) 
         # set for action un-norm
         qwenQFormerACT.norm_stats = norm_stats
@@ -374,6 +380,7 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
     future_action_window_size=15,
     past_action_window_size=0,
     # use_ema=False,
+    config=model_config
     )
         
     return model
@@ -413,6 +420,7 @@ def load_from_pretrained(pretrained_checkpoint):
 
 
     # TODO 这里应该是从config中加载
+    
     model = QwenQFormerDiT.from_pretrained(
         pretrained_checkpoint=pretrained_checkpoint)
     return model

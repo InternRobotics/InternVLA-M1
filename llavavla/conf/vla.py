@@ -56,6 +56,11 @@ class VLAConfig(ChoiceRegistry):
 
     # fmt: on
 
+    # Add by Jinhui
+    qformer_start_layer: int = -6  # Start layer for QFormer
+    qformer_end_layer: int = -1    # End layer for QFormer
+    # end
+
 
 # === OpenVLA Training Configurations ===
 

@@ -38,6 +38,8 @@ accelerate launch \
   --vla.global_batch_size 128 \
   --vla.per_device_batch_size 16 \
   --vla.learning_rate 2e-5 \
+  --vla.qformer_start_layer 0 \
+  --vla.qformer_end_layer 37 \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \
@@ -45,7 +47,7 @@ accelerate launch \
   --wandb_project llavavla \
   --wandb_entity jinhuiye \
   --hf_token HF_TOKEN \
-  --save_interval 10000 \
+  --save_interval 100 \
   --repeated_diffusion_steps 8 \
   --future_action_window_size 15 \
   --action_model_type DiT-B \

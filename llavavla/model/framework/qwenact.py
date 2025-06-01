@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path, os
 from typing import Dict, List, Optional, Tuple
 
-
+from types import SimpleNamespace
 import torch, json
 import torch.nn as nn
 import numpy as np
@@ -25,6 +25,13 @@ overwatch = initialize_overwatch(__name__)
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 
+def dict_to_namespace(d):
+    if isinstance(d, dict):
+        return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
+    elif isinstance(d, list):
+        return [dict_to_namespace(i) for i in d]
+    else:
+        return d
 
 # get QWen2.5
 from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类, TODO 不要实现 hard 接口类， 使用 **kwargs
@@ -314,6 +321,15 @@ class QwenQFormerDiT(nn.Module):
         model_config, norm_stats = read_mode_config(pretrained_checkpoint) # 读取 config 和 norm_stats
         # Initialize CogACT
         # model_config TODO DEBUE @JinhuiYE 这里应该保证training infer 的参数和模型🔗是一致的 （特别是 QFormer)
+        # TODO 
+        model_config = dict_to_namespace(model_config)
+        if os.getenv("DEBUG"):
+            print(f"🔍 Loading config from pretrained checkpoint: {pretrained_checkpoint}")
+        # 安全设置属性
+        if not hasattr(model_config.vla, "qformer_start_layer"):
+            model_config.vla.qformer_start_layer = 31
+            model_config.vla.qformer_end_layer = 37
+        
         qwenQFormerACT = build_model_framework(model_config) 
         # set for action un-norm
         qwenQFormerACT.norm_stats = norm_stats
@@ -403,7 +419,7 @@ def read_mode_config(pretrained_checkpoint):
 
         # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
         with open(config_json, "r") as f:
-            vla_cfg = json.load(f)["vla"]
+            vla_cfg = json.load(f) #["vla"]
             # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
 
         # Load Dataset Statistics for Action Denormalization

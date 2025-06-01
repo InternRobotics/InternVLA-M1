@@ -20,7 +20,7 @@ from prismatic.overwatch import initialize_overwatch
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
-
+# TODO 这里或许写到trainer 内部更好？
 # === Define Tracker Interface ===
 class Tracker(Protocol):
     def write_hyperparameters(self) -> None: ...

@@ -25,18 +25,11 @@ from prismatic.vla.datasets.rlds.utils.data_utils import NormalizationType
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
-from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
-from llavavla.dataloader.promt_builder import QwenVLPromptHelper
+# from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
+
 
 @dataclass
-class RLDSBatchQwenTransform: 
-    action_tokenizer: ActionTokenizer
-    # base_tokenizer: PreTrainedTokenizerBase
-    # image_transform: ImageTransform #qwen 是合并到了 @Jinhui TODO mv them
-    qwen_VLProcessor: Qwen2_5_VLProcessor
-    prompt_builder_fn: Type[PromptBuilder]
-    predict_stop_token: bool = True
-
+class RLDSBatchTransform: #
     def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
         dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
@@ -46,63 +39,14 @@ class RLDSBatchQwenTransform:
             dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"]
         else:
             dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
-        # img.shape in rlds_batch = 224,224, 3 = h,w,c
+        # img.shape in rlds_batch = 224,224, 3 = h,w,c, RGB
         img = Image.fromarray(rlds_batch["observation"]["image_primary"][0]) # B 要被去掉？
-        lang = rlds_batch["task"]["language_instruction"].decode().lower()
-        # <PIL.Image.Image image mode=RGB size=224x224 at 0x7EFFCBD42530>
-        # Construct Chat-based Prompt #@Jinhui 其实挺好的， 但是不用它来维护 system prompt, 因为Qwen 有他自己的 system prompt
-        # prompt_builder = self.prompt_builder_fn("openvla") # 这个应该内聚到 Main model 里面
-        # 这里应该用单例的，因为要保持全文统一 TODO @Jinhui
-        self.promptHelper = QwenVLPromptHelper(processor=self.qwen_VLProcessor, system_prompt="You are a helpful assistant")
-        # If action tokenizer is not used, we don't add the action to the chat answer
-        if self.action_tokenizer is None: # 之后考虑是否有更好的方式，其实这个是和模型强绑定的
-            conversation = self.promptHelper.build_conversation(instruction=lang, image = [img], answer=None)
-            
-        else:
-            # Construct Chat-based Prompt =>> Input is default query + language instruction, output are the action tokens
-            conversation = self.promptHelper.build_conversation(instruction=lang, image = [img], answer= self.action_tokenizer(action))
-            
         
-        # TODO emergency check for speedup
-        # minin version of QwenPromptBuilder --> @Jinhui TODO 后续可以实现到 QwenPromptBuilder 中进行对话管理
-        # 拿到 对话的 text 文本 
-        # prompt_text = self.qwen_VLProcessor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-        # # Tokenize (w/ `base_tokenizer`)
-        # inputs = self.qwen_VLProcessor(text=[prompt_text], images=[img], padding=True, return_tensors="pt")
-        inputs, prompt_text = self.promptHelper.build_multimodal_inputs(
-        conversation, img, return_prompt_text=True)
-        # dict_keys(['pixel_values', 'image_grid_thw']) # (256, 1176) # (1, 3) --> 符合 Qwen 的要求 N_patch, C*patch_w*patch_h
-        input_ids = inputs.input_ids[0]
-        labels = inputs.input_ids.clone()[0]
-        attention_mask = inputs.attention_mask[0]
+        # img = torch.tensor(img, dtype=torch.float32)  # TODO Check 这里要看是否执行了数据增强 h,w,c
+        lang = rlds_batch["task"]["language_instruction"].decode().lower() #+ "🔍" #cognition token
 
-        image_grid_thw = inputs.image_grid_thw
-        pixel_values = inputs.pixel_values # value in patch size
+        return dict(action=action,image=[img],lang=lang, dataset_name=dataset_name)
 
-        # Add future actions to batch
-        if rlds_batch["action"].shape[0] > 1:
-            action = torch.tensor(action, dtype=torch.float32)
-            action_mask = None
-            if "action_mask" in rlds_batch:
-                action_mask = torch.tensor(rlds_batch["action_mask"], dtype=torch.bool)
-
-        if self.action_tokenizer is None:
-            labels[: -1] = IGNORE_INDEX
-        else:
-            # [CRITICAL] We do not want to take the loss for anything but the predicted action tokens!
-            labels[: -(len(action) + 1)] = IGNORE_INDEX
-
-        if not self.predict_stop_token:
-            labels[-1] = IGNORE_INDEX
-        #@Jinhui TODO add new keys for Qwen # Jinhui 你应该涉及为一个 inputs 的参数，保持灵活传参数
-
-        qwen_inputs = {
-            "pixel_values": pixel_values,
-            "image_grid_thw": image_grid_thw,
-            
-        }
-        return dict(pixel_values=qwen_inputs, input_ids=input_ids, attention_mask=attention_mask,
-                    labels=labels, dataset_name=dataset_name, actions=action, action_masks=action_mask)
 
 
 class RLDSDataset(IterableDataset):
@@ -110,7 +54,7 @@ class RLDSDataset(IterableDataset):
         self,
         data_root_dir: Path,
         data_mix: str,
-        batch_transform: RLDSBatchQwenTransform,
+        batch_transform: RLDSBatchTransform,
         resize_resolution: Tuple[int, int],
         shuffle_buffer_size: int = 256_000,
         future_action_window_size: int = 0,
@@ -186,7 +130,7 @@ class RLDSDataset(IterableDataset):
 
     def __iter__(self) -> Dict[str, Any]:
         for rlds_batch in self.dataset.as_numpy_iterator():
-            yield self.batch_transform(rlds_batch)
+            yield self.batch_transform(rlds_batch) # 这个感觉上是个很不好的实现
 
     def __len__(self) -> int:
         return self.dataset_length
@@ -273,3 +217,89 @@ class DummyDataset(Dataset):
         labels[: -(len(action) + 1)] = IGNORE_INDEX
 
         return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels)
+
+
+def get_dummy_dataset(dataconfig: dict):
+
+    pass
+
+from typing import List, Dict, Any, Callable, Optional
+from transformers import AutoProcessor, PreTrainedTokenizerBase, Qwen2_5_VLForConditionalGeneration
+
+
+
+def get_vla_dataset(
+    data_root_dir: Path,
+    data_mix: str,
+    default_image_resolution: Tuple[int, int, int],
+    shuffle_buffer_size: int = 100_000,
+    train: bool = True,
+    episodic: bool = False,
+    image_aug: bool = False,
+    future_action_window_size: int = 0,
+    past_action_window_size: int = 1,         # Concatenated `past_action_window_size-1' actions and the current action for the input
+    load_all_data_for_training: bool = True,  # Load all data for training, or only a subset
+    **kwargs: Any,  # Additional arguments for RLDSBatchTransform
+) -> Tuple[Dataset]:
+    """Initialize RLDS Dataset (wraps TFDS), ActionTokenizer, and initialize transform/collation functions."""
+
+    batch_transform = RLDSBatchTransform( # TODO 不能和数据集耦合，应该实现高内聚
+    )
+    
+
+    # Build RLDS Iterable Dataset
+    cls = RLDSDataset if not episodic else EpisodicRLDSDataset
+    dataset = cls(
+        data_root_dir,
+        data_mix,
+        batch_transform,
+        resize_resolution=default_image_resolution[1:],
+        shuffle_buffer_size=shuffle_buffer_size,
+        train=train,
+        future_action_window_size=future_action_window_size,
+        past_action_window_size=past_action_window_size,
+        image_aug=image_aug,
+        load_all_data_for_training=load_all_data_for_training,
+    )
+
+    return dataset
+
+from torch.utils.data._utils.collate import default_collate
+from torchvision.transforms import ToTensor
+
+import torch.distributed as dist
+
+def collate_fn(batch):
+    # batch: list of items, 假设每个 item 是 (PIL.Image, other_info)
+
+    pass # TODO 如果要动态 input， 就不能用 default_collate
+    # dist.barrier()  # 确保所有进程都在同一时间点
+
+    return batch # 我们宁愿返回一个 list_of_dict for 动态的 inputs
+
+if __name__ == "__main__":
+    pass
+    #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
+
+    # test  get_vla_dataset
+    cfg = {}
+
+    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
+        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+        cfg.vla.data_mix,
+        default_image_resolution=(3, 224, 224),
+        shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
+        image_aug=cfg.image_aug,
+        future_action_window_size=cfg.future_action_window_size,
+        past_action_window_size=cfg.past_action_window_size,
+        load_all_data_for_training=cfg.load_all_data_for_training,
+    )
+    
+
+    train_dataloader = DataLoader(
+        vla_dataset,
+        batch_size=cfg.vla.per_device_batch_size,
+        collate_fn=collate_fn,
+    )
+
+    batch_samples = next(iter(vla_dataset)) #for debug

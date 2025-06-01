@@ -66,6 +66,10 @@ class QwenACTInference:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
+        # import debugpy
+        # debugpy.listen(("0.0.0.0", 5878))
+        # print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+        # debugpy.wait_for_client()
         self.vla = load_qwenvla( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
           load_for_training=False, 

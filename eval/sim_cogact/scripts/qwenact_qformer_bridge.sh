@@ -6,7 +6,8 @@ cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 # export DEBUG=1
 
 MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0523_pd_qwenact_bridge_rt--image_aug/checkpoints/step-020000-epoch-00-loss=0.0811.pt
-MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0530_qwenact_freezeqwen_16gpus/checkpoints/steps_60000_pytorch_model.pt
+MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0530_qwenact_ftqwen_32gpus_bridge_rt_1/checkpoints/steps_40000_pytorch_model.pt
+
 
 gpu_id=6
 policy_model=QwenACTAFormer
@@ -99,7 +100,7 @@ for i in "${!ENV_NAMES[@]}"; do
     --obj-episode-range 0 24 \
     --robot-init-rot-quat-center 0 0 0 1 \
     --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1 \
-    # > "${task_log}" 2>&1 &
+    > "${task_log}" 2>&1 &
 
 done
 

@@ -383,7 +383,7 @@ def train(cfg: TrainConfig) -> None:
     )
     # Initialize learning rate scheduler
     
-    max_train_steps = 135000
+    max_train_steps = cfg.vla.max_steps
     cfg.vla.max_steps = max_train_steps
     num_warmup_steps = 1000
     cfg.num_warmup_steps = num_warmup_steps

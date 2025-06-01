@@ -25,8 +25,8 @@ from prismatic.vla.datasets.rlds.utils.data_utils import NormalizationType
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
-from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
-from llavavla.dataloader.promt_builder import QwenVLPromptHelper
+# from transformers.models. qwen2_5_vl import Qwen2_5_VLProcessor
+
 
 @dataclass
 class RLDSBatchTransform: #

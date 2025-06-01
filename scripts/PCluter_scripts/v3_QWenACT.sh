@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=qwenact_ds        # name
 #SBATCH -p efm_p
-#SBATCH -N 2                    # nodes
+#SBATCH -N 4                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
 #SBATCH --cpus-per-task=128          # number of cores per tasks
 #SBATCH --gres=gpu:8                 # number of gpus
@@ -37,11 +37,11 @@ proxy_on
 export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # 必须是绝对路径，因为simper 会在其他工程测试，需要这个路径， @请在后续版本修复这个东西
 export data_root_dir=./playground/Datasets/OXE_openvla
 export run_root_dir=./results/Checkpoints
-export lr=2e-3 # defualt export lr=1e-4
-export qformer_start_layer=0
+export lr=1e-3 # defualt export lr=1e-4
+export qformer_start_layer=36
 export qformer_end_layer=37
 
-export run_id=0531_qwenact_fixqwen_16gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}
+export run_id=0601_qwenact_fixqwen_32gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -69,8 +69,9 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.qformer_start_layer ${qformer_start_layer} \
   --vla.qformer_end_layer ${qformer_end_layer} \
   --vla.data_mix bridge \
+  --vla.max_steps 5000000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
-  --vla.global_batch_size 256 \
+  --vla.global_batch_size 512 \
   --vla.per_device_batch_size 16 \
   --vla.learning_rate ${lr} \
   --data_root_dir ${data_root_dir} \

@@ -59,6 +59,7 @@ class VLAConfig(ChoiceRegistry):
     # Add by Jinhui
     qformer_start_layer: int = -6  # Start layer for QFormer
     qformer_end_layer: int = -1    # End layer for QFormer
+    freeze_modules: str = None
     # end
 
 

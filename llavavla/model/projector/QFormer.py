@@ -57,7 +57,7 @@ class LayerwiseQFormer(nn.Module):
 
     def forward(self, hidden_states_list, encoder_attention_mask=None):
         """
-        hidden_states_list: list of 37 encoder hidden states, each of shape [B, L, D]
+        hidden_states_list: list of encoder hidden states, each of shape [B, L, D]
         encoder_attention_mask: optional [B, L]
         return: updated query tokens [B, Q, D]
         """

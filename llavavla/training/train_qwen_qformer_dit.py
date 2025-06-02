@@ -145,12 +145,12 @@ def load_fast_tokenizer():
 def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
 
     cfg.logging_frequency = 10
-    cfg.checkpoint_save_frequency = 5000
     cfg.gradient_accumulation_steps = 1
     cfg.gradient_clipping = 1.0
-    cfg.vla.max_steps = 135000
-    cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id)
+    max_train_steps = cfg.vla.max_train_steps #TODO 注意各种参数的统一
 
+    cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id)
+    
 
     # Initialize Weights and Biases
     if accelerator.is_main_process: # @Jinhui TODO 这里可以查看Openvla 之类的，把它坐着tools
@@ -177,20 +177,21 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
     total_batch_size = cfg.vla.per_device_batch_size * accelerator.num_processes * cfg.gradient_accumulation_steps
     logger.info("***** Running training *****")
     # logger.info(f"  Num examples = {len(train_dataset)}")
-    max_train_steps = 100000
-    logger.info(f"  Num steps = {cfg.vla.max_steps}") # cfg.vla.max_train_steps 
+    
+    logger.info(f"  Num steps = {cfg.vla.max_train_steps}") # cfg.vla.max_train_steps 
     logger.info(f"  Instantaneous batch size per device = {cfg.vla.per_device_batch_size}")
     logger.info(f"  Total train batch size = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {cfg.gradient_accumulation_steps}")
-    logger.info(f"  Total optimization steps = {cfg.vla.max_steps}")
+    logger.info(f"  Total optimization steps = {cfg.vla.max_train_steps}")
 
     completed_steps = 0
 
     progress_bar = tqdm(range(cfg.vla.max_steps), disable=not accelerator.is_local_main_process)
     total_loss = 0.0
 
+    global_batch_size = cfg.vla.expected_world_size * cfg.vla.per_device_batch_size
     
-    while completed_steps < max_train_steps:
+    while completed_steps < cfg.vla.max_train_steps:
         for batch in train_dataloader:
             # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
             optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
@@ -220,19 +221,25 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                 if accelerator.is_main_process:
                     
                     total_norm = 0.0
-                    for p in model.parameters():
+                    for p in model.parameters(): #TODO 这里已经看不到梯度了，想办法看看DS 是怎么看grad 的
                         if p.grad is not None:
                             total_norm += p.grad.data.norm(2).item() ** 2
                     total_norm = total_norm**0.5
                     lr = lr_scheduler.get_last_lr()[0]
                     logger.info(f"Step {completed_steps}, Loss: {action_loss.item()}, Grad Norm: {total_norm}")
                     lr = lr_scheduler.get_last_lr()[0]
+                    epoch = int(completed_steps) // len(train_dataloader) # 他们都是经过 DDP的
                     result = {
                         "train_loss": action_loss.item(),
                         "grad_norm": total_norm,
                         "learning_rate": lr,
+                        "epoch": epoch,
                     }
-                    wandb.log({"train_loss": action_loss.item(), "learning_rate": lr}, step=completed_steps)
+                    if cfg.is_debug:
+                        print(result)
+                    # Compute epoch value using number of completed gradient steps
+                    
+                    wandb.log(result, step=completed_steps)
                
             # Checkpointing
             if completed_steps% cfg.save_interval == 0 and completed_steps > 0:
@@ -255,7 +262,7 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                 
             # dist.barrier()  # Ensure all processes log at the same time
                     
-            if completed_steps >= max_train_steps:
+            if completed_steps >= cfg.vla.max_train_steps:
                 break
 
 
@@ -367,7 +374,6 @@ def train(cfg: TrainConfig) -> None:
     # Create Train Strategy
     overwatch.info(f"Initializing Train Strategy `{cfg.train_strategy}`")
     # Prepare everything with Accelerator
-    gradient_accumulation_steps = 1
     
     accelerator.dataloader_config.dispatch_batches =  False
 
@@ -383,16 +389,16 @@ def train(cfg: TrainConfig) -> None:
     )
     # Initialize learning rate scheduler
     
-    max_train_steps = cfg.vla.max_steps
-    cfg.vla.max_steps = max_train_steps
-    num_warmup_steps = 1000
+    max_train_steps = cfg.vla.max_steps # TODO 统一 max_train_steps 和 max_steps, 和 epoch
+    cfg.vla.max_train_steps = max_train_steps
+    num_warmup_steps = min(int(cfg.vla.max_train_steps*0.1), 10000)
     cfg.num_warmup_steps = num_warmup_steps
 
     lr_scheduler = get_scheduler(
         name="cosine",
         optimizer=optimizer,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=max_train_steps
+        num_warmup_steps=cfg.num_warmup_steps,
+        num_training_steps=cfg.vla.max_train_steps
     )
 
     # Prepare everything with Accelerator, setup

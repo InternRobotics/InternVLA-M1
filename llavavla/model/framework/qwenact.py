@@ -278,9 +278,9 @@ class QwenQFormerDiT(nn.Module):
         返回：
             一个冻结模块名称的列表（按递归顺序）。
         """
-        # r"^vlm\.model\.visual", r"^action_model"
-        # return []
-        patterns = ["qwen_vl_interface"] #TODO 时候要参数化
+        freeze_modules = self.config.vla.freeze_modules if self.config and hasattr(self.config.vla, "freeze_modules") else None
+        
+        patterns = freeze_modules.split(",") if freeze_modules else []  # 这里是一个字符串，逗号分隔的正则表达式模式
         def freeze_module(module: nn.Module, prefix: str) -> List[str]:
             # 如果当前模块名称匹配任一模式，则冻结当前模块，不再递归子模块
             if any(re.match(pattern, prefix) for pattern in patterns if prefix):
@@ -292,13 +292,7 @@ class QwenQFormerDiT(nn.Module):
             for name, child in module.named_children():
                 full_name = f"{prefix}.{name}" if prefix else name
                 frozen_keys.extend(freeze_module(child, full_name))
-            
-            self.qwen_vl_interface.eval()
-            # 在模型初始化或加载之后调用
-            for param in self.qwen_vl_interface.parameters():
-                param.requires_grad = False
-            # freeze the qwen_vl_interface
-            
+                  
             return frozen_keys
             
 
@@ -308,6 +302,7 @@ class QwenQFormerDiT(nn.Module):
             full_name = name  # 顶层模块名称
             frozen.extend(freeze_module(child, full_name))
         dist.barrier()  # 确保所有进程都完成冻结操作
+        print(f"🔒 Frozen modules: {frozen}")  # 打印冻结的模块名称
         return frozen
 
 

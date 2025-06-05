@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=qwenact_ds        # name
+#SBATCH --job-name=qwenact_oxe        # name
 #SBATCH -p efm_p
-#SBATCH -N 2                    # nodes
+#SBATCH -N 4                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
 #SBATCH --cpus-per-task=128          # number of cores per tasks
 #SBATCH --gres=gpu:8                 # number of gpus
@@ -37,15 +37,15 @@ proxy_on
 export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # 必须是绝对路径，因为simper 会在其他工程测试，需要这个路径， @请在后续版本修复这个东西
 export data_root_dir=./playground/Datasets/OXE_openvla
 export run_root_dir=./results/Checkpoints
-export lr=1e-4 # defualt export lr=1e-4
-export qformer_start_layer=31
+export lr=5e-5 # defualt export lr=1e-4
+export qformer_start_layer=36
 export qformer_end_layer=37
 
 export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
 export global_batch_size=$((TOTAL_GPUS * 16)) # 512 is the default global batch size, you can change it if needed
 echo "Total GPUs: $TOTAL_GPUS"
 
-export run_id=rp_0602_qwenact_ftqwen_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}
+export run_id=0605_ftqwen_bridge_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -61,6 +61,9 @@ cp $0 ${output_dir}/
 
   # --vla.freeze_modules qwen_vl_interface \
 
+# bridge_rt_1
+# oxe_magic_soup_plus
+
 srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
   --main_process_ip $MASTER_ADDR \
@@ -73,7 +76,7 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.qformer_start_layer ${qformer_start_layer} \
   --vla.qformer_end_layer ${qformer_end_layer} \
-  --vla.freeze_modules "qwen_vl_interface" \
+  --vla.freeze_modules "" \
   --vla.data_mix bridge \
   --vla.max_steps 5000000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
@@ -87,7 +90,7 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --wandb_project llavavla \
   --wandb_entity jinhuiye \
   --hf_token HF_TOKEN \
-  --save_interval 20000 \
+  --save_interval 10000 \
   --repeated_diffusion_steps 8 \
   --future_action_window_size 15 \
   --action_model_type DiT-B \

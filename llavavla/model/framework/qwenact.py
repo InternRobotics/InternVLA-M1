@@ -64,6 +64,7 @@ class QwenQFormerDiT(nn.Module):
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size) # 也应该用 函数封装
+        
         # TODO ActionModel 需要和qformer 一起设计
         self.config = config
         # self.qwen_processor = vlm.processor # 要面向对象编程， 不要 属性外泄
@@ -98,7 +99,7 @@ class QwenQFormerDiT(nn.Module):
         # actions: Optional[torch.FloatTensor] = None,
         images = [example["image"] for example in examples]  #  TODO check 是什么
         instructions = [example["lang"] for example in examples]  # [B, str]
-        actions = [example["action"] for example in examples]
+        actions = [example["action"] for example in examples] #label
         
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions) # @Jinhui TODO add instruction to qwenvl inputs
         with torch.autocast("cuda", dtype=torch.float16):
@@ -122,7 +123,7 @@ class QwenQFormerDiT(nn.Module):
             start_layer = self.config.vla.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
             end_layer = self.config.vla.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
-            
+    
         actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
         actions_future = actions[:, -(self.future_action_window_size+1):, :]
         
@@ -134,7 +135,7 @@ class QwenQFormerDiT(nn.Module):
         return action_loss, qwenvl_outputs
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
-    def predict_action(
+    def predict_action( # 
         self, image: Image, 
         instruction: str, 
         unnorm_key: Optional[str] = None, 
@@ -443,6 +444,8 @@ if __name__ == "__main__":
     debugpy.listen(("0.0.0.0", 5878))
     print("🔍 Rank 0 waiting for debugger attach on port 5878...")
     debugpy.wait_for_client()
+    samples = {}
 
-    model_frameword = build_model_framework()
+    model_framework = build_model_framework()
+    model_framework(samples)
     pass

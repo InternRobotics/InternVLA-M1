@@ -11,7 +11,7 @@ fi
 echo "📋 Checking logs in: $log_dir"
 echo "----------------------------------------"
 
-for file in "$log_dir"/*.log; do
+for file in "$log_dir"/*.log.*; do
   if [ -f "$file" ]; then
     success=$(grep -E "Average success" "$file" | awk '{print $NF}')
     if [ -n "$success" ]; then

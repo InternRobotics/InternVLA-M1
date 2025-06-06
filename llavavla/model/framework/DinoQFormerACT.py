@@ -39,7 +39,7 @@ from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_module
 from llavavla.model.vlm.QWen2_5 import get_qwen2_5_interface
 from llavavla.model.projector.QFormer import get_layerwise_qformer
 
-class QwenQFormerDiT(nn.Module):
+class QwenDinoQFormerDiT(nn.Module):
     def __init__(
         self,
         qwen_model_name:str = './playground/Pretrained_models/Qwen2.5-VL-3B-Instruct', # 这是不好的实现， 一定不能是互相依赖
@@ -64,6 +64,7 @@ class QwenQFormerDiT(nn.Module):
                                             in_channels = action_dim, 
                                             future_action_window_size = future_action_window_size, 
                                             past_action_window_size = past_action_window_size) # 也应该用 函数封装
+        
         
         # TODO ActionModel 需要和qformer 一起设计
         self.config = config
@@ -265,48 +266,47 @@ class QwenQFormerDiT(nn.Module):
         return actions, normalized_actions
 
 
-    def freeze_backbones(self, stage):
-        """
-        根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
-          - patterns: 从 config.vla.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表
-            例如 "qwen_vl_interface,action_model.net"，
-            就意味着冻结 self.qwen_vl_interface 和 self.action_model.net。
-        返回值：
-          - frozen: 实际找到并冻结的模块路径列表
-        """
-        freeze_modules = (
-            self.config.vla.freeze_modules
-            if (self.config and hasattr(self.config.vla, "freeze_modules"))
-            else None
-        )
-        # 拆分并去除空白
-        patterns = [p.strip() for p in freeze_modules.split(",") if p.strip()] if freeze_modules else []
+    def freeze_backbones(self, stage): # TODO freeze 是架构的一部分， 得全局控制， 要写个提示 用户在这里 做声明
+        # self.vlm.freeze_backbones(stage)
 
-        frozen = []
-        for path in patterns:
-            # 将“相对路径”按点拆分，例如 "action_model.net" → ["action_model", "net"]
-            attrs = path.split(".")
-            module = self
-            try:
-                for attr in attrs:
-                    module = getattr(module, attr)
-                # 如果成功 get 到 module，就把它和它的所有子模块参数都 freeze
-                for param in module.parameters():
+        """
+        根据给定的正则模式列表冻结模块。
+        如果某个模块的名称匹配（例如公共前缀匹配），则冻结该模块下所有参数（不再递归冻结子模块），
+        并返回冻结模块名称的有序浅层列表。
+        
+        参数：
+            patterns: 正则表达式字符串列表，模块名称只要匹配其中一个模式，就会被冻结。
+            
+        返回：
+            一个冻结模块名称的列表（按递归顺序）。
+        """
+        freeze_modules = self.config.vla.freeze_modules if self.config and hasattr(self.config.vla, "freeze_modules") else None
+        
+        patterns = freeze_modules.split(",") if freeze_modules else []  # 这里是一个字符串，逗号分隔的正则表达式模式
+        def freeze_module(module: nn.Module, prefix: str) -> List[str]:
+            # 如果当前模块名称匹配任一模式，则冻结当前模块，不再递归子模块
+            if any(re.match(pattern, prefix) for pattern in patterns if prefix):
+                for param in module.parameters(recurse=False):
                     param.requires_grad = False
-                frozen.append(path)
-            except AttributeError:
-                # 如果某一级属性不存在，就跳过并打印警告
-                print(f"⚠️ 模块路径不存在，无法冻结：{path}")
-                continue
+                return [prefix]
+            # 否则，递归遍历子模块
+            frozen_keys = []
+            for name, child in module.named_children():
+                full_name = f"{prefix}.{name}" if prefix else name
+                frozen_keys.extend(freeze_module(child, full_name))
+                  
+            return frozen_keys
+            
 
-        dist.barrier()  # 分布式训练时同步
-        print(f"🔒 Frozen modules (by relative path): {frozen}")
+        # 对整个模块（self）递归检查。注意，根目录通常为空字符串，这里不冻结根模块
+        frozen = []
+        for name, child in self.named_children():
+            full_name = name  # 顶层模块名称
+            frozen.extend(freeze_module(child, full_name))
+        dist.barrier()  # 确保所有进程都完成冻结操作
+        print(f"🔒 Frozen modules: {frozen}")  # 打印冻结的模块名称
         return frozen
-    
-    def print_freeze_status(self): # 这个是 工具类方法。 可以考虑移动
-        for name, param in self.named_parameters():
-            status = "Frozen" if not param.requires_grad else "Trainable"
-            print(f"{name:60s}  |  {status}")
+
 
     @classmethod
     def from_pretrained( # @Jinhui TODO 这里要写如何resume checkpoints

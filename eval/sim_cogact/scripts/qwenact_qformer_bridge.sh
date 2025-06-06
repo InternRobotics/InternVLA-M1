@@ -46,7 +46,7 @@ fi
 for i in "${!ENV_NAMES[@]}"; do
   env="${ENV_NAMES[i]}"
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
-    gpu_id=$((i  % 4))  # 假设 GPU 0–3 共 4 个，i 用来分配 GPU
+    gpu_id=$((i  % 8))  # 假设 GPU 0–3 共 4 个，i 用来分配 GPU
     ckpt_dir=$(dirname "${ckpt_path}")
     ckpt_base=$(basename "${ckpt_path}")
     ckpt_name="${ckpt_base%.*}"  # 去掉 .pt 或 .bin 后缀
@@ -92,7 +92,7 @@ robot_init_y=0.06
 for i in "${!ENV_NAMES_V2[@]}"; do
   env="${ENV_NAMES_V2[i]}"
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
-    gpu_id=$(((i + 3) % 4))  # 假设 GPU 0–3 共 4 个，偏移 3
+    gpu_id=$(((i + 3) % 8))  # 假设 GPU 0–3 共 4 个，偏移 3
     ckpt_dir=$(dirname "${ckpt_path}")
     ckpt_base=$(basename "${ckpt_path}")
     ckpt_name="${ckpt_base%.*}"

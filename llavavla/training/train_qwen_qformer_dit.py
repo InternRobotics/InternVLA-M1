@@ -192,6 +192,12 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
     global_batch_size = cfg.vla.expected_world_size * cfg.vla.per_device_batch_size
     
     while completed_steps < cfg.vla.max_train_steps:
+        # train_dataloader_vla
+        # train_dataloader_vlm
+        # batch_samples_vla = next(iter(train_dataloader_vla)) 
+        # batch_samples_vlm = next(iter(train_dataloader_vlm))
+        # batch = batch_samples_vla.extend(batch_samples_vlm) 
+        
         for batch in train_dataloader:
             # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
             optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 

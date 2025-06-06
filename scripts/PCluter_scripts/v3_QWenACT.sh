@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=qwenact_oxe        # name
+#SBATCH --job-name=ab_prompt        # name
 #SBATCH -p efm_p
 #SBATCH -N 4                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
@@ -10,6 +10,7 @@
 #SBATCH --exclude=SH-IDCA1404-10-140-54-49
 
 # [8,34,47,49,93-94]
+# SH-IDCA1404-10-140-54-25 
 
 # source ~/.bashrc     # 确保 conda 命令可用
 # source ~/.zshrc
@@ -45,7 +46,7 @@ export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
 export global_batch_size=$((TOTAL_GPUS * 16)) # 512 is the default global batch size, you can change it if needed
 echo "Total GPUs: $TOTAL_GPUS"
 
-export run_id=0605_ftqwen_bridge_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
+export run_id=0605_fixqwen_withoutprompt_bridge_rt_1_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -76,8 +77,8 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.qformer_start_layer ${qformer_start_layer} \
   --vla.qformer_end_layer ${qformer_end_layer} \
-  --vla.freeze_modules "" \
-  --vla.data_mix bridge \
+  --vla.freeze_modules "qwen_vl_interface" \
+  --vla.data_mix bridge_rt_1 \
   --vla.max_steps 5000000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size ${global_batch_size} \

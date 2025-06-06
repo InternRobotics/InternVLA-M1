@@ -83,3 +83,39 @@ def auto_get_trainable_modules(module, prefix='', max_depth=None):
     # condensed_keys = get_condensed_trainable_modules(cogact_qwen, max_depth=2)
     # print(condensed_keys)
     #     # 读取配置文件
+
+
+
+def print_freeze_status(self):
+    """
+    对每个顶层子模块，只要其所有参数都是同一状态（全冻结或全可训练），就只打印顶层模块。
+    如果某个顶层子模块内部参数状态混合（部分冻结、部分可训练），则列出该子模块下每个参数的状态。
+    """
+    from collections import defaultdict
+
+    # 收集每个顶层模块下参数的状态
+    status_dict = defaultdict(lambda: {"Frozen": 0, "Trainable": 0, "params": []})
+    for full_name, param in self.named_parameters():
+        # full_name 形如 "qwen_vl_interface.model.layer.weight"
+        top_module = full_name.split(".", 1)[0]  # 取顶层模块名
+        state = "Frozen" if not param.requires_grad else "Trainable"
+        status_dict[top_module]["params"].append((full_name, state))
+        status_dict[top_module][state] += 1
+
+    print("=== 模块参数冻结情况 ===")
+    for top_module, info in status_dict.items():
+        frozen_count = info["Frozen"]
+        trainable_count = info["Trainable"]
+
+        if frozen_count > 0 and trainable_count == 0:
+            # 全部冻结
+            print(f"{top_module:40s}  |  全部 Frozen ({frozen_count} 参数)")
+        elif trainable_count > 0 and frozen_count == 0:
+            # 全部可训练
+            print(f"{top_module:40s}  |  全部 Trainable ({trainable_count} 参数)")
+        else:
+            # 状态混合，先打印模块名概况，再列出每个参数
+            print(f"{top_module:40s}  |  混合状态 → Frozen: {frozen_count}, Trainable: {trainable_count}")
+            for pname, pstate in info["params"]:
+                print(f"    {pname:60s}  |  {pstate}")
+    print("=========================\n")

@@ -26,16 +26,16 @@ mkdir -p ${output_dir}
 cp $0 ${output_dir}/
 
   # --pretrained_checkpoint ${MODEL_PATH} \
-# CUDA_VISIBLE_DEVICES=0 
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
-  --num_processes=8 llavavla/training/train_qwen_qformer_dit.py \
+  --num_processes=4 llavavla/training/train_qwen_qformer_dit.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.data_mix bridge \
-  --vla.expected_world_size 8 \
-  --vla.global_batch_size 128 \
+  --vla.expected_world_size 4 \
+  --vla.global_batch_size 64 \
   --vla.per_device_batch_size 16 \
   --vla.freeze_modules "qwen_vl_interface" \
   --vla.learning_rate 2e-5 \

@@ -146,6 +146,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         for imgs, instruction in zip(images,instructions):
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
+            prompt = f"what is the key object to finish the task: {instruction}."
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             messages.append(msg)

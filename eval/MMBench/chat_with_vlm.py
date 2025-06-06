@@ -5,11 +5,11 @@ import os
 
 if os.environ.get("DEBUG", None):
     import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
+    debugpy.listen(("0.0.0.0", 5878))
     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
     debugpy.wait_for_client()
 
-saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_20000_pytorch_model.pt"
+saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_fixqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_20000_pytorch_model.pt"
 qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
         )
@@ -64,7 +64,7 @@ messages2 = [
     {"role": "user", "content": "Who are you?"},
 ]
 # Combine messages for batch processing
-messages = [messages1, messages2, messages_text]
+messages = [messages1 ]
 
 # Preparation for batch inference
 texts = [

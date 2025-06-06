@@ -1,48 +1,29 @@
+#!/bin/bash
 
-# export XDG_RUNTIME_DIR=/tmp/runtime-root
-# mkdir -p $XDG_RUNTIME_DIR
-# chmod 700 $XDG_RUNTIME_DIR
-# export SAPIEN_USE_EGL=1
-# export DISPLAY=  # 确保不用 X
-
-
-# # TODO make it as Personal Key file
-# export HF_TOKEN=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
-# export WANDB_API_KEY=943ecb8d26fc2b3879cbc2d667414974906aebb9
-# export HUGGINGFACE_HUB_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
-# export TRANSFORMERS_CACHE=/fs-computility/efm/yejinhui/.cache/huggingface_cache
-# export HF_HOME=/fs-computility/efm/yejinhui/.cache/huggingface_cache
-# export HF_TOKEN=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
-# export WANDB_API_KEY=943ecb8d26fc2b3879cbc2d667414974906aebb9
-
-
-# export VK_ICD_FILENAMES=$HOME/.local/share/vulkan/icd.d/nvidia_icd.json
-# export VK_LAYER_PATH=$HOME/.local/share/vulkan/explicit_layer.d  # 可为空
-# export VK_LAYER_PATH=$HOME/.local/share/vulkan/implicit_layer.d
-
-# export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-
-
+echo `which python`
 
 cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
-# conda activate simpler_env4 # make sure you are in the right conda env
-export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
 
-# must to be all absolute paths
-MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/CogACT-Base/checkpoints/CogACT-Base.pt
-MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Checkpoints/pd_cogact_bridge_rt--image_aug/checkpoints/step-020000-epoch-00-loss=0.0494.pt
+# export DEBUG=1
 
-gpu_id=5
-policy_model=cogact
+# 接收传入的模型路径参数
+MODEL_PATH=$1
+TSET_NUM=5
+
+# 可选：判断是否传入了参数
+if [ -z "$MODEL_PATH" ]; then
+  echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
+  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_60000_pytorch_model.pt"
+fi
+
+policy_model=QwenACTAFormer
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small
-
 
 scene_name=bridge_table_1_v1
 robot=widowx
 rgb_overlay_path=ManiSkill2_real2sim/data/real_inpainting/bridge_real_eval_1.png
 robot_init_x=0.147
 robot_init_y=0.028
-
 
 # 任务列表，每行指定一个 env-name
 declare -a ENV_NAMES=(
@@ -51,42 +32,54 @@ declare -a ENV_NAMES=(
   PutSpoonOnTableClothInScene-v0
 )
 
-# 遍历任务，依次分配 GPU
+# 如果 DEBUG 被设置为 1，则定义 ENV_NAMES
+if [ "$DEBUG" -eq 1 ]; then
+  declare -a ENV_NAMES=(
+    # StackGreenCubeOnYellowCubeBakedTexInScene-v0
+    # PutCarrotOnPlateInScene-v0
+    # PutSpoonOnTableClothInScene-v0
+  )
+fi
+
+# 遍历任务，每个 env 执行 5 次，依次分配 GPU 并打 tag
+# 遍历每个 env（通过下标 i）并执行多次 run
 for i in "${!ENV_NAMES[@]}"; do
-  gpu_id=$((i % 8))  # 假设 GPU 0–7 共 8 个
-  ckpt_dir=$(dirname "${ckpt_path}")
-  ckpt_base=$(basename "${ckpt_path}")
-  
-  ckpt_name="${ckpt_base%.*}"  # 去掉 .pt 或 .bin 后缀
-  task_log="${ckpt_dir}/${ckpt_name}_infer_${ENV_NAMES[$i]}.log"
+  env="${ENV_NAMES[i]}"
+  for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
+    gpu_id=$((i  % 8))  # 假设 GPU 0–3 共 4 个，i 用来分配 GPU
+    ckpt_dir=$(dirname "${ckpt_path}")
+    ckpt_base=$(basename "${ckpt_path}")
+    ckpt_name="${ckpt_base%.*}"  # 去掉 .pt 或 .bin 后缀
 
+    tag="run${run_idx}"
+    task_log="${ckpt_dir}/${ckpt_name}_infer_${env}.log.${tag}"
 
-  echo "▶️ Launching task on GPU $gpu_id: ${ENV_NAMES[$i]}, log to ${task_log}"
+    echo "▶️ Launching task [${env}] run#${run_idx} on GPU $gpu_id, log → ${task_log}"
 
-  CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py \
-    --policy-model ${policy_model} \
-    --ckpt-path ${ckpt_path} \
-    --robot ${robot} \
-    --policy-setup widowx_bridge \
-    --control-freq 5 \
-    --sim-freq 500 \
-    --max-episode-steps 120 \
-    --env-name "${ENV_NAMES[$i]}" \
-    --scene-name ${scene_name} \
-    --rgb-overlay-path ${rgb_overlay_path} \
-    --robot-init-x ${robot_init_x} ${robot_init_x} 1 \
-    --robot-init-y ${robot_init_y} ${robot_init_y} 1 \
-    --obj-variation-mode episode \
-    --obj-episode-range 0 24 \
-    --robot-init-rot-quat-center 0 0 0 1 \
-    --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1 \
-    > "${task_log}" 2>&1 &
+    CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py \
+      --policy-model ${policy_model} \
+      --ckpt-path ${ckpt_path} \
+      --robot ${robot} \
+      --policy-setup widowx_bridge \
+      --control-freq 5 \
+      --sim-freq 500 \
+      --max-episode-steps 120 \
+      --env-name "${env}" \
+      --scene-name ${scene_name} \
+      --rgb-overlay-path ${rgb_overlay_path} \
+      --robot-init-x ${robot_init_x} ${robot_init_x} 1 \
+      --robot-init-y ${robot_init_y} ${robot_init_y} 1 \
+      --obj-variation-mode episode \
+      --obj-episode-range 0 24 \
+      --robot-init-rot-quat-center 0 0 0 1 \
+      --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1 \
+      > "${task_log}" 2>&1 &
 
+  done
 done
 
-
-# V2
-declare -a ENV_NAMES=(
+# V2 同理：PutEggplantInBasketScene-v0 也执行 5 次
+declare -a ENV_NAMES_V2=(
   PutEggplantInBasketScene-v0
 )
 
@@ -96,40 +89,41 @@ rgb_overlay_path=ManiSkill2_real2sim/data/real_inpainting/bridge_sink.png
 robot_init_x=0.127
 robot_init_y=0.06
 
+for i in "${!ENV_NAMES_V2[@]}"; do
+  env="${ENV_NAMES_V2[i]}"
+  for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
+    gpu_id=$(((i + 3) % 8))  # 假设 GPU 0–3 共 4 个，偏移 3
+    ckpt_dir=$(dirname "${ckpt_path}")
+    ckpt_base=$(basename "${ckpt_path}")
+    ckpt_name="${ckpt_base%.*}"
 
-# 遍历任务，依次分配 GPU
-for i in "${!ENV_NAMES[@]}"; do
-  gpu_id=$(((i + 3) % 8))  # 假设 GPU 0–7 共 8 个
-  ckpt_dir=$(dirname "${ckpt_path}")
-  ckpt_base=$(basename "${ckpt_path}")
-  ckpt_name="${ckpt_base%.*}"  # 去掉 .pt 或 .bin 后缀
-  task_log="${ckpt_dir}/${ckpt_name}_infer_${ENV_NAMES[$i]}.log"
+    tag="run${run_idx}"
+    task_log="${ckpt_dir}/${ckpt_name}_infer_${env}.log.${tag}"
 
+    echo "▶️ Launching V2 task [${env}] run#${run_idx} on GPU $gpu_id, log → ${task_log}"
 
-  echo "▶️ Launching task on GPU $gpu_id: ${ENV_NAMES[$i]}, log to ${task_log}"
-
-  CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py \
-    --policy-model ${policy_model} \
-    --ckpt-path ${ckpt_path} \
-    --robot ${robot} \
-    --policy-setup widowx_bridge \
-    --control-freq 5 \
-    --sim-freq 500 \
-    --max-episode-steps 120 \
-    --env-name "${ENV_NAMES[$i]}" \
-    --scene-name ${scene_name} \
-    --rgb-overlay-path ${rgb_overlay_path} \
-    --robot-init-x ${robot_init_x} ${robot_init_x} 1 \
-    --robot-init-y ${robot_init_y} ${robot_init_y} 1 \
-    --obj-variation-mode episode \
-    --obj-episode-range 0 24 \
-    --robot-init-rot-quat-center 0 0 0 1 \
-    --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1 \
-    > "${task_log}" 2>&1 &
-
+    CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py \
+      --policy-model ${policy_model} \
+      --ckpt-path ${ckpt_path} \
+      --robot ${robot} \
+      --policy-setup widowx_bridge \
+      --control-freq 5 \
+      --sim-freq 500 \
+      --max-episode-steps 120 \
+      --env-name "${env}" \
+      --scene-name ${scene_name} \
+      --rgb-overlay-path ${rgb_overlay_path} \
+      --robot-init-x ${robot_init_x} ${robot_init_x} 1 \
+      --robot-init-y ${robot_init_y} ${robot_init_y} 1 \
+      --obj-variation-mode episode \
+      --obj-episode-range 0 24 \
+      --robot-init-rot-quat-center 0 0 0 1 \
+      --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1 \
+      2>&1 | tee "${task_log}" &
+  done
 done
 
+      # 2>&1 | tee "${task_log}" &
 # 等待所有后台任务完成
 wait
 echo "✅ 所有测试完成"
-

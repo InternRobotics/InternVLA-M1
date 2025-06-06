@@ -1,35 +1,45 @@
-# shader_dir=rt means that we turn on ray-tracing rendering; this is quite crucial for the open / close drawer task as policies often rely on shadows to infer depth
-gpu_id=1
-MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_20000_pytorch_model.pt
+# 使用所有 8 个 GPU 并将任务挂到后台运行
 
+# 原先的单 GPU 配置已移除
+# 接收传入的模型路径参数
+MODEL_PATH=$1
+
+# 可选：判断是否传入了参数
+if [ -z "$MODEL_PATH" ]; then
+  echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
+  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_40000_pytorch_model.pt"
+fi
 cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
+
 # conda activate simpler_env4 # make sure you are in the right conda env
 export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
 
 policy_model=QwenACTAFormer
 
 declare -a ckpt_paths=(
-${MODEL_PATH}
+  ${MODEL_PATH}
 )
 # CogACT/CogACT-Large CogACT/CogACT-Small
 declare -a env_names=(
-CloseTopDrawerCustomInScene-v0
-CloseMiddleDrawerCustomInScene-v0
-CloseBottomDrawerCustomInScene-v0
-OpenTopDrawerCustomInScene-v0
-OpenMiddleDrawerCustomInScene-v0
-OpenBottomDrawerCustomInScene-v0
+  CloseTopDrawerCustomInScene-v0
+  CloseMiddleDrawerCustomInScene-v0
+  CloseBottomDrawerCustomInScene-v0
+  OpenTopDrawerCustomInScene-v0
+  OpenMiddleDrawerCustomInScene-v0
+  OpenBottomDrawerCustomInScene-v0
 )
 
 EXTRA_ARGS="--enable-raytracing"
 
+# 使用 8 GPUs 轮转分配
+total_gpus=8
+count=0
 
 # base setup
 scene_name=frl_apartment_stage_simple
 
 EvalSim() {
-  echo ${ckpt_path} ${env_name}
-
+  echo "使用 GPU ${gpu_id} 运行: ${ckpt_path} ${env_name}"
   CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py --policy-model ${policy_model} --ckpt-path ${ckpt_path} \
     --robot google_robot_static \
     --control-freq 3 --sim-freq 513 --max-episode-steps 113 \
@@ -40,30 +50,30 @@ EvalSim() {
     ${EXTRA_ARGS}
 }
 
-
 for ckpt_path in "${ckpt_paths[@]}"; do
   for env_name in "${env_names[@]}"; do
-    EvalSim
+    gpu_id=$((count % total_gpus))
+    EvalSim &
+    count=$((count + 1))
   done
 done
 
-
 # backgrounds
-
 declare -a scene_names=(
-"modern_bedroom_no_roof"
-"modern_office_no_roof"
+  "modern_bedroom_no_roof"
+  "modern_office_no_roof"
 )
 
 for scene_name in "${scene_names[@]}"; do
   for ckpt_path in "${ckpt_paths[@]}"; do
     for env_name in "${env_names[@]}"; do
       EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt"
-      EvalSim
+      gpu_id=$((count % total_gpus))
+      EvalSim &
+      count=$((count + 1))
     done
   done
 done
-
 
 # lightings
 scene_name=frl_apartment_stage_simple
@@ -71,12 +81,24 @@ scene_name=frl_apartment_stage_simple
 for ckpt_path in "${ckpt_paths[@]}"; do
   for env_name in "${env_names[@]}"; do
     EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt light_mode=brighter"
-    EvalSim
+    gpu_id=$((count % total_gpus))
+    if (( (count + 1) == 32 )); then
+      EvalSim
+    else
+      EvalSim &
+    fi
+    count=$((count + 1))
+
     EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt light_mode=darker"
-    EvalSim
+    gpu_id=$((count % total_gpus))
+    if (( (count + 1) % 32 == 0 )); then
+      EvalSim
+    else
+      EvalSim &
+    fi
+    count=$((count + 1))
   done
 done
-
 
 # new cabinets
 scene_name=frl_apartment_stage_simple
@@ -84,8 +106,18 @@ scene_name=frl_apartment_stage_simple
 for ckpt_path in "${ckpt_paths[@]}"; do
   for env_name in "${env_names[@]}"; do
     EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt station_name=mk_station2"
-    EvalSim
+    gpu_id=$((count % total_gpus))
+    EvalSim &
+    count=$((count + 1))
+
     EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt station_name=mk_station3"
-    EvalSim
+    gpu_id=$((count % total_gpus))
+    EvalSim &
+    count=$((count + 1))
   done
 done
+
+# 等待所有后台任务完成
+wait
+
+echo "所有任务已完成。"

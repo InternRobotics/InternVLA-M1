@@ -49,7 +49,7 @@ from llavavla.training import VLAMetrics
 
 from llavavla.conf import VLAConfig, VLARegistry
 
-from llavavla.dataloader.datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
+from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"

@@ -314,4 +314,4 @@ if __name__ == "__main__":
         collate_fn=collate_fn,
     )
 
-    batch_samples = next(iter(vla_dataset)) #for debug
+    batch_samples = next(train_dataloader) #for debug

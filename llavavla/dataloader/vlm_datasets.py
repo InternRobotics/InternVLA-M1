@@ -13,15 +13,15 @@ from typing import Dict, Optional, Sequence, List, Tuple
 from io import BytesIO
 import base64
 from collections.abc import Sequence
-
+from types import SimpleNamespace
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
 from decord import VideoReader
 import transformers
-
-from . import data_list
+from omegaconf import OmegaConf
+from .qwen_data_config import data_list
 from .rope2d import get_rope_index_25, get_rope_index_2
 
 IGNORE_INDEX = -100
@@ -176,11 +176,12 @@ class LazySupervisedDataset(Dataset):
         rank0_print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         self.list_data_dict = list_data_dict
-        self.data_args = data_args
-        self.data_args.image_processor.max_pixels = data_args.max_pixels
-        self.data_args.image_processor.min_pixels = data_args.min_pixels
-        self.data_args.image_processor.size["longest_edge"] = data_args.max_pixels
-        self.data_args.image_processor.size["shortest_edge"] = data_args.min_pixels
+        self.data_args = data_args # 这里还是展示需要 image_processor
+        # TODO 这个逻辑很不清晰， 不能这样修改
+        # self.data_args.image_processor.max_pixels = data_args.max_pixels
+        # self.data_args.image_processor.min_pixels = data_args.min_pixels
+        # self.data_args.image_processor.size["longest_edge"] = data_args.max_pixels
+        # self.data_args.image_processor.size["shortest_edge"] = data_args.min_pixels
 
     def __len__(self):
         return len(self.list_data_dict)
@@ -591,6 +592,16 @@ class FlattenedDataCollatorForSupervisedDataset(DataCollatorForSupervisedDataset
         return batch
 
 
+
+def collate_fn(batch):
+    # batch: list of items, 假设每个 item 是 (PIL.Image, other_info)
+
+    pass # TODO 如果要动态 input， 就不能用 default_collate
+    # dist.barrier()  # 确保所有进程都在同一时间点
+
+    return batch # 我们宁愿返回一个 list_of_dict for 动态的 inputs
+
+
 def make_supervised_data_module(
     tokenizer: transformers.PreTrainedTokenizer, data_args
 ) -> Dict:
@@ -606,7 +617,7 @@ def make_supervised_data_module(
         eval_dataset = LazySupervisedDataset(tokenizer=tokenizer, data_args=eval_data_args)
     
     # 根据是否需要 flatten 数据选择合适的 collator
-    if data_args.data_flatten:
+    if data_args.data_flatten: # TODO 这里是 将  Concatenate batch sequences， 建议取消掉， 带来的变化是 action 很难处理的
         data_collator = FlattenedDataCollatorForSupervisedDataset(tokenizer=tokenizer)
     else:
         data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
@@ -618,10 +629,103 @@ def make_supervised_data_module(
     )
 
 
-if __name__ == "__main__":
+def make_vlm_dataloader(cfg):
+    data_args = cfg.vlm_data
+    image_processor = AutoProcessor.from_pretrained(
+        cfg.vla.base_vlm,
+        ).image_processor
 
+    #  @Jinhui TODO 后期要移除 和模型绑定的逻辑，直接用qwen_processor
+    tokenizer = transformers.AutoTokenizer.from_pretrained( 
+        cfg.vla.base_vlm,
+        model_max_length=data_args.model_max_length,
+        padding_side="right",
+        use_fast=False,
+    )
+
+    # 避免在dataset 内部处理这些
+    image_processor.max_pixels = data_args.max_pixels
+    image_processor.min_pixels = data_args.min_pixels
+    image_processor.size["longest_edge"] = data_args.max_pixels
+    image_processor.size["shortest_edge"] = data_args.min_pixels
+    data_args.model_type = "qwen2.5vl"
+    data_args_ns = SimpleNamespace(**OmegaConf.to_container(data_args, resolve=True))
+    data_args_ns.image_processor = image_processor # TODO 后期看如何 移除和模型绑定的逻辑                         
+    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args_ns)
+    
+
+    # 
+    train_dataset = data_module["train_dataset"]
+    data_collator = data_module["data_collator"]
+    from torch.utils.data import DataLoader
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=cfg.vlm_data.per_device_batch_size,
+        collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
+    ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
+    
+    # eval_dataloader = DataLoader(
+    #     data_module["eval_dataset"],
+    #     batch_size=cfg.vlm_data.per_device_batch_size,
+    #     collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
+    # ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
+    
+
+    return {
+        "train_dataloader": train_dataloader,
+        }
+    # "eval_dataloader": eval_dataloader,
+
+from transformers import AutoTokenizer, AutoProcessor
+
+if __name__ == "__main__":
+    # 每个文件要能够独立调试和测试
 
     # data config
     # 
+    import debugpy
+    debugpy.listen(("0.0.0.0", 5678))
+    print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+    debugpy.wait_for_client()
+
+    # Load YAML config & Convert CLI overrides to dotlist config
+    config_yaml = "llavavla/conf/qwenvla_cotrain.yaml"
+    cfg = OmegaConf.load(config_yaml)
+    data_args = cfg.vlm_data
+    image_processor = AutoProcessor.from_pretrained(
+        cfg.vla.base_vlm,
+        ).image_processor
+
+    #  @Jinhui TODO 后期要移除 和模型绑定的逻辑，直接用qwen_processor
+    tokenizer = transformers.AutoTokenizer.from_pretrained( 
+        cfg.vla.base_vlm,
+        model_max_length=data_args.model_max_length,
+        padding_side="right",
+        use_fast=False,
+    )
+
+    # 避免在dataset 内部处理这些
+    image_processor.max_pixels = data_args.max_pixels
+    image_processor.min_pixels = data_args.min_pixels
+    image_processor.size["longest_edge"] = data_args.max_pixels
+    image_processor.size["shortest_edge"] = data_args.min_pixels
+    data_args.model_type = "qwen2.5vl"
+    data_args_ns = SimpleNamespace(**OmegaConf.to_container(data_args, resolve=True))
+    data_args_ns.image_processor = image_processor # TODO 后期看如何 移除和模型绑定的逻辑                         
+    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args_ns)
+    
+
+    # 
+    train_dataset = data_module["train_dataset"]
+    data_collator = data_module["data_collator"]
+    from torch.utils.data import DataLoader
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=cfg.vlm_data.per_device_batch_size,
+        collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
+    ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
+
+    batch_samples = next(iter(train_dataloader)) #for debug
+
     pass
 

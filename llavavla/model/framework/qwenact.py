@@ -5,7 +5,7 @@ cogactvla.py
 
 from __future__ import annotations
 
-from pathlib import Path, os
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from types import SimpleNamespace
@@ -265,7 +265,7 @@ class QwenQFormerDiT(nn.Module):
         return actions, normalized_actions
 
 
-    def freeze_backbones(self, stage):
+    def freeze_backbones(self):
         """
         根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
           - patterns: 从 config.vla.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表

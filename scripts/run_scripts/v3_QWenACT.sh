@@ -33,13 +33,13 @@ accelerate launch \
   --num_processes=8 llavavla/training/train_qwen_qformer_dit.py \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
-  --vla.data_mix bridge \
+  --vla.data_mix bridge_rt_1 \
   --vla.expected_world_size 8 \
   --vla.global_batch_size 512 \
-  --vla.per_device_batch_size 64 \
-  --vla.freeze_modules "qwen_vl_interface" \
+  --vla.per_device_batch_size 32 \
+  --vla.freeze_modules "" \
   --vla.learning_rate 2e-5 \
-  --vla.qformer_start_layer 0 \
+  --vla.qformer_start_layer 36 \
   --vla.qformer_end_layer 37 \
   --vla.max_steps 3000000 \
   --data_root_dir ${data_root_dir} \
@@ -49,7 +49,7 @@ accelerate launch \
   --wandb_project llavavla \
   --wandb_entity jinhuiye \
   --hf_token HF_TOKEN \
-  --save_interval 50 \
+  --save_interval 10000 \
   --repeated_diffusion_steps 8 \
   --future_action_window_size 15 \
   --action_model_type DiT-B \

@@ -2,7 +2,7 @@ dataset_use: aokvqa_cauldron_llava_format,sharegpt4v_coco,sharegpt4v_knowledge,s
 eval_dataset: aokvqa_cauldron_llava_format
 video_max_frames: 8
 video_min_frames: 4
-data_flatten: true
+data_flatten: false
 base_interval: 2
 max_pixels: 50176
 min_pixels: 784

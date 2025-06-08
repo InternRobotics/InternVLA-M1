@@ -1,8 +1,8 @@
 import re
 
 from pathlib import Path
-
-system2_root="/fs-computility/efm/yejinhui/Projects/System2VLA"
+# 这里和 rlds 要放到不同文件夹， 避免互相混淆
+system2_root="/mnt/petrelfs/yejinhui/Projects/System2VLA"
 json_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/llava_format"
 image_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/visualData"
 # 新增数据集定义

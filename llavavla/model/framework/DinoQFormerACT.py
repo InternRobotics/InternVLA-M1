@@ -266,7 +266,7 @@ class QwenDinoQFormerDiT(nn.Module):
         return actions, normalized_actions
 
 
-    def freeze_backbones(self, stage): # TODO freeze 是架构的一部分， 得全局控制， 要写个提示 用户在这里 做声明
+    def freeze_backbones(self): # TODO freeze 是架构的一部分， 得全局控制， 要写个提示 用户在这里 做声明
         # self.vlm.freeze_backbones(stage)
 
         """

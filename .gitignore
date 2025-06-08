@@ -153,3 +153,5 @@ playground/*
 eval/SimplerEnv
 
 results
+nohup.out
+*.out

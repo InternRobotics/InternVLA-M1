@@ -1,0 +1,17 @@
+{
+    "exclude": [
+      "build",
+      "dist",
+      "**/__pycache__",
+      "checkpoints",
+      "results",
+      ".vscode",
+      ".git",
+      "playground",
+      "scripts/debug",
+      "eval/debug_logs",
+      "playground",
+      "cogact.egg-info"
+    ]
+  }
+  

@@ -38,6 +38,11 @@ from tqdm import tqdm
 import wandb
 from torch.utils.data import Dataset, DataLoader
 from typing import Optional
+import argparse
+from omegaconf import OmegaConf
+from hydra import initialize
+
+from llavavla.training.metrics import normalize_dotlist_args
 
 from prismatic.overwatch import initialize_overwatch
 # from prismatic.vla import get_vla_dataset_and_collator
@@ -142,7 +147,7 @@ def load_fast_tokenizer():
     )
     return fast_tokenizer
 
-def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
+def trainer(model, vla_train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
 
     cfg.logging_frequency = 10
     cfg.gradient_accumulation_steps = 1
@@ -198,7 +203,7 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
         # batch_samples_vlm = next(iter(train_dataloader_vlm))
         # batch = batch_samples_vla.extend(batch_samples_vlm) 
         
-        for batch in train_dataloader:
+        for batch in vla_train_dataloader:
             # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
             optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
             # dist.barrier()
@@ -234,7 +239,7 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                     lr = lr_scheduler.get_last_lr()[0]
                     logger.info(f"Step {completed_steps}, Loss: {action_loss.item()}, Grad Norm: {total_norm}")
                     lr = lr_scheduler.get_last_lr()[0]
-                    epoch = int(completed_steps) // len(train_dataloader) # 他们都是经过 DDP的
+                    epoch = int(completed_steps) // len(vla_train_dataloader) # 他们都是经过 DDP的
                     result = {
                         "train_loss": action_loss.item(),
                         "grad_norm": total_norm,
@@ -284,16 +289,10 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
         logger.info(f"Training finished. Final checkpoint saved at {checkpoint_path}")
         wandb.finish()
 
-@draccus.wrap()
-def train(cfg: TrainConfig) -> None:
+# @draccus.wrap()
+def train(cfg) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
     # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
-    if cfg.is_debug:
-        if int(os.environ.get("RANK", -1)) == 0:
-            import debugpy
-            debugpy.listen(("0.0.0.0", 5878))
-            print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-            debugpy.wait_for_client()
 
     # accelerator.dataloader_config.dispatch_batches =  False
     # Configure Unique Run Name & Save Directory
@@ -311,12 +310,16 @@ def train(cfg: TrainConfig) -> None:
 
     # Start =>> Build Directories and Set Randomness
     overwatch.info('"Do or do not; there is no try."', ctx_level=1)
-    os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
-    os.makedirs(cfg.run_root_dir / cfg.run_id / "checkpoints", exist_ok=True)
+    dist.barrier()  # Ensure all processes are synchronized before starting training
+    run_dir = Path(cfg.run_root_dir) / cfg.run_id
+    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(run_dir / "checkpoints", exist_ok=True)
 
     # Save Configuration =>> additionally save a JSON version for later HF Integration
     if overwatch.is_rank_zero():
-        draccus.dump(cfg, open(run_dir / "config.yaml", "w"))
+        # Save as YAML using OmegaConf
+        OmegaConf.save(cfg, run_dir / "config.yaml")
+        # Additionally save as JSON TODO 之后要将 .model 的参数单独save json
         with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
             yaml_cfg = yaml.safe_load(f_yaml)
             json.dump(yaml_cfg, f_json, indent=2)
@@ -337,8 +340,7 @@ def train(cfg: TrainConfig) -> None:
 
 
     # [Explicit] Call to `freeze_backbones` here for clarity =>> will log exactly what is/is not frozen
-    stage = "full-finetune"  # Full fine-tuning
-    overwatch.info(f"Invoking `VLM.freeze_backbones()` for `{vla_id}` => Stage: `{stage}`")
+    
     vla.freeze_backbones()
 
     # Print number of total/trainable model parameters # TODO 应该集成到trainer 中
@@ -363,7 +365,6 @@ def train(cfg: TrainConfig) -> None:
     )
 
     # Create DataLoader
-    
     train_dataloader = DataLoader(
         vla_dataset,
         batch_size=cfg.vla.per_device_batch_size, # @Jinhui TODO 感觉即使有个空的 collate_fn 也会让代码 扩展性 更好
@@ -376,11 +377,11 @@ def train(cfg: TrainConfig) -> None:
     if overwatch.is_rank_zero():
         save_dataset_statistics(vla_dataset.dataset_statistics, run_dir)
     
-    dist.barrier()
-    # Create Train Strategy
-    overwatch.info(f"Initializing Train Strategy `{cfg.train_strategy}`")
-    # Prepare everything with Accelerator
     
+    # Create Train Strategy
+    
+    # Prepare everything with Accelerator
+    dist.barrier()
     accelerator.dataloader_config.dispatch_batches =  False
 
     # Initialize optimizer
@@ -416,21 +417,11 @@ def train(cfg: TrainConfig) -> None:
 
     # Create Metrics =>> Handles on the fly tracking, logging to specified trackers (e.g., JSONL, Weights & Biases)
     overwatch.info(f"Creating Metrics with Active Trackers => `{cfg.trackers}`")
-    # metrics = VLAMetrics(
-    #     cfg.trackers,
-    #     cfg.run_id,
-    #     run_dir,
-    #     draccus.encode(cfg),
-    #     wandb_project=cfg.wandb_project,
-    #     wandb_entity=cfg.wandb_entity,
-    #     resume_step=cfg.resume_step,
-    #     resume_epoch=cfg.resume_epoch,
-    # )
 
     # Run VLA Training # TODO move them to class tainer 
     trainer(
         model=vla,
-        train_dataloader=train_dataloader,
+        vla_train_dataloader=train_dataloader,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
         accelerator=accelerator,
@@ -444,5 +435,21 @@ def train(cfg: TrainConfig) -> None:
 
 
 if __name__ == "__main__":
-    
-    train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_yaml", type=str, default="llavavla/conf/qwenact.yaml", help="Path to YAML config")
+    args, clipargs = parser.parse_known_args()
+
+    # Load YAML config & Convert CLI overrides to dotlist config
+    cfg = OmegaConf.load(args.config_yaml)
+    dotlist = normalize_dotlist_args(clipargs)  # Normalize CLI args to dotlist format
+    cli_cfg = OmegaConf.from_dotlist(dotlist)
+    cfg = OmegaConf.merge(cfg, cli_cfg)
+
+    # # if cfg.is_debug:
+    # if cfg.is_debug and overwatch.is_rank_zero():
+    #     import debugpy
+    #     debugpy.listen(("0.0.0.0", 5678))
+    #     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+    #     debugpy.wait_for_client()
+
+    train(cfg)

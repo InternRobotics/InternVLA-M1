@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=ab_prompt        # name
 #SBATCH -p efm_p
-#SBATCH -N 8                    # nodes
+#SBATCH -N 16                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
 #SBATCH --cpus-per-task=128          # number of cores per tasks
 #SBATCH --gres=gpu:8                 # number of gpus
@@ -41,12 +41,14 @@ export run_root_dir=./results/Checkpoints
 export lr=5e-5 # defualt export lr=1e-4
 export qformer_start_layer=36
 export qformer_end_layer=37
+export vlm_per_batch_size=4
+export vla_per_device_batch_size=16
 
 export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
-export global_batch_size=$((TOTAL_GPUS * 16)) # 512 is the default global batch size, you can change it if needed
+export global_batch_size=$((TOTAL_GPUS * vla_per_device_batch_size)) # 512 is the default global batch size, you can change it if needed
 echo "Total GPUs: $TOTAL_GPUS"
 
-export run_id=0608_ftqwen_vlm_bridge_rt_1_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
+export run_id=0608_ftqwen_vlm_bridge_rt_1_${TOTAL_GPUS}gpus_vlm_${vlm_per_batch_size}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -83,7 +85,8 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.max_steps 100000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size ${global_batch_size} \
-  --vla.per_device_batch_size 16 \
+  --vla.per_device_batch_size ${vla_per_device_batch_size} \
+  --vlm_data.per_device_batch_size ${vlm_per_batch_size} \
   --vla.learning_rate ${lr} \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \

@@ -39,6 +39,7 @@ accelerate launch \
   --vla.expected_world_size 8 \
   --vla.global_batch_size 32 \
   --vla.per_device_batch_size 16 \
+  --vlm_data.per_device_batch_size 8 \
   --vla.freeze_modules "" \
   --vla.learning_rate 5e-5 \
   --vla.qformer_start_layer 36 \

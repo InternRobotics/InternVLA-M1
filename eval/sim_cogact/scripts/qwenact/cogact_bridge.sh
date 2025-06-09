@@ -13,7 +13,7 @@ TSET_NUM=5
 # 可选：判断是否传入了参数
 if [ -z "$MODEL_PATH" ]; then
   echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
-  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_60000_pytorch_model.pt"
+  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0608_ftqwen_vlm_bridge_rt_1_32gpus_vlm_4/checkpoints/steps_10000_pytorch_model.pt"
 fi
 
 policy_model=QwenACTAFormer

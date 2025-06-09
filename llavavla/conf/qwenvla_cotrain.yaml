@@ -67,4 +67,4 @@ vlm_data:
   video_min_frame_pixels: 3136
   model_max_length: 4096
   model_type: qwen2.5vl
-  per_device_batch_size: 2
+  per_device_batch_size: 4

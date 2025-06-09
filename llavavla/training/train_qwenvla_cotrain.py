@@ -237,7 +237,6 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
             # vlm_loss = output.vlm_loss
             # dist.barrier()
 
-
         accelerator.backward(action_loss+vlm_loss)
 
         if cfg.gradient_clipping is not None:

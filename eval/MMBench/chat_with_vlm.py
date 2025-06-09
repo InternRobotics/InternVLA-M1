@@ -3,13 +3,13 @@ from qwen_vl_utils import process_vision_info
 from llavavla.model.framework.qwenact import QwenQFormerDiT
 import os
 
-if os.environ.get("DEBUG", None):
-    import debugpy
-    debugpy.listen(("0.0.0.0", 5878))
-    print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-    debugpy.wait_for_client()
 
-saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_fixqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_20000_pytorch_model.pt"
+import debugpy
+debugpy.listen(("0.0.0.0", 5678))
+print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+debugpy.wait_for_client()
+
+saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0608_ftqwen_vlm_bridge_rt_1_64gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_5000_pytorch_model.pt"
 qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
         )
@@ -64,7 +64,7 @@ messages2 = [
     {"role": "user", "content": "Who are you?"},
 ]
 # Combine messages for batch processing
-messages = [messages1 ]
+messages = [messages1,messages2, messages_text ]
 
 # Preparation for batch inference
 texts = [
@@ -91,3 +91,17 @@ output_texts = processor.batch_decode(
 )
 print(output_texts)
 
+
+
+# WindowX 
+
+# 5k 20 --> 1.3 
+# ['1+1 等于 2.', 
+# 'I am a large language model created by Alibaba Cloud. I am called Qwen.', 
+# '北京市, 中国']
+
+
+#10k WindowX 50 --> 13.3  
+# ['2', 
+# "I am a large, green octopus plushie. Here are some details:\n\n- I have **eight** tentacles, each one is a vibrant green color. The tentacles are detailed and have a playful appearance.\n- The plushie is lying on its back on a **red blanket**. Its head is in the air and it appears to be floating in the blanket.\n- The background of the image is a **white wall**. To the right of the image, there's a **brown pillow** resting against the wall.\n\nThis description includes the types and colors of the objects, their actions, and their locations. It also", 
+# 'The capital city of China is Beijing.']

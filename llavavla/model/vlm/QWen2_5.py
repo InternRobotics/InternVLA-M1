@@ -125,7 +125,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs(self, images, instructions = None, prompt="What is in this image?"):
+    def build_qwenvl_inputs(self, images, instructions, prompt="What is in this image?"):
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ab_prompt        # name
+#SBATCH --job-name=rp_qwenact        # name
 #SBATCH -p efm_p
 #SBATCH -N 4                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
@@ -46,7 +46,7 @@ export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
 export global_batch_size=$((TOTAL_GPUS * 16)) # 512 is the default global batch size, you can change it if needed
 echo "Total GPUs: $TOTAL_GPUS"
 
-export run_id=0606_ftqwen_withoutprompt_bridge_rt_1_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
+export run_id=0609_ftqwen_bridge_rt_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -63,7 +63,6 @@ cp $0 ${output_dir}/
   # --vla.freeze_modules qwen_vl_interface \
 
 # bridge_rt_1
-# oxe_magic_soup_plus 
 
 srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
@@ -79,7 +78,7 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.qformer_end_layer ${qformer_end_layer} \
   --vla.freeze_modules "" \
   --vla.data_mix bridge_rt_1 \
-  --vla.max_steps 100000 \
+  --vla.max_steps 5000000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size ${global_batch_size} \
   --vla.per_device_batch_size 16 \

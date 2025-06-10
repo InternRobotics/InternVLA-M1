@@ -113,7 +113,7 @@ class QwenDinoQFormerDiT(nn.Module):
                 image_grid_thw =qwen_inputs.image_grid_thw, # 2* [1,16,16] --> 512 = 16*16*2, 1176 = (224/16)^2 * 3 * 2 @JinhuiYE TODO 这个需要找Qwen 的官方文档验证
                 labels= qwen_inputs.input_ids.clone(),
                 # use_cache=use_cache,
-                output_attentions=True,
+                output_attentions=False, # Flash attention 返回b li a
                 output_hidden_states=True,
                 return_dict=True,
                 # past_key_values=past_key_values,

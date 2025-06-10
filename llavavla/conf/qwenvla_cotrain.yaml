@@ -49,6 +49,9 @@ vla:
   vla_id: prism-dinosiglip-224px+oxe+diffusion
   warmup_ratio: 0.0
   weight_decay: 0.0
+  qwevl:
+    attn_implementation: flash_attention_2
+
 wandb_entity: jinhuiye
 wandb_project: llavavla
 

@@ -71,7 +71,7 @@ overwatch = initialize_overwatch(__name__) # 后期移除， 不要基于 prisma
 logger = get_logger(__name__)
 
 @dataclass
-class TrainConfig:
+class TrainConfig: # TODO 后续移除， 变成只需要 global config 的方式
     # fmt: off
 
     # VLAConfig (`conf/vla.py`); override with --vla.type `VLARegistry.<VLA>.vla_id`
@@ -228,16 +228,14 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
             # vlm_loss = output.vlm_loss
             # dist.barrier()
             total_loss += action_loss.detach().float()
+        accelerator.backward(action_loss)
         
         # 会导致 爆内存， 看来要用 flash attention, 但是不清楚会对 action有什么影响。 TODO 先取消掉 多轮对话？和使用 data-flatten
         with torch.cuda.amp.autocast(dtype=torch.bfloat16):
             output = model.qwen_vl_interface(**batch_samples_vlm) # TODO make vlm and action loss
             vlm_loss = output.loss
-            # dist.barrier()
-            # vlm_loss = output.vlm_loss
-            # dist.barrier()
 
-        accelerator.backward(action_loss+vlm_loss)
+        accelerator.backward(vlm_loss)
 
         if cfg.gradient_clipping is not None:
             accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
@@ -313,13 +311,6 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
 def train(cfg) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
     # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
-
-    # accelerator.dataloader_config.dispatch_batches =  False
-    # Configure Unique Run Name & Save Directory
-    # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
-    # torch.cuda.set_device(device_id := overwatch.local_rank())
-    # torch.cuda.empty_cache() # 全权交给 Accelerator 管理多机多卡
-    
 
     vla_id = cfg.vla.vla_id
     cfg.run_id = (

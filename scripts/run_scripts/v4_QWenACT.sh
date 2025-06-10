@@ -28,6 +28,9 @@ cp $0 ${output_dir}/
   # --pretrained_checkpoint ${MODEL_PATH} \
 # export CUDA_VISIBLE_DEVICES=4,5,6,7
 
+export vlm_per_batch_size=4
+export vla_per_device_batch_size=16
+
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
   --num_processes 8 \

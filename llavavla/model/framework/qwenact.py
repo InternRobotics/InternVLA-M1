@@ -57,7 +57,7 @@ class QwenQFormerDiT(nn.Module):
         super().__init__()
         
         # TODO 全部转 全局config, 要面向对象编程
-        self.qwen_vl_interface = get_qwen2_5_interface(qwen_model_name) 
+        self.qwen_vl_interface = get_qwen2_5_interface(qwen_model_name, config) 
         self.layer_qformer = get_layerwise_qformer(input_hidden_dim=vl_token_dim, output_hidden_dim=action_hidden_dim,config=config) # @Jinhui 需要逻辑从QWen 中对齐 hidden
         self.action_model = ActionModel(model_type = action_model_type,  # TODO @Jinhui 应该写到 get_action_model()
                                             action_hidden_dim = action_hidden_dim, # 这些参数关系要 TODO集中 设置到config
@@ -103,7 +103,7 @@ class QwenQFormerDiT(nn.Module):
         
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions) # @Jinhui TODO add instruction to qwenvl inputs
         with torch.autocast("cuda", dtype=torch.float16):
-
+            # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
                 input_ids=qwen_inputs.input_ids,
                 attention_mask=qwen_inputs.attention_mask,
@@ -111,7 +111,7 @@ class QwenQFormerDiT(nn.Module):
                 image_grid_thw =qwen_inputs.image_grid_thw, # 2* [1,16,16] --> 512 = 16*16*2, 1176 = (224/16)^2 * 3 * 2 @JinhuiYE TODO 这个需要找Qwen 的官方文档验证
                 labels= qwen_inputs.input_ids.clone(),
                 # use_cache=use_cache,
-                output_attentions=True,
+                output_attentions=False, # Flash attention 还不确定是否支持返回attention， 官方代码有bug
                 output_hidden_states=True,
                 return_dict=True,
                 # past_key_values=past_key_values,

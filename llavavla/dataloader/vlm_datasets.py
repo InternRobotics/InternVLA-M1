@@ -435,11 +435,11 @@ class DataCollatorForSupervisedDataset(object):
             [instance[key] for instance in instances]
             for key in ("input_ids", "labels", "position_ids")
         )
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        input_ids = torch.nn.utils.rnn.pad_sequence( # 它没有考虑padding side 的问题 @Jinhui fix qwenvl bug
+            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id, padding_side=self.tokenizer.padding_side
         )
         labels = torch.nn.utils.rnn.pad_sequence(
-            labels, batch_first=True, padding_value=IGNORE_INDEX
+            labels, batch_first=True, padding_value=IGNORE_INDEX, padding_side=self.tokenizer.padding_side
         )
         position_ids = pad_and_cat(position_ids)
         input_ids = input_ids[:, : self.tokenizer.model_max_length]
@@ -639,9 +639,11 @@ def make_vlm_dataloader(cfg):
     tokenizer = transformers.AutoTokenizer.from_pretrained( 
         cfg.vla.base_vlm,
         model_max_length=data_args.model_max_length,
-        padding_side="right",
-        use_fast=False,
+        padding_side="left", # flash Attention version of Qwen2.5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input.
+        use_fast=False, # TODO padding_side="left" 这个事情应该是要和flash Attention 对齐的 
     )
+    # print(tokenizer.padding_side) # 这里是 left
+    # torch.distributed.barrier() # 确保所有进程都在同一时间点
 
     # 避免在dataset 内部处理这些
     image_processor.max_pixels = data_args.max_pixels

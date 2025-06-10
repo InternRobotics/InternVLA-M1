@@ -31,14 +31,19 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         self,
         model_id: str,
         load_for_training: bool = True,
+        vl_config: Optional[dict] = None,  # TODO 
         **kwargs
     ):  
-
-
         super().__init__()
         # QWen 原生模型
         if load_for_training or True: #TODO model -> vlm 
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id,  torch_dtype="auto", device_map="cuda") # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                model_id,  
+                attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
+                torch_dtype="auto", 
+                device_map="cuda",
+            ) # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了
+            # torch.distributed.barrier() # 确保所有进程都加载完毕
         else:
             config = AutoConfig.from_pretrained(model_id)
             model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数, @Jinhui 发现load 空模型需要更多的时间
@@ -60,7 +65,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
+        output_attentions: Optional[bool] = False,
         output_hidden_states: Optional[bool] = True,  # 需要 hidden_states
         return_dict: Optional[bool] = True,
         **kwargs
@@ -146,7 +151,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         for imgs, instruction in zip(images,instructions):
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
-            # prompt = f"what is the key object to finish the task: {instruction}."
+            prompt = f"{instruction}."
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             messages.append(msg)
@@ -177,10 +182,14 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
 
     
-def get_qwen2_5_interface(model_id="/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"):
+def get_qwen2_5_interface(model_id, config=None):
+    if config is None:
+        model = _QWen_VL_Interface(model_id= model_id) # 要时刻记住面向对象编程
+    else:
+        vl_config = config.vla # TODO 后期要统一 config 
+        model = _QWen_VL_Interface(model_id, vl_config)
 
-    model = _QWen_VL_Interface(model_id= model_id) # 要时刻记住面向对象编程
-
+    
     return model
 
 if __name__ == "__main__":

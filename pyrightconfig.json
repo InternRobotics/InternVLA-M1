@@ -10,6 +10,7 @@
       "eval/debug_logs",
       "playground",
       "cogact.egg-info"
-    ]
+    ],
+     "typeCheckingMode": "off"
   }
   

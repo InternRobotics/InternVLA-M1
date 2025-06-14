@@ -28,6 +28,7 @@ LLaVA-VLA
 ├── README.md            # 项目说明文件
 ├── requirements.txt     # 依赖包列表
 ```
+
 # 最佳开发：
 1. 在 framework 一个.py 就是一个论文的 model, 可以理由 其他文件夹的share模块或者自己在.py local 定义 modules (经过考虑后可以移动到share)
 
@@ -39,7 +40,7 @@ LLaVA-VLA
 ## 希望的feature 和 理想的脚本
 1. Pretraining VLM
 2. Pretraining DiT
-3. align VLM with DiT (希望在 5 epcoh 内完成 alignment)
+3. align VLM with DiT (希望在 5 epcoh 内完成 alignment) # done 
 
 
 ## 开发规划

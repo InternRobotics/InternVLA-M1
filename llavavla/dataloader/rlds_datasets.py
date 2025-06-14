@@ -49,8 +49,8 @@ class RLDSBatchTransform: #
 
 
 
-class RLDSDataset(IterableDataset):
-    def __init__(
+class RLDSDataset(IterableDataset): # RLDSDataset: TODO norm 是否做了
+    def __init__( 
         self,
         data_root_dir: Path,
         data_mix: str,
@@ -280,10 +280,19 @@ def collate_fn(batch):
 if __name__ == "__main__":
     pass
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
-
     # test  get_vla_dataset
-    cfg = {}
-
+    json_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_32gpus_lr_5e-5_qformer_0_6/config.json"
+    # cfg = {}  
+    import json
+    with open(json_path, "r") as f:
+        cfg = json.load(f)
+    
+    # simplespace
+    from llavavla.model.framework.qwenact import dict_to_namespace
+    cfg = dict_to_namespace(cfg)
+    from torch.utils.data import DataLoader
+    # from 
+    
     vla_dataset = get_vla_dataset( # 拒绝任何内部转换
         cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
         cfg.vla.data_mix,
@@ -294,12 +303,15 @@ if __name__ == "__main__":
         past_action_window_size=cfg.past_action_window_size,
         load_all_data_for_training=cfg.load_all_data_for_training,
     )
-    
 
+
+    run_dir = "./"
+    # save_dataset_statistics(vla_dataset.dataset_statistics, run_dir)
+    
     train_dataloader = DataLoader(
         vla_dataset,
         batch_size=cfg.vla.per_device_batch_size,
         collate_fn=collate_fn,
     )
 
-    batch_samples = next(iter(vla_dataset)) #for debug
+    batch_samples = next(train_dataloader) #for debug

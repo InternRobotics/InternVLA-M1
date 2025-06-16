@@ -5,10 +5,6 @@ Lightweight PyTorch Dataset Definition for wrapping RLDS TFDS Pipeline; just def
 format to OpenVLA, IterableDataset shim.
 """
 
-import debugpy 
-debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
-print("Waiting for debugger to attach...")
-debugpy.wait_for_client()  # 等待 VS Code 附加
 
 import os, json, pickle, bisect, logging
 from dataclasses import dataclass
@@ -22,6 +18,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, IterableDataset
+from llavavla.dataloader.lmdb.data_utils import get_lmdb_dataset_statistics, save_dataset_statistics, NormalizationType
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
@@ -61,6 +58,8 @@ class LMDBDataset(Dataset):
         window_size: int = 16,
         image_aug: bool = False,
         batch_transform: LMDBBatchTransform = None,
+        normalization_type: NormalizationType = NormalizationType.BOUNDS_Q99,
+        save_statistics_dir: str = None,
         **kwargs: Any,
     ) -> None:
         """Dataset wrapper for LMDB format data."""
@@ -72,6 +71,7 @@ class LMDBDataset(Dataset):
         self.action_type = action_type
         self.window_size = window_size
         self.image_aug = image_aug
+        self.normalization_type = normalization_type
 
         # Load dataset info
         logger.info(f"loading dataset at {data_dir}/{dataset_name}")
@@ -82,19 +82,28 @@ class LMDBDataset(Dataset):
             self.num_step_per_episode = [f[1] - self.window_size for f in self.episode_info_list]
             self.num_episode = len(self.episode_list)
 
+        # Get dataset statistics (with caching)
+        self.dataset_statistics = get_lmdb_dataset_statistics(
+            dataset_name=self.dataset_name,
+            data_dir=self.data_dir,
+            action_type=self.action_type,
+            dataset_info_name=self.dataset_info_name,
+            save_dir=save_statistics_dir,
+        )
+
         # Load action statistics
         meta_info = pickle.load(open(f"{data_dir}/data_info/{self.dataset_info_name}.pkl", "rb"))
         try:
             if self.action_type == "abs_qpos":
-                self.arm_action_mean = np.array(meta_info["abs_qpos_action_mean"])
-                self.arm_action_std = np.array(meta_info["abs_qpos_action_std"])
-                self.arm_action_min = np.array(meta_info["abs_qpos_action_min"])
-                self.arm_action_max = np.array(meta_info["abs_qpos_action_max"])
+                self.arm_action_mean = np.array(meta_info["abs_arm_action_mean"])
+                self.arm_action_std = np.array(meta_info["abs_arm_action_std"])
+                self.arm_action_min = np.array(meta_info["abs_arm_action_min"])
+                self.arm_action_max = np.array(meta_info["abs_arm_action_max"])
             elif self.action_type == "delta_qpos":
-                self.arm_action_mean = np.array(meta_info["delta_qpos_action_mean"])
-                self.arm_action_std = np.array(meta_info["delta_qpos_action_std"])
-                self.arm_action_min = np.array(meta_info["delta_qpos_action_min"])
-                self.arm_action_max = np.array(meta_info["delta_qpos_action_max"])
+                self.arm_action_mean = np.array(meta_info["delta_arm_action_mean"])
+                self.arm_action_std = np.array(meta_info["delta_arm_action_std"])
+                self.arm_action_min = np.array(meta_info["delta_arm_action_min"])
+                self.arm_action_max = np.array(meta_info["delta_arm_action_max"])
             elif self.action_type == "abs_ee_pose":
                 self.arm_action_mean = np.array(meta_info["abs_eepose_action_mean"])
                 self.arm_action_std = np.array(meta_info["abs_eepose_action_std"])
@@ -143,23 +152,31 @@ class LMDBDataset(Dataset):
         if self.action_type == "abs_qpos":
             arm_index = meta_info["keys"]["scalar_data"].index(b'arm_action')
             arm_key = meta_info["keys"]["scalar_data"][arm_index]
+            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
+            state_key = meta_info["keys"]["scalar_data"][state_index]
         elif self.action_type == "delta_qpos":
             arm_index = meta_info["keys"]["scalar_data"].index(b'delta_arm_action')
             arm_key = meta_info["keys"]["scalar_data"][arm_index]
+            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
+            state_key = meta_info["keys"]["scalar_data"][state_index]
         elif self.action_type == "abs_ee_pose":
             arm_index = meta_info["keys"]["scalar_data"].index(b'ee_pose_action')
             arm_key = meta_info["keys"]["scalar_data"][arm_index]
+            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/ee_pose_state')
+            state_key = meta_info["keys"]["scalar_data"][state_index]
         elif self.action_type == "delta_ee_pose":
-            arm_index = meta_info["keys"]["scalar_data"].index(b'delta_ee_pose')
+            arm_index = meta_info["keys"]["scalar_data"].index(b'delta_ee_pose_action')
             arm_key = meta_info["keys"]["scalar_data"][arm_index]
+            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/ee_pose_state')
+            state_key = meta_info["keys"]["scalar_data"][state_index]
         else:
             raise NotImplementedError(f"Action type {self.action_type} not supported")
         
         gripper_index = meta_info["keys"]["scalar_data"].index(b'gripper_close') 
         gripper_key = meta_info["keys"]["scalar_data"][gripper_index]
-        qpos_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
-        qpos_key = meta_info["keys"]["scalar_data"][qpos_index]
-        
+        # qpos_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
+        # qpos_key = meta_info["keys"]["scalar_data"][qpos_index]
+
         primary_index = meta_info["keys"][f"observation/{self.obs_type}/color_image"]
         wrist_index = meta_info["keys"]["observation/realsense/color_image"]
 
@@ -170,6 +187,10 @@ class LMDBDataset(Dataset):
         with lmdb_env.begin(write=False) as txn:
 
             arm_action = pickle.loads(txn.get(arm_key))
+            if self.action_type == "abs_ee_pose" or self.action_type == "delta_ee_pose":
+                positions = np.array([pos for pos, quat in arm_action])
+                quaternions = np.array([quat for pos, quat in arm_action])
+                arm_action = np.concatenate([positions, quaternions], axis=1).tolist()
             gripper_action = pickle.loads(txn.get(gripper_key))
 
             primary_data = pickle.loads(txn.get(primary_index[start_id]))
@@ -184,12 +205,16 @@ class LMDBDataset(Dataset):
             action = arm_action[start_id:start_id + self.window_size]
             gripper = gripper_action[start_id:start_id + self.window_size]
         else:
-            action = arm_action[start_id:action_length] + np.zeros(self.window_size - (action_length - start_id))
-            gripper = gripper_action[start_id:action_length] + np.ones(self.window_size - (action_length - start_id))
+            # last action repeat
+            # action = arm_action[start_id:action_length] + np.zeros(self.window_size - (action_length - start_id))
+            # gripper = gripper_action[start_id:action_length] + np.ones(self.window_size - (action_length - start_id))
+
+            action = arm_action[start_id:action_length] + np.repeat(arm_action[-1], self.window_size - (action_length - start_id), axis=0)
+            gripper = gripper_action[start_id:action_length] + np.repeat(gripper_action[-1], self.window_size - (action_length - start_id), axis=0)
 
         collected_action = []
         for a, g in zip(action, gripper):
-            collected_action.append(self.load_robot_action(np.concatenate([a[0], a[1]]), g))
+            collected_action.append(self.load_robot_action(a, g).astype(np.float16))
 
         
         return dict(action=collected_action,image=[primary_data],lang=language_instruction, dataset_name=self.dataset_name)
@@ -204,11 +229,20 @@ class LMDBDataset(Dataset):
         if self.action_type in ["abs_qpos", "delta_qpos", "abs_ee_pose", "delta_ee_pose"]:
             actions = np.zeros(8)
             actions[:7] = 2 * (arm_action[:7] - self.arm_action_min[:7]) / (self.arm_action_max[:7] - self.arm_action_min[:7] + 1e-8) - 1
-            actions[-1] = gripper_action
+            # normalize gripper_action to 0 or 1
+            actions[-1] = (gripper_action + 1) / 2
             assert np.all(actions <= 1) and np.all(actions >= -1)
             return actions
         else:
             raise NotImplementedError(f"Action type {self.action_type} not supported")
+
+    def get_dataset_statistics(self) -> Dict:
+        """Return dataset statistics in the same format as RLDS datasets."""
+        return self.dataset_statistics
+
+    def save_statistics(self, run_dir: Path) -> None:
+        """Save dataset statistics to the specified directory."""
+        save_dataset_statistics(self.dataset_statistics, run_dir)
 
 
 class EpisodicLMDBDataset(LMDBDataset):
@@ -284,36 +318,45 @@ from torch.utils.data import DataLoader
 
 def get_vla_dataset(
     data_root_dir: Path,
-    dataset_name: str,
+    data_mix: str,
+    data_mix_info: str,
     obs_type: str = "obs_camera",
     action_type: str = "abs_qpos",
     window_size: int = 16,
     image_aug: bool = False,
     shuffle_buffer_size: int = 100_000,
+    default_image_resolution: Tuple[int, int, int] = (3, 224, 224),
     train: bool = True,
     episodic: bool = False,
     future_action_window_size: int = 0,
-    past_action_window_size: int = 1,         # Concatenated `past_action_window_size-1' actions and the current action for the input
-    load_all_data_for_training: bool = True,  # Load all data for training, or only a subset
-    **kwargs: Any,  # Additional arguments for RLDSBatchTransform
+    past_action_window_size: int = 1,
+    load_all_data_for_training: bool = True,
+    normalization_type: NormalizationType = NormalizationType.BOUNDS_Q99,
+    save_statistics_dir: str = None,
+    **kwargs: Any,
 ) -> Tuple[Dataset]:
-    """Initialize RLDS Dataset (wraps TFDS), ActionTokenizer, and initialize transform/collation functions."""
+    """Initialize LMDB Dataset and optionally save statistics."""
 
-    batch_transform = LMDBBatchTransform( # TODO 不能和数据集耦合，应该实现高内聚
-    )
+    batch_transform = LMDBBatchTransform()
     
-    # Build RLDS Iterable Dataset
+    # Build LMDB Dataset
     cls = LMDBDataset if not episodic else EpisodicLMDBDataset
     dataset = cls(
-        dataset_name,
+        data_mix,
         data_root_dir,
-        dataset_name,
+        data_mix_info,
         obs_type=obs_type,
         action_type=action_type,
         window_size=window_size,
         image_aug=image_aug,
         batch_transform=batch_transform,
+        normalization_type=normalization_type,
+        save_statistics_dir=save_statistics_dir,
     )
+
+    # Optionally save statistics to run directory
+    if save_statistics_dir is not None:
+        dataset.save_statistics(Path(save_statistics_dir))
 
     return dataset
 
@@ -343,25 +386,32 @@ if __name__ == "__main__":
     pass
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
 
+
+    import debugpy 
+    debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
+    print("Waiting for debugger to attach...")
+    debugpy.wait_for_client()  # 等待 VS Code 附加
+
     # test  get_vla_dataset
     cfg = {
         'data_root_dir': '/mnt/petrelfs/share/efm_p/wangfangjing/datasets',
-        'dataset_name': 'Banana/banana_plate_4035_none-wot-wow-woh-0529',
         'obs_type': 'obs_camera',
-        'action_type': 'abs_ee_pose',
+        'action_type': 'delta_ee_pose',
         'window_size': 16,
         'vla': {
             'per_device_batch_size': 1,
+            'data_mix': 'Banana/banana_plate_4035_none-wot-wow-woh-0529',
+            'data_mix_info': 'Banana/banana_plate_4035_none-wot-wow-woh-0529_200',
         }
     }
     cfg = dict_to_namespace(cfg)
 
-    vla_dataset = get_vla_dataset(
-        data_root_dir=cfg.data_root_dir,
-        dataset_name=cfg.dataset_name,
-        obs_type=cfg.obs_type,
+    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
+        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+        cfg.vla.data_mix,
+        cfg.vla.data_mix_info,
         action_type=cfg.action_type,
-        window_size=cfg.window_size,
+        default_image_resolution=(3, 224, 224),
     )
     
     # 方法2: 使用迭代器

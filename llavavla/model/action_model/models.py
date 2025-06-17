@@ -170,11 +170,12 @@ class DiT(nn.Module):
         future_action_window_size=1,
         past_action_window_size=0,
         learn_sigma=False,
+        n_conditon_token=64,
     ):
         super().__init__()
 
         assert past_action_window_size == 0, "Error: action_history is not used now"
-
+        self.num_cond_tokens = n_conditon_token
         self.learn_sigma = learn_sigma
         self.in_channels = in_channels
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
@@ -184,23 +185,24 @@ class DiT(nn.Module):
         self.future_action_window_size = future_action_window_size
         
         # Action history is not used now.
-        self.history_embedder = HistoryEmbedder(action_size=in_channels, hidden_size=hidden_size)
+        self.history_embedder = HistoryEmbedder(action_size=in_channels, hidden_size=token_size)
         
-        self.x_embedder = ActionEmbedder(action_size=in_channels, hidden_size=hidden_size)
-        self.t_embedder = TimestepEmbedder(hidden_size)
-        conditions_shape = (1, 1, token_size) #@Jinhui: 我不明白为什么要定义这个参数？不是直接强制要求一定是token_size？token_size 的名字也不好，应该是 token_dim
-        self.z_embedder = LabelEmbedder(in_size=token_size, hidden_size=hidden_size, dropout_prob=class_dropout_prob, conditions_shape=conditions_shape)
-        scale = hidden_size ** -0.5
+        self.x_embedder = ActionEmbedder(action_size=in_channels, hidden_size=token_size)
+        self.t_embedder = TimestepEmbedder(token_size)
+        conditions_shape = (1, n_conditon_token, token_size) #@Jinhui: 我不明白为什么要定义这个参数？不是直接强制要求一定是token_size？token_size 的名字也不好，应该是 token_dim
+        
+        self.z_embedder = LabelEmbedder(in_size=token_size, hidden_size=token_size, dropout_prob=class_dropout_prob, conditions_shape=conditions_shape)
+        scale = token_size ** -0.5
 
         # Learnable positional embeddings
-        # +2, one for the conditional token, and one for the current action prediction
+        # 1+64, one for the conditional token, and one for the current action prediction
         self.positional_embedding = nn.Parameter(
-                scale * torch.randn(future_action_window_size + past_action_window_size + 2, hidden_size))
+                scale * torch.randn(future_action_window_size + past_action_window_size + 65, token_size))
 
         self.blocks = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
+            DiTBlock(token_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
         ])
-        self.final_layer = FinalLayer(hidden_size, self.out_channels)
+        self.final_layer = FinalLayer(token_size, self.out_channels)
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -235,21 +237,21 @@ class DiT(nn.Module):
     def forward(self, x, t, z):
         """
         Forward pass of DiT.
-        history: (N, H, D) tensor of action history # not used now
-        x: (N, T, D) tensor of predicting action inputs
-        t: (N,) tensor of diffusion timesteps
-        z: (N, 1, D) tensor of conditions
+        history: (B, H, D) tensor of action history # not used now
+        x: (B, T, D) tensor of predicting action inputs
+        t: (B,) tensor of diffusion timesteps
+        z: [B, num_cond_tokens, D] -- condition token
         """
         x = self.x_embedder(x)                              # (N, T, D)
         t = self.t_embedder(t)                              # (N, D)
-        z = self.z_embedder(z, self.training)               # (N, 1, D)
-        c = t.unsqueeze(1) + z                              # (N, 1, D)
-        x = torch.cat((c, x), dim=1)                        # (N, T+1, D)
-        x = x + self.positional_embedding                   # (N, T+1, D)
+        z = self.z_embedder(z, self.training)               # [N, num_cond_tokens, D]
+        c = t.unsqueeze(1) + z                              # (N, 64, D)
+        x = torch.cat((c, x), dim=1)                        # (N, T+64, D)
+        x = x + self.positional_embedding                   # (N, T+64, D)
         for block in self.blocks:
-            x = block(x)                                    # (N, T+1, D)
-        x = self.final_layer(x)                             # (N, T+1, out_channels)
-        return x[:, 1:, :]     # (N, T, C)
+            x = block(x)                                    # (N, T+64, D)
+        x = self.final_layer(x)                             # (N, T+64, out_channels)
+        return x[:,self.num_cond_tokens:, :]     # (N, T, C)
 
     def forward_with_cfg(self, x, t, z, cfg_scale):
         """

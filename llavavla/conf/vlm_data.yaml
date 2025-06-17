@@ -1,0 +1,10 @@
+dataset_use: sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
+eval_dataset: sharegpt4v_knowledge
+video_max_frames: 8
+video_min_frames: 4
+data_flatten: false
+base_interval: 2
+max_pixels: 12845056
+min_pixels: 3136
+video_max_frame_pixels: 25088
+video_min_frame_pixels: 3136

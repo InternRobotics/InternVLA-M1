@@ -9,12 +9,12 @@ import torch
 from torch import nn
 
 # Create model sizes of ActionModels
-def DiT_S(**kwargs):
-    return DiT(depth=6, hidden_size=384, num_heads=4, **kwargs)
+def DiT_S(**kwargs): # TODO 不能在这里这样定义， 要统一 成为 config, 保证内部参数一致
+    return DiT(depth=6, token_size=384, num_heads=4, **kwargs)
 def DiT_B(**kwargs):
-    return DiT(depth=12, hidden_size=768, num_heads=12, **kwargs)
+    return DiT(depth=12, token_size=768, num_heads=12, **kwargs)
 def DiT_L(**kwargs):
-    return DiT(depth=24, hidden_size=1024, num_heads=16, **kwargs)
+    return DiT(depth=24, token_size=1024, num_heads=16, **kwargs)
 
 # Model size
 DiT_models = {'DiT-S': DiT_S, 'DiT-B': DiT_B, 'DiT-L': DiT_L}
@@ -22,7 +22,7 @@ DiT_models = {'DiT-S': DiT_S, 'DiT-B': DiT_B, 'DiT-L': DiT_L}
 # Create ActionModel
 class ActionModel(nn.Module):
     def __init__(self, 
-                 token_size, 
+                 action_hidden_dim, 
                  model_type, 
                  in_channels, 
                  future_action_window_size, 
@@ -43,8 +43,8 @@ class ActionModel(nn.Module):
             learn_sigma = False
         self.past_action_window_size = past_action_window_size
         self.future_action_window_size = future_action_window_size
+        self.token_size = action_hidden_dim # 这是 QFormer 的大小， 这里会混乱的情况
         self.net = DiT_models[model_type](
-                                        token_size = token_size, 
                                         in_channels=in_channels, 
                                         class_dropout_prob = 0.1, 
                                         learn_sigma = learn_sigma, 
@@ -54,6 +54,8 @@ class ActionModel(nn.Module):
 
     # Given condition z and ground truth token x, compute loss
     def loss(self, x, z):
+        # x: [B, T, C] tensor of ground truth tokens TODO 确定 z 的shape 
+        # z: [B, L, D_action] tensor of condition tokens (e.g., latent_action: [B, 64, 768])
         # sample random noise and timestep
         noise = torch.randn_like(x) # [B, T, C]
         timestep = torch.randint(0, self.diffusion.num_timesteps, (x.size(0),), device= x.device)

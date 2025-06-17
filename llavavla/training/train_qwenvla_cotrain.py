@@ -152,7 +152,7 @@ def load_fast_tokenizer():
 def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
 
     cfg.logging_frequency = 10
-    cfg.gradient_accumulation_steps = 1
+    cfg.gradient_accumulation_steps = 1 # TODO 实现梯度累计
     cfg.gradient_clipping = 1.0
     max_train_steps = cfg.vla.max_train_steps #TODO 注意各种参数的统一
 
@@ -218,7 +218,7 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
         # for batch in vla_train_dataloader:
         # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
         optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
-        dist.barrier()
+        # dist.barrier()
         # forward vlm data
 
         # forward action data
@@ -232,10 +232,13 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
         
         # 会导致 爆内存， 看来要用 flash attention, 但是不清楚会对 action有什么影响。 TODO 先取消掉 多轮对话？和使用 data-flatten
         with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            # print(batch_samples_vlm["input_ids"].shape, batch_samples_vlm["pixel_values"].shape)
+
             output = model.qwen_vl_interface(**batch_samples_vlm) # TODO make vlm and action loss
             vlm_loss = output.loss
+            # dist.barrier()
 
-        accelerator.backward(vlm_loss)
+        accelerator.backward(vlm_loss * cfg.vla.qwenvl.llm_loss_weight) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
 
         if cfg.gradient_clipping is not None:
             accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
@@ -262,6 +265,7 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
                 epoch = int(completed_steps) // len(vla_train_dataloader) # 他们都是经过 DDP的
                 result = {
                     "train_loss": action_loss.item(),
+                    "vlm_loss": vlm_loss.item(),
                     "grad_norm": total_norm,
                     "learning_rate": lr,
                     "epoch": epoch,

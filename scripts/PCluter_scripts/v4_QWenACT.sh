@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=ab_prompt        # name
+#SBATCH --job-name=vlma        # name
 #SBATCH -p efm_p
-#SBATCH -N 16                    # nodes
+#SBATCH -N 4                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
 #SBATCH --cpus-per-task=128          # number of cores per tasks
 #SBATCH --gres=gpu:8                 # number of gpus
@@ -48,14 +48,18 @@ export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
 export global_batch_size=$((TOTAL_GPUS * vla_per_device_batch_size)) # 512 is the default global batch size, you can change it if needed
 echo "Total GPUs: $TOTAL_GPUS"
 
-export run_id=0608_ftqwen_vlm_bridge_rt_1_${TOTAL_GPUS}gpus_vlm_${vlm_per_batch_size}
+datasets_vlm=aokvqa_cauldron_llava_format,sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
+datasets_grounding=asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
+# ,${datasets_grounding}
+export system2_datasets="${datasets_vlm}"
+export llm_loss_weight=0.3
+
+export run_id=0612_noflash_vlm_bridge_rt_1_${TOTAL_GPUS}gpus_vlm_${vlm_per_batch_size}_${llm_loss_weight}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
 # mv this script to the output dir
 cp $0 ${output_dir}/
-
-
 
 #   --vla.expected_world_size ${TOTAL_GPUS} \ 后续这些要从代码中移除
 #   --vla.global_batch_size 512 \
@@ -82,12 +86,14 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --vla.qformer_end_layer ${qformer_end_layer} \
   --vla.freeze_modules "" \
   --vla.data_mix bridge_rt_1 \
-  --vla.max_steps 100000 \
+  --vlm_data.dataset_use ${system2_datasets} \
+  --vla.max_steps 500000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size ${global_batch_size} \
   --vla.per_device_batch_size ${vla_per_device_batch_size} \
   --vlm_data.per_device_batch_size ${vlm_per_batch_size} \
   --vla.learning_rate ${lr} \
+  --vla.qwenvl.llm_loss_weight ${llm_loss_weight} \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \

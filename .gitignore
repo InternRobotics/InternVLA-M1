@@ -155,3 +155,7 @@ eval/SimplerEnv
 results
 nohup.out
 *.out
+length_distribution.png
+eval/MMBench/*.jpg
+eval/*/*.jpg
+eval/*/*.png

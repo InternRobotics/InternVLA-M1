@@ -21,8 +21,8 @@ from PIL import Image
 from decord import VideoReader
 import transformers
 from omegaconf import OmegaConf
-from .qwen_data_config import data_list
-from .rope2d import get_rope_index_25, get_rope_index_2
+from llavavla.dataloader.qwen_data_config import data_list
+from llavavla.dataloader.rope2d import get_rope_index_25, get_rope_index_2
 
 IGNORE_INDEX = -100
 IMAGE_TOKEN_INDEX = 151655
@@ -169,14 +169,17 @@ class LazySupervisedDataset(Dataset):
                     ann["data_path"] = ann["raw_data"]["data_root"]
             list_data_dict += annotations
 
-        rank0_print(f"Total training samples: {len(list_data_dict)}")
-
+        # 这里要 filter 非常长的数据
+        list_data_dict = self.pre_filter_long_case(list_data_dict, max_words=tokenizer.max_len_single_sentence ) # 这个操作需要很小心， 不需要过分截断的数据
         random.shuffle(list_data_dict)  # Randomly shuffle the data for training
 
-        rank0_print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         self.list_data_dict = list_data_dict
         self.data_args = data_args # 这里还是展示需要 image_processor
+
+        rank0_print(f"Total training samples: {len(self.list_data_dict)}")
+        rank0_print("Formatting inputs...Skip in lazy mode")
+
         # TODO 这个逻辑很不清晰， 不能这样修改
         # self.data_args.image_processor.max_pixels = data_args.max_pixels
         # self.data_args.image_processor.min_pixels = data_args.min_pixels
@@ -185,6 +188,19 @@ class LazySupervisedDataset(Dataset):
 
     def __len__(self):
         return len(self.list_data_dict)
+
+    def pre_filter_long_case(self, list_data_dict, max_words=1024):
+        """ 初步过滤掉过滤掉 conversations 总词数超过 max_words 的样本"""
+        def count_total_words(convs):
+            total = 0
+            for entry in convs:
+                value = entry.get("value", "")
+                total += len(value.strip().split())
+            return total
+        return [
+            item for item in list_data_dict
+            if count_total_words(item.get("conversations", [])) <= max_words
+        ]
 
     @property
     def lengths(self):
@@ -205,7 +221,7 @@ class LazySupervisedDataset(Dataset):
                 len(conv["value"].split()) for conv in sample["conversations"]
             )
             cur_len = (
-                cur_len if ("image" in sample) or ("video" in sample) else -cur_len
+                cur_len if ("images" in sample) or ("videos" in sample) else -cur_len
             )
             length_list.append(cur_len)
         return length_list
@@ -407,6 +423,13 @@ class LazySupervisedDataset(Dataset):
             data_dict["pixel_values_videos"] = video
             data_dict["video_grid_thw"] = grid_thw
 
+        # 如果太长了，需要自己截断， 不要padding后截断
+        max_len = self.tokenizer.max_len_single_sentence
+        if data_dict["input_ids"].shape[0] > max_len:
+            data_dict["input_ids"] = data_dict["input_ids"][:max_len]
+            data_dict["labels"] = data_dict["labels"][:max_len]
+            data_dict["position_ids"] = position_ids[:, :, :max_len]
+                    
         return data_dict
 
 
@@ -442,9 +465,12 @@ class DataCollatorForSupervisedDataset(object):
             labels, batch_first=True, padding_value=IGNORE_INDEX, padding_side=self.tokenizer.padding_side
         )
         position_ids = pad_and_cat(position_ids)
-        input_ids = input_ids[:, : self.tokenizer.model_max_length]
+        
+        # 修正截断逻辑 --> 不管是什么对齐， 都有想要在 右边截断
+        input_ids = input_ids[:, : self.tokenizer.model_max_length]  # 右对齐时保留左侧
         labels = labels[:, : self.tokenizer.model_max_length]
-        position_ids = position_ids[:, : self.tokenizer.model_max_length]
+        position_ids = position_ids[..., :self.tokenizer.model_max_length] # 3,bs,length
+    
         batch = dict(
             input_ids=input_ids,
             labels=labels,
@@ -646,10 +672,10 @@ def make_vlm_dataloader(cfg):
     # torch.distributed.barrier() # 确保所有进程都在同一时间点
 
     # 避免在dataset 内部处理这些
-    image_processor.max_pixels = data_args.max_pixels
-    image_processor.min_pixels = data_args.min_pixels
-    image_processor.size["longest_edge"] = data_args.max_pixels
-    image_processor.size["shortest_edge"] = data_args.min_pixels
+    image_processor.max_pixels = int(data_args.max_pixels)
+    image_processor.min_pixels = int(data_args.min_pixels)
+    image_processor.size["longest_edge"] = int(data_args.max_pixels)
+    image_processor.size["shortest_edge"] = int(data_args.min_pixels)
     data_args.model_type = "qwen2.5vl"
     data_args_ns = SimpleNamespace(**OmegaConf.to_container(data_args, resolve=True))
     data_args_ns.image_processor = image_processor # TODO 后期看如何 移除和模型绑定的逻辑                         
@@ -702,7 +728,7 @@ if __name__ == "__main__":
     tokenizer = transformers.AutoTokenizer.from_pretrained( 
         cfg.vla.base_vlm,
         model_max_length=data_args.model_max_length,
-        padding_side="right",
+        padding_side="left",
         use_fast=False,
     )
 
@@ -726,8 +752,10 @@ if __name__ == "__main__":
         batch_size=cfg.vlm_data.per_device_batch_size,
         collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
     ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
-
-    batch_samples = next(iter(train_dataloader)) #for debug
-
+    batchs = iter(train_dataloader)
+    batch_samples = next(batchs) #for debug
+    # 跳过前 99 个 batch，获取第 100 个 batch
+    from itertools import islice
+    batch_samples = next(islice(batchs, 99, 100))
     pass
 

@@ -50,8 +50,9 @@ def make_data_info(root_path, save_json_path, save_meta_path, sequence_num=None)
     arm_action_list = []
     qpos_list = []
     gripper_action_list = []
-    eepose_action_list = []
-    eepose_state_list = []
+    abs_eepose_action_list = []
+    delta_eepose_action_list = []
+    ee_pose_state_list = []
     cnt = 0 
     for data_path in tqdm(data_list):
         lmdb_env = lmdb.open(
@@ -74,30 +75,59 @@ def make_data_info(root_path, save_json_path, save_meta_path, sequence_num=None)
         qpos_key = meta_info["keys"]["scalar_data"][qpos_index]
         gripper_index = meta_info["keys"]["scalar_data"].index(b'gripper_action')
         gripper_key = meta_info["keys"]["scalar_data"][gripper_index]
+        
         # eepose_action_index = meta_info["keys"]["scalar_data"].index(b'ee_pose_action')
         eepose_action_key = b'ee_pose_action'
         # eepose_state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/ee_pose_state')
         eepose_state_key = b'observation/robot/ee_pose_state'
 
+        abs_ee_pose_action_index = meta_info["keys"]["scalar_data"].index(b'ee_pose_action')
+        abs_ee_pose_action_key = meta_info["keys"]["scalar_data"][abs_ee_pose_action_index]
+        delta_ee_pose_action_index = meta_info["keys"]["scalar_data"].index(b'delta_ee_pose_action')
+        delta_ee_pose_action_key = meta_info["keys"]["scalar_data"][delta_ee_pose_action_index]
+        ee_pose_state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/ee_pose_state')
+        ee_pose_state_key = meta_info["keys"]["scalar_data"][ee_pose_state_index]
+
+
         with lmdb_env.begin(write=False) as txn:
             qpos = pickle.loads(txn.get(qpos_key))
             gripper_action = pickle.loads(txn.get(gripper_key))
-            eepose_action = pickle.loads(txn.get(eepose_action_key))
-            eepose_action = [np.concatenate([t, q]) for t, q in eepose_action]
-            eepose_state = pickle.loads(txn.get(eepose_state_key))
-            eepose_state = [np.concatenate([t, q]) for t, q in eepose_state]
-            import pdb; pdb.set_trace()
+
+            # eepose_action = pickle.loads(txn.get(eepose_action_key))
+            # eepose_action = [np.concatenate([t, q]) for t, q in eepose_action]
+            # eepose_state = pickle.loads(txn.get(eepose_state_key))
+            # eepose_state = [np.concatenate([t, q]) for t, q in eepose_state]
+
+            # for ee pose action learning 
+            abs_ee_pose_action = pickle.loads(txn.get(abs_ee_pose_action_key))
+            delta_ee_pose_action = pickle.loads(txn.get(delta_ee_pose_action_key))
+            ee_pose_state = pickle.loads(txn.get(ee_pose_state_key))
+
+            # import pdb; pdb.set_trace()
             arm_action = pickle.loads(txn.get(arm_key))
         # set_trace()
         # Check gripper action bounds and track intervals
         gripper_array = np.array(gripper_action)
         invalid_indices = np.where((gripper_array[..., 0] < 0) | (gripper_array[..., 0] > 0.04))[0]
         
+        positions = np.array([pos for pos, quat in abs_ee_pose_action])
+        quaternions = np.array([quat for pos, quat in abs_ee_pose_action])
+        abs_ee_pose_action_list = np.concatenate([positions, quaternions], axis=1).tolist()
+
+        positions = np.array([pos for pos, quat in delta_ee_pose_action])
+        quaternions = np.array([quat for pos, quat in delta_ee_pose_action])
+        delta_ee_pose_action_list = np.concatenate([positions, quaternions], axis=1).tolist()
+
+        positions = np.array([pos for pos, quat in ee_pose_state])
+        quaternions = np.array([quat for pos, quat in ee_pose_state])
+        ee_pose_state_list = np.concatenate([positions, quaternions], axis=1).tolist()
+
         arm_action_list += arm_action
         qpos_list += qpos
         gripper_action_list += gripper_action
-        eepose_action_list += eepose_action
-        eepose_state_list += eepose_state
+        abs_eepose_action_list += abs_ee_pose_action_list
+        delta_eepose_action_list += delta_ee_pose_action_list
+        ee_pose_state_list += ee_pose_state_list
         num_steps = meta_info["num_steps"]
         episode_id = data_path.split("/")[-1]
         save_data = [episode_id, num_steps]
@@ -128,43 +158,33 @@ def make_data_info(root_path, save_json_path, save_meta_path, sequence_num=None)
     gripper_action_min = np.min(gripper_action_list, axis=0)
     gripper_action_max = np.max(gripper_action_list, axis=0)
 
-    # Stack and compute statistics for end effector pose actions
-    eepose_action_list = np.stack(eepose_action_list)
-    eepose_action_mean = np.mean(eepose_action_list, axis=0)
-    eepose_action_std = np.std(eepose_action_list, axis=0)
-    eepose_action_min = np.min(eepose_action_list, axis=0)
-    eepose_action_max = np.max(eepose_action_list, axis=0)
-
-    # Stack and compute statistics for end effector pose states
-    eepose_state_list = np.stack(eepose_state_list)
-    eepose_state_mean = np.mean(eepose_state_list, axis=0)
-    eepose_state_std = np.std(eepose_state_list, axis=0)
-    eepose_state_min = np.min(eepose_state_list, axis=0)
-    eepose_state_max = np.max(eepose_state_list, axis=0)
-
     # Create metadata dictionary with all statistics
     meta_info = {
-        "arm_action_mean": arm_action_mean.tolist(),
-        "arm_action_std": arm_action_std.tolist(),
-        "arm_action_min": arm_action_min.tolist(),
-        "arm_action_max": arm_action_max.tolist(),
-        "qpos_mean": qpos_mean.tolist(),
-        "qpos_std": qpos_std.tolist(),
-        "qpos_min": qpos_min.tolist(),
-        "qpos_max": qpos_max.tolist(),
-        "gripper_action_mean": gripper_action_mean.tolist(),
-        "gripper_action_std": gripper_action_std.tolist(),
-        "gripper_action_min": gripper_action_min.tolist(),
-        "gripper_action_max": gripper_action_max.tolist(),
-        "eepose_action_mean": eepose_action_mean.tolist(),
-        "eepose_action_std": eepose_action_std.tolist(),
-        "eepose_action_min": eepose_action_min.tolist(),
-        "eepose_action_max": eepose_action_max.tolist(),
-        "eepose_state_mean": eepose_state_mean.tolist(),
-        "eepose_state_std": eepose_state_std.tolist(),
-        "eepose_state_min": eepose_state_min.tolist(),
-        "eepose_state_max": eepose_state_max.tolist()
+        "abs_arm_action_mean": arm_action_mean.tolist(),
+        "abs_arm_action_std": arm_action_std.tolist(),
+        "abs_arm_action_min": arm_action_min.tolist(),
+        "abs_arm_action_max": arm_action_max.tolist(),
+        "abs_qpos_mean": qpos_mean.tolist(),
+        "abs_qpos_std": qpos_std.tolist(),
+        "abs_qpos_min": qpos_min.tolist(),
+        "abs_qpos_max": qpos_max.tolist(),
+        "abs_gripper_action_mean": gripper_action_mean.tolist(),
+        "abs_gripper_action_std": gripper_action_std.tolist(),
+        "abs_gripper_action_min": gripper_action_min.tolist(),
+        "abs_gripper_action_max": gripper_action_max.tolist(),
     }
+    meta_info["abs_eepose_action_mean"] = np.mean(abs_eepose_action_list, axis=0).tolist()
+    meta_info["abs_eepose_action_std"] = np.std(abs_eepose_action_list, axis=0).tolist()
+    meta_info["abs_eepose_action_min"] = np.min(abs_eepose_action_list, axis=0).tolist()
+    meta_info["abs_eepose_action_max"] = np.max(abs_eepose_action_list, axis=0).tolist()
+    meta_info["delta_eepose_action_mean"] = np.mean(delta_eepose_action_list, axis=0).tolist() 
+    meta_info["delta_eepose_action_std"] = np.std(delta_eepose_action_list, axis=0).tolist()
+    meta_info["delta_eepose_action_min"] = np.min(delta_eepose_action_list, axis=0).tolist()
+    meta_info["delta_eepose_action_max"] = np.max(delta_eepose_action_list, axis=0).tolist()
+    meta_info["eepose_state_mean"] = np.mean(ee_pose_state_list, axis=0).tolist()
+    meta_info["eepose_state_std"] = np.std(ee_pose_state_list, axis=0).tolist()
+    meta_info["eepose_state_min"] = np.min(ee_pose_state_list, axis=0).tolist()
+    meta_info["eepose_state_max"] = np.max(ee_pose_state_list, axis=0).tolist()
 
     # Save metadata to pickle file
     pickle.dump(meta_info, open(save_meta_path, "wb"))
@@ -172,6 +192,7 @@ def make_data_info(root_path, save_json_path, save_meta_path, sequence_num=None)
     # Print key statistics
     print("arm_action_mean:", arm_action_mean)
     print("arm_action_std:", arm_action_std)
+    print("save_meta_path:", save_meta_path)
 
 def make_dir(dir_path):
     if not os.path.exists(dir_path):
@@ -340,18 +361,18 @@ def make_data_info_multiprocess(root_path, save_json_path, save_meta_path, seque
 
     # Create metadata dictionary with all statistics
     meta_info = {
-        "arm_action_mean": arm_action_mean.tolist(),
-        "arm_action_std": arm_action_std.tolist(),
-        "arm_action_min": arm_action_min.tolist(),
-        "arm_action_max": arm_action_max.tolist(),
-        "qpos_mean": qpos_mean.tolist(),
-        "qpos_std": qpos_std.tolist(),
-        "qpos_min": qpos_min.tolist(),
-        "qpos_max": qpos_max.tolist(),
-        "gripper_action_mean": gripper_action_mean.tolist(),
-        "gripper_action_std": gripper_action_std.tolist(),
-        "gripper_action_min": gripper_action_min.tolist(),
-        "gripper_action_max": gripper_action_max.tolist(),
+        "abs_arm_action_mean": arm_action_mean.tolist(),
+        "abs_arm_action_std": arm_action_std.tolist(),
+        "abs_arm_action_min": arm_action_min.tolist(),
+        "abs_arm_action_max": arm_action_max.tolist(),
+        "abs_qpos_mean": qpos_mean.tolist(),
+        "abs_qpos_std": qpos_std.tolist(),
+        "abs_qpos_min": qpos_min.tolist(),
+        "abs_qpos_max": qpos_max.tolist(),
+        "abs_gripper_action_mean": gripper_action_mean.tolist(),
+        "abs_gripper_action_std": gripper_action_std.tolist(),
+        "abs_gripper_action_min": gripper_action_min.tolist(),
+        "abs_gripper_action_max": gripper_action_max.tolist(),
         "abs_eepose_action_mean": abs_eepose_action_mean.tolist(),
         "abs_eepose_action_std": abs_eepose_action_std.tolist(),
         "abs_eepose_action_min": abs_eepose_action_min.tolist(),

@@ -32,14 +32,17 @@ cp $0 ${output_dir}/
 # export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 datasets_vlm=aokvqa_cauldron_llava_format,sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
+datasets_vlm=sharegpt4v_coco
 datasets_grounding=asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
 export system2_datasets="${datasets_vlm}"
 # ,${datasets_grounding}
+  # --vlm_data.min_pixels 3136 \
+  # --vlm_data.max_pixels 12845056 \
 
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
   --num_processes 8 \
-  llavavla/training/train_qwenvla_cotrain.py \
+  llavavla/training/train_qwenvl.py \
   --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
@@ -47,12 +50,14 @@ accelerate launch \
   --vlm_data.dataset_use ${system2_datasets} \
   --vla.expected_world_size 8 \
   --vla.global_batch_size 128 \
-  --vla.per_device_batch_size 16 \
-  --vlm_data.per_device_batch_size 4 \
+  --vla.per_device_batch_size 2 \
+  --vlm_data.per_device_batch_size 8 \
   --vla.freeze_modules "" \
   --vla.learning_rate 5e-5 \
   --vla.qformer_start_layer 36 \
   --vla.qformer_end_layer 37 \
+  --vlm_data.min_pixels 784 \
+  --vlm_data.max_pixels 50176 \
   --vla.max_steps 3000000 \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \

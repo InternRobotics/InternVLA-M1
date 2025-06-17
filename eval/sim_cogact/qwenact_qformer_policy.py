@@ -12,16 +12,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from transforms3d.euler import euler2axangle
-from transformers import AutoModelForVision2Seq, AutoProcessor
 
-
-from llavavla.model.framework import CogACT_Qwen
-
+from llavavla.model.framework.qwenact import QwenQFormerDiT
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
-from llavavla.model.framework import load_qwenvla
-from llavavla.model.framework.load_qwenvla import QwenACT, load_qwenact
 
-class QwenACTInference_align:
+
+class QwenACTAFormerInference:
     def __init__(
         self,
         saved_model_path: str = 'Qwen/Qwen2.5-VL-3B-Instruct',
@@ -68,22 +64,22 @@ class QwenACTInference_align:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-        self.vla = load_qwenact(
+        # import debugpy
+        # debugpy.listen(("0.0.0.0", 5878))
+        # print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+        # debugpy.wait_for_client()
+        self.vla = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
-          load_for_training=False, 
-          action_model_type=action_model_type,              # choose from ['DiT-Small', 'DiT-Base', 'DiT-Large'] to match the model weight
-          future_action_window_size=future_action_window_size,
-          action_dim=action_dim,
         )
 
-        if use_bf16:
-            self.vla.vlm = self.vla.vlm.to(torch.bfloat16)
-        self.vla = self.vla.to("cuda").eval()
-        self.cfg_scale = cfg_scale
+        if use_bf16: # False
+            self.vla = self.vla.to(torch.bfloat16)
+        self.vla = self.vla.to("cuda").eval() # 无法 to gpu? check envs
+        self.cfg_scale = cfg_scale # 1.5
 
         self.image_size = image_size
-        self.action_scale = action_scale
-        self.horizon = horizon
+        self.action_scale = action_scale # 1.0
+        self.horizon = horizon #0
         self.action_ensemble = action_ensemble
         self.adaptive_ensemble_alpha = adaptive_ensemble_alpha
         self.action_ensemble_horizon = action_ensemble_horizon
@@ -137,7 +133,9 @@ class QwenACTInference_align:
 
         assert image.dtype == np.uint8
         self._add_image_to_history(self._resize_image(image))
-        image: Image.Image = Image.fromarray(image) #image=640x480x3
+        image: Image.Image = Image.fromarray(image)
+
+
         raw_actions, normalized_actions = self.vla.predict_action(image=image, 
                                                                 instruction=self.task_description,
                                                                 unnorm_key=self.unnorm_key,

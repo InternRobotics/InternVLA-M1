@@ -13,10 +13,11 @@ LLaVA-VLA 是一个开源项目，旨在解耦并统一视觉语言模型（VLM�
 ```
 LLaVA-VLA
 ├── model                # 模型相关代码
-│   ├── visual_encoder   # 处理图像和视频特征提取
-│   ├── language_encoder # 处理文本输入与嵌入
+│   ├── vlm   # 处理这里这了实现各种VLM, LLM
+│   ├── projector        # 这里开发各个模块的 align moduless
 │   ├── action_model     # 执行视觉语言动作
-│   ├── vla              # 各种vla 框架 @TODO 这里的模块怎么划分还需要商量
+│   ├── framework        # 这里对应的是论文的主图， 模型， 数据流，loss 搭建都在这里
+│   ├── openvla          # 这个是本地 cogact依赖， 在后续开发中会被移除
 │
 ├── dataloader           # 收据构建和预处理
 │
@@ -28,13 +29,18 @@ LLaVA-VLA
 ├── requirements.txt     # 依赖包列表
 ```
 
+# 最佳开发：
+1. 在 framework 一个.py 就是一个论文的 model, 可以理由 其他文件夹的share模块或者自己在.py local 定义 modules (经过考虑后可以移动到share)
+
+2. 最开始全部 模型参数 先用local变量管理， baseline 跑起来后， 转移 conf    
+
 #
 愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
 
 ## 希望的feature 和 理想的脚本
 1. Pretraining VLM
 2. Pretraining DiT
-3. align VLM with DiT (希望在 5 epcoh 内完成 alignment)
+3. align VLM with DiT (希望在 5 epcoh 内完成 alignment) # done 
 
 
 ## 开发规划

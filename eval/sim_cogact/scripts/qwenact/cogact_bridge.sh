@@ -13,11 +13,21 @@ TSET_NUM=5
 # 可选：判断是否传入了参数
 if [ -z "$MODEL_PATH" ]; then
   echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
-  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0608_ftqwen_vlm_bridge_rt_1_32gpus_vlm_4/checkpoints/steps_10000_pytorch_model.pt"
+  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_64gpus_vlm_4_0.1/checkpoints/steps_5000_pytorch_model.pt"
 fi
 
 policy_model=QwenACTAFormer
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small
+
+
+# 获取当前系统的 CUDA_VISIBLE_DEVICES 列表
+IFS=',' read -r -a CUDA_DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # 将逗号分隔的 GPU 列表转换为数组
+NUM_GPUS=${#CUDA_DEVICES[@]}  # 获取可用 GPU 的数量
+
+# 打印调试信息
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+echo "CUDA_DEVICES: ${CUDA_DEVICES[@]}"
+echo "NUM_GPUS: $NUM_GPUS"
 
 scene_name=bridge_table_1_v1
 robot=widowx
@@ -46,7 +56,8 @@ fi
 for i in "${!ENV_NAMES[@]}"; do
   env="${ENV_NAMES[i]}"
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
-    gpu_id=$((i  % 8))  # 假设 GPU 0–3 共 4 个，i 用来分配 GPU
+    gpu_id=${CUDA_DEVICES[$((i % NUM_GPUS))]}  # 映射到 CUDA_VISIBLE_DEVICES 中的 GPU ID
+    # gpu_id=$((i  % 8))  # 假设 GPU 0–3 共 4 个，i 用来分配 GPU
     ckpt_dir=$(dirname "${ckpt_path}")
     ckpt_base=$(basename "${ckpt_path}")
     ckpt_name="${ckpt_base%.*}"  # 去掉 .pt 或 .bin 后缀
@@ -92,7 +103,8 @@ robot_init_y=0.06
 for i in "${!ENV_NAMES_V2[@]}"; do
   env="${ENV_NAMES_V2[i]}"
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
-    gpu_id=$(((i + 3) % 8))  # 假设 GPU 0–3 共 4 个，偏移 3
+    gpu_id=${CUDA_DEVICES[$(((i + 3) % NUM_GPUS))]}  # 映射到 CUDA_VISIBLE_DEVICES 中的 GPU ID
+    # gpu_id=$(((i + 3) % 8))  # 假设 GPU 0–3 共 4 个，偏移 3
     ckpt_dir=$(dirname "${ckpt_path}")
     ckpt_base=$(basename "${ckpt_path}")
     ckpt_name="${ckpt_base%.*}"

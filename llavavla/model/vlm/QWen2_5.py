@@ -39,7 +39,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         if load_for_training or True: #TODO model -> vlm 
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_id,  
-                attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
+                # attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
                 torch_dtype="auto", 
                 device_map="cuda",
             ) # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了

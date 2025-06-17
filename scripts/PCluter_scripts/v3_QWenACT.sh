@@ -46,7 +46,7 @@ export TOTAL_GPUS=$((GPUS_PER_NODE * SLURM_NNODES))
 export global_batch_size=$((TOTAL_GPUS * 16)) # 512 is the default global batch size, you can change it if needed
 echo "Total GPUs: $TOTAL_GPUS"
 
-export run_id=0609_ftqwen_bridge_rt_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_rp
+export run_id=0611_ftqwen_without_bridge_rt_${TOTAL_GPUS}gpus_lr_${lr}_qformer_${qformer_start_layer}_${qformer_end_layer}_flashatt
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}

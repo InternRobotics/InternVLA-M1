@@ -512,97 +512,97 @@ data_dict.update({
 
 # Grounding data
 
-llava_format_root = "/fs-computility/efm/yejinhui/Projects/System2VLA/playground/Datasets/llava_format"
-
+llava_format_root = "/mnt/petrelfs/share/efm_p/zhuyangkun/sys2_data/coco/coco_internvl3/qwen_format_minp_3136_maxp_12845056"
+data_root = "/mnt/petrelfs/share/efm_p/zhuyangkun/sys2_data/coco"
 # Define llava_format datasets
 asv2_conversation_en = {
     "annotation_path": f"{llava_format_root}/asv2_conversation_en.jsonl",
-    "data_path": "",  # Images may be referenced inside jsonl
+    "data_path": f"{data_root}",  # Images may be referenced inside jsonl
 }
 
 asv2_detailed_description_en = {
     "annotation_path": f"{llava_format_root}/asv2_detailed_description_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 asv2_region_captioning_en = {
     "annotation_path": f"{llava_format_root}/asv2_region_captioning_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 coco_internvl_longcap_en = {
     "annotation_path": f"{llava_format_root}/coco_internvl_longcap_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 coco_karpathy_train_567_en = {
     "annotation_path": f"{llava_format_root}/coco_karpathy_train_567_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 coco_negative_gpt4o_en = {
     "annotation_path": f"{llava_format_root}/coco_negative_gpt4o_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 coco_poetry_zh = {
     "annotation_path": f"{llava_format_root}/coco_poetry_zh.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 coco_rem_en_zh = {
     "annotation_path": f"{llava_format_root}/coco_rem_en_zh.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 cocorem_exist_yorn_en = {
     "annotation_path": f"{llava_format_root}/cocorem_exist_yorn_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 cocotextv2_en = {
     "annotation_path": f"{llava_format_root}/cocotextv2_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 cocotextv2_gpt4o_en = {
     "annotation_path": f"{llava_format_root}/cocotextv2_gpt4o_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 okvqa_en = {
     "annotation_path": f"{llava_format_root}/okvqa_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}"
 }
 
 refcoco_grounding_aug_en = {
     "annotation_path": f"{llava_format_root}/refcoco_grounding_aug_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 refcoco_grounding_en = {
     "annotation_path": f"{llava_format_root}/refcoco_grounding_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 tallyqa_coco_en = {
     "annotation_path": f"{llava_format_root}/tallyqa_coco_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 toloka_grounding_aug_en = {
     "annotation_path": f"{llava_format_root}/toloka_grounding_aug_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 vqav2_en = {
     "annotation_path": f"{llava_format_root}/vqav2_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 vsr_en = {
     "annotation_path": f"{llava_format_root}/vsr_en.jsonl",
-    "data_path": "",
+    "data_path": f"{data_root}",
 }
 
 # —— 注册到 data_dict 中

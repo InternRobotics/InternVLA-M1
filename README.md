@@ -1,14 +1,22 @@
 # LLaVA-VLA
 
-LLaVA-VLA 是一个开源项目，旨在解耦并统一视觉语言模型（VLM）和视觉语言动作（VLA）模型，使其在同一框架下兼容运行。
+LLaVA-VLA 是一个开源框架项目，旨在解耦并统一视觉语言模型（VLM）和视觉语言动作（VLA）模型，使其在同一框架下兼容运行， 支持研究 VL and A 的 Alignment Training。
+
+
+<span style="color:red;">⚠️ 注意: 这是个内部分享代码，主体代码还在开发阶段，请大家不要对外分享（包括实现思路）⚠️</span>
+
+<span style="color:red;">⚠️ 注意: 大家可以基于此代码库开发自己的工作，但主体代码的使用范围具有排他性 ⚠️</span>
+
+
+<span style="color:blue;"> Asking: 代码中有很多 基建 pending， 如果和大家项目强相关，可以自己实现，愿意的话可以提PR合并到主分支. </span>
 
 ## 特性
 
 - **模块化设计**，包含 **视觉编码**、**语言处理** 和 **动作建模** 组件。
 - **同时支持 VLM 和 VLA 任务**，可灵活适配不同应用场景。
-- **开源可扩展**，适用于进一步研究与开发。
+- **开源可扩展** 遵循高内聚，低耦合，支持变体扩展。
 
-## 文件结构 (预计)
+## 文件结构
 
 ```
 LLaVA-VLA
@@ -32,7 +40,7 @@ LLaVA-VLA
 # 最佳开发：
 1. 在 framework 一个.py 就是一个论文的 model, 可以理由 其他文件夹的share模块或者自己在.py local 定义 modules (经过考虑后可以移动到share)
 
-2. 最开始全部 模型参数 先用local变量管理， baseline 跑起来后， 转移 conf    
+2. 全部模型参数 ，训练参数全部在 conf global 的方式分组管理。
 
 #
 愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
@@ -40,13 +48,13 @@ LLaVA-VLA
 ## 希望的feature 和 理想的脚本
 1. Pretraining VLM
 2. Pretraining DiT
-3. align VLM with DiT (希望在 5 epcoh 内完成 alignment) # done 
+3. align VLM with DiT (希望在 5 epcoh 内完成 alignment) # done 在1 epoch 就能完成
 
 
 ## 开发规划
 1. 支持 QwenACT 的training (done)
 2. 支持同时training VLA 和 VLM (done)
-3. 支持同时 align openVLA DiT and Qwen (done) 
+3. 支持同时 align VLA DiT and Qwen (done) 
 
 4. 支持 单独 training VLM with own vision encode (pending) #直接用QWen
 5. 支持 单独 training ACT with own vision encode (pending) # 直接用openVLA
@@ -66,7 +74,7 @@ cd /mnt/petrelfs/yejinhui/Projects/llavavla/llavavla
 pip install -e .
 
 
-<!-- hard to pip flash_attn-->
+<!-- hard to pip install flash_attn-->
 pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 
 
@@ -77,50 +85,5 @@ MIT License
 
 
 
-## cmd
 
-### 测试QWen 是否还是 ok 的
-
-
-
-from qwen_vl_utils import process_vision_info
-model = cogact.vlm.model
-model.to("cuda")
-processor = cogact.vlm.processor
-
-messages = [
-    {
-        "role": "user",
-        "content": [
-            {
-                "type": "image",
-                "image": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
-            },
-            {"type": "text", "text": "Describe this image."},
-        ],
-    }
-]
-
-# Preparation for inference
-text = processor.apply_chat_template(
-    messages, tokenize=False, add_generation_prompt=True
-)
-image_inputs, video_inputs = process_vision_info(messages)
-inputs = processor(
-    text=[text],
-    images=image_inputs,
-    videos=video_inputs,
-    padding=True,
-    return_tensors="pt",
-)
-inputs = inputs.to("cuda")
-
-# Inference: Generation of the output
-generated_ids = model.generate(**inputs, max_new_tokens=128)
-generated_ids_trimmed = [
-    out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-]
-output_text = processor.batch_decode(
-    generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-)
-print(output_text)
+git remote add gitee https://gitee.pjlab.org.cn/L2/yejinhui/llavavla.git

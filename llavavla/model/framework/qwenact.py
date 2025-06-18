@@ -438,15 +438,22 @@ def load_from_pretrained(pretrained_checkpoint):
         pretrained_checkpoint=pretrained_checkpoint)
     return model
 
+import OmegaConf
 if __name__ == "__main__":
 
     # 模型参数
     import debugpy
-    debugpy.listen(("0.0.0.0", 5878))
+    debugpy.listen(("0.0.0.0", 5678))
     print("🔍 Rank 0 waiting for debugger attach on port 5878...")
     debugpy.wait_for_client()
     samples = {}
 
-    model_framework = build_model_framework()
+    config_yaml = "llavavla/conf/qwenvla_cotrain.yaml"
+    cfg = OmegaConf.load(config_yaml)
+    vla_cfg = cfg.vla
+    model_framework = build_model_framework(vla_cfg)
     model_framework(samples)
     pass
+
+    # git remote add gitee https://gitee.pjlab.org.cn/L2/MultimodalVLA/llavavla.git
+    # git push -u gitee master

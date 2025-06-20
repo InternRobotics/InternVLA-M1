@@ -89,12 +89,12 @@ class LayerwiseQFormer(nn.Module):
         scaled_hidden_states_list = []
         for hidden_states in hidden_states_list:
             if hidden_states.requires_grad:
-                # 对每个 hidden_states 的梯度缩放 0.1 倍
-                # hidden_states = hidden_states.detach()  # 分离计算图， 是否意味着和后面不先关
-                # hidden_states.requires_grad_(True)      # 重新启用梯度
-                hidden_states.register_hook(lambda grad: grad * scale_factor)  # 关键缩放
+                # 确保在分布式环境下梯度缩放只执行一次
+                if not hasattr(hidden_states, '_scaled_hook'):  # 防止重复注册
+                    hook = lambda grad: grad * scale_factor
+                    hidden_states.register_hook(hook)
+                    hidden_states._scaled_hook = True  # 标记已处理
             scaled_hidden_states_list.append(hidden_states)
-        hidden_states_list = scaled_hidden_states_list
 
         return hidden_states_list
 

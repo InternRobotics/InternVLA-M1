@@ -151,7 +151,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         for imgs, instruction in zip(images,instructions):
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
-            prompt = f"{instruction}."
+            # prompt = f"{instruction}."
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             messages.append(msg)
@@ -186,7 +186,7 @@ def get_qwen2_5_interface(model_id, config=None):
     if config is None:
         model = _QWen_VL_Interface(model_id= model_id) # 要时刻记住面向对象编程
     else:
-        vl_config = config.vla # TODO 后期要统一 config 
+        vl_config = config # TODO 后期要统一 config 
         model = _QWen_VL_Interface(model_id, vl_config)
 
     

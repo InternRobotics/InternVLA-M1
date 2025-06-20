@@ -1,20 +1,11 @@
 # LLaVA-VLA
 
-LLaVA-VLA 是一个开源框架项目，旨在解耦并统一视觉语言模型（VLM）和视觉语言动作（VLA）模型，使其在同一框架下兼容运行， 支持研究 VL and A 的 Alignment Training。
-
-
-<span style="color:red;">⚠️ 注意: 这是个内部分享代码，主体代码还在开发阶段，请大家不要对外分享（包括实现思路）⚠️</span>
-
-<span style="color:red;">⚠️ 注意: 大家可以基于此代码库开发自己的工作，但主体代码的使用范围具有排他性 ⚠️</span>
-
-
-<span style="color:blue;"> Asking: 代码中有很多 基建 pending， 如果和大家项目强相关，可以自己实现，愿意的话可以提PR合并到主分支. </span>
-
 ## 特性
 
 - **模块化设计**，包含 **视觉编码**、**语言处理** 和 **动作建模** 组件。
 - **同时支持 VLM 和 VLA 任务**，可灵活适配不同应用场景。
 - **开源可扩展** 遵循高内聚，低耦合，支持变体扩展。
+
 
 ## 文件结构
 
@@ -42,8 +33,8 @@ LLaVA-VLA
 
 2. 全部模型参数 ，训练参数全部在 conf global 的方式分组管理。
 
-#
-愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
+# 愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
+
 
 ## 希望的feature 和 理想的脚本
 1. Pretraining VLM
@@ -64,7 +55,7 @@ LLaVA-VLA
 ### setup envs
 '''bash
 
-cd llavavla/model/openvla 
+cd llavavla/model/openvla
 pip install -e .
 <!-- 他们的 pyproject.toml 里面已经有很多包的版本很难install， 比如python 版本绑定为 3.10 -->
 <!-- 移除 presmiatic 之后将不需要 -->
@@ -82,8 +73,6 @@ pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.
 ## 许可证
 
 MIT License
-
-
 
 
 git remote add gitee https://gitee.pjlab.org.cn/L2/yejinhui/llavavla.git

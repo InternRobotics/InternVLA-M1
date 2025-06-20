@@ -55,7 +55,7 @@ export system2_datasets="${datasets_vlm},${datasets_grounding}"
 export llm_loss_weight=0.5
 export llm_hook_weight=0.1
 
-export run_id=0620_noflash_vlm_grounding_bridge_rt_1_${TOTAL_GPUS}gpus_hook_${llm_hook_weight}_hook2
+export run_id=0620_noflash_vlm_grounding_bridge_rt_1_${TOTAL_GPUS}gpus_hook_${llm_hook_weight}_hook3
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}

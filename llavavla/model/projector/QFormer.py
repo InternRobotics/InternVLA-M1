@@ -61,6 +61,8 @@ class LayerwiseQFormer(nn.Module):
         encoder_attention_mask: optional [B, L]
         return: updated query tokens [B, Q, D]
         """
+        hidden_states_list = self.scale_hook(hidden_states_list) #TODO 需要查看是否影响速度
+
         assert len(hidden_states_list) == self.num_layers, f"Expected {self.num_layers} layers, got {len(hidden_states_list)}"
 
         B = hidden_states_list[0].size(0)
@@ -81,6 +83,20 @@ class LayerwiseQFormer(nn.Module):
 
         return query
     
+    def scale_hook(self, hidden_states_list, scale_factor=0.1): #TODO 需要查看是否会影响分布式， 记得参数化
+        # --- 1. 对输入 hidden_states_list 的梯度注册缩放钩子 ---
+        # TODO @Jinhui 如果影响数独，需要用 lr 来曲线实现 --> 似乎是和 Deepspeed 加速冲突. lr 来曲线实现 这个不一定能够解，因为涉及到陡峭问题
+        scaled_hidden_states_list = []
+        for hidden_states in hidden_states_list:
+            if hidden_states.requires_grad:
+                # 对每个 hidden_states 的梯度缩放 0.1 倍
+                hidden_states = hidden_states.detach()  # 分离计算图， 是否意味着和后面不先关
+                hidden_states.requires_grad_(True)      # 重新启用梯度
+                hidden_states.register_hook(lambda grad: grad * scale_factor)  # 关键缩放
+            scaled_hidden_states_list.append(hidden_states)
+        hidden_states_list = scaled_hidden_states_list
+
+        return hidden_states_list
 
 
 import torch
@@ -177,6 +193,6 @@ def get_layerwise_qformer(
     # dist.barrier()
     num_layers = config.vla.qformer_end_layer - config.vla.qformer_start_layer  if config else num_layers
     num_query_tokens = 64 # 这里还没有参数化
-
+                                # TODO 需要变成全局参数赋值， 如果兼顾 可读性和灵活性？
     qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads) 
     return qformer

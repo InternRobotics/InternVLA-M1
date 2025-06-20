@@ -72,8 +72,12 @@ class QwenQFormerDiT(nn.Module):
         self.future_action_window_size = future_action_window_size
         self.past_action_window_size = past_action_window_size
 
-        self.all_module_keys = auto_get_module_keys(self) #  TODO 这个是trainer的 funx
+        # self.all_module_keys = auto_get_module_keys(self) #  TODO 这个是trainer的 funx， 或许是多余的
         self.norm_stats = norm_stats # 这个是 inference 时候用到的， 不应该是放到这个位置？
+
+        # if we need some pretrain prameters, we can load them here
+        # TODO 需要考虑这个是谁的职责 --> 按照扁平管理，切实应该在内部做条件判断
+        self.load_pretrained_backbones(self.config) # 只是提示作用
 
     @property
     def trainable_module_keys(self) -> List[str]:
@@ -91,17 +95,12 @@ class QwenQFormerDiT(nn.Module):
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         # @Jinhui TBD TODO 
-        # pixel_values = pixel_values["pixel_values"] # labeles = pixel_values["labels"]
-        # dist.barrier()
-
-        # images: Optional[torch.FloatTensor] = None,
-        # instructions: Optional[List] = None,
-        # actions: Optional[torch.FloatTensor] = None,
         images = [example["image"] for example in examples]  #  TODO check 是什么
         instructions = [example["lang"] for example in examples]  # [B, str]
         actions = [example["action"] for example in examples] #label
         
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions) # @Jinhui TODO add instruction to qwenvl inputs
+        
         with torch.autocast("cuda", dtype=torch.float16):
             # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
@@ -189,15 +188,6 @@ class QwenQFormerDiT(nn.Module):
             
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
             
-            # Jinhui see text # outputs.sequences.shape: B, len with prefix
-            # outputs.input_ids = outputs.sequences # 为了和 input dict 保持一致， 方便调用 self._get_cognition_features# 还真不太一样，因为generation的逻辑和 forward不一样
-            # generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, outputs.sequences)]
-            # output_text = self.qwen_processor.batch_decode(generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            # print("output:\n",output_text[0])
-            # fmt: on
-            # 我们training的时候是 image 不固定在最前面没，是没办法只max_new = 1 的
-
-        
         using_cfg = cfg_scale > 1.0
 
         model_dtype = next(self.action_model.net.parameters()).dtype
@@ -269,12 +259,12 @@ class QwenQFormerDiT(nn.Module):
         """
         根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
           - patterns: 从 config.vla.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表
-            例如 "qwen_vl_interface,action_model.net"，
+            例如 "qwen_vl_interface, action_model.net"，
             就意味着冻结 self.qwen_vl_interface 和 self.action_model.net。
         返回值：
           - frozen: 实际找到并冻结的模块路径列表
         """
-        freeze_modules = (
+        freeze_modules = ( # 我觉得全局就应该只有一个config， 使用没必要相对路径
             self.config.vla.freeze_modules
             if (self.config and hasattr(self.config.vla, "freeze_modules"))
             else None
@@ -303,6 +293,61 @@ class QwenQFormerDiT(nn.Module):
         print(f"🔒 Frozen modules (by relative path): {frozen}")
         return frozen
     
+    def load_pretrained_backbones(self, config): # TODO Jinhui 这在哪里被调用还是需要商量
+        """
+        加载 checkpoint：
+        - 如果设置了 config.vla.reload_modules（逗号分隔的模块路径）→ 按路径部分加载
+        - 否则 → 加载整个模型参数（覆盖 self）
+
+        返回：
+            替换，loaded_modules: 成功加载参数的模块路径列表；若全局加载则为 ["<full_model>"]
+        """
+        checkpoint_path = getattr(self.config, "pretrained_checkpoint", None)
+        reload_module_name = getattr(self.config, "reload_modules", None)
+
+        if not checkpoint_path:
+            return []  
+
+        print(f"📦 正在加载 checkpoint: {checkpoint_path}")
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        except Exception as e:
+            raise RuntimeError(f"❌ 加载 checkpoint 失败: {e}")
+
+        loaded_modules = []
+
+        if reload_module_name:  # 部分加载
+            module_paths = [p.strip() for p in reload_module_name.split(",") if p.strip()]
+            for path in module_paths:
+                reload_module_name = path.split(".")
+                module = self
+                try:
+                    for module_name in reload_module_name: # 这里 top2down 的找到 要修改的module
+                        module = getattr(module, module_name)
+                    prefix = path + "."
+                    sub_state_dict = {
+                        k[len(prefix):]: v
+                        for k, v in checkpoint.items()
+                        if k.startswith(prefix)
+                    }
+
+                    if sub_state_dict:
+                        module.load_state_dict(sub_state_dict, strict=True)
+                        print(f"✅ 参数已加载到模块 '{path}'")
+                        loaded_modules.append(path)
+                    else:
+                        print(f"⚠️ checkpoint 中未找到 '{path}' 相关参数")
+                except AttributeError:
+                    print(f"❌ 无法找到模块路径：{path}")
+        else:  # 全部加载
+            try:
+                self.load_state_dict(checkpoint, strict=True)
+                print("✅ 已加载完整模型参数")
+                loaded_modules = ["<full_model>"]
+            except Exception as e:
+                raise RuntimeError(f"❌ 加载完整模型失败: {e}")
+
+        return loaded_modules
     def print_freeze_status(self): # 这个是 工具类方法。 可以考虑移动
         for name, param in self.named_parameters():
             status = "Frozen" if not param.requires_grad else "Trainable"
@@ -319,14 +364,8 @@ class QwenQFormerDiT(nn.Module):
         # Initialize CogACT
         # model_config TODO DEBUE @JinhuiYE 这里应该保证training infer 的参数和模型🔗是一致的 （特别是 QFormer)
         # TODO 
-        model_config = dict_to_namespace(model_config)
-        if os.getenv("DEBUG"):
-            print(f"🔍 Loading config from pretrained checkpoint: {pretrained_checkpoint}")
-        # 安全设置属性
-        if not hasattr(model_config.vla, "qformer_start_layer"):
-            model_config.vla.qformer_start_layer = 31
-            model_config.vla.qformer_end_layer = 37
-        
+        config = dict_to_namespace(model_config)
+        model_config = config.vla
         qwenQFormerACT = build_model_framework(model_config) 
         # set for action un-norm
         qwenQFormerACT.norm_stats = norm_stats
@@ -383,7 +422,7 @@ class QwenQFormerDiT(nn.Module):
 # TODO 写一个build model 函数
 
 def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
-    # TODO  实现和config 对应的 load 逻辑
+    # TODO  实现和 config 对应的 load 逻辑
 
     model = QwenQFormerDiT(
     qwen_model_name='/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct',
@@ -427,18 +466,13 @@ def read_mode_config(pretrained_checkpoint):
 def load_from_pretrained(pretrained_checkpoint):
     """Load a pretrained QwenQFormerDiT model from a checkpoint."""
 
-
-
-    # = Load Individual Components necessary for Instantiating a VLA (via base VLM components) =
-
-
     # TODO 这里应该是从config中加载
     
     model = QwenQFormerDiT.from_pretrained(
         pretrained_checkpoint=pretrained_checkpoint)
     return model
 
-import OmegaConf
+from omegaconf import OmegaConf
 if __name__ == "__main__":
 
     # 模型参数
@@ -448,10 +482,10 @@ if __name__ == "__main__":
     debugpy.wait_for_client()
     samples = {}
 
-    config_yaml = "llavavla/conf/qwenvla_cotrain.yaml"
+    config_yaml = "llavavla/conf/qwenvla_cotrain_v2.yaml"
     cfg = OmegaConf.load(config_yaml)
-    vla_cfg = cfg.vla
-    model_framework = build_model_framework(vla_cfg)
+
+    model_framework = build_model_framework(cfg)
     model_framework(samples)
     pass
 

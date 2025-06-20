@@ -238,7 +238,12 @@ class LazySupervisedDataset(Dataset):
     def process_image_unified(self, image_file):
         processor = copy.deepcopy(self.data_args.image_processor)
         image = Image.open(image_file).convert("RGB")
-
+        # @Jinhui 如果要fix image size?
+        if getattr(self.data_args, "fix_image_size", None) is not None:
+            image = image.resize(
+                self.data_args.fix_image_size,
+                resample=Image.BICUBIC,
+            )
         visual_processed = processor.preprocess(image, return_tensors="pt")
         image_tensor = visual_processed["pixel_values"]
         if isinstance(image_tensor, List):
@@ -717,7 +722,7 @@ if __name__ == "__main__":
     debugpy.wait_for_client()
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "llavavla/conf/qwenvla_cotrain.yaml"
+    config_yaml = "llavavla/conf/qwenvla_cotrain_v2.yaml"
     cfg = OmegaConf.load(config_yaml)
     data_args = cfg.vlm_data
     image_processor = AutoProcessor.from_pretrained(
@@ -742,8 +747,7 @@ if __name__ == "__main__":
     data_args_ns.image_processor = image_processor # TODO 后期看如何 移除和模型绑定的逻辑                         
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args_ns)
     
-
-    # 
+    #
     train_dataset = data_module["train_dataset"]
     data_collator = data_module["data_collator"]
     from torch.utils.data import DataLoader

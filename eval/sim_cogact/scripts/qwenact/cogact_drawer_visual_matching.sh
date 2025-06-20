@@ -7,12 +7,12 @@ if [ -z "$MODEL_PATH" ]; then
   echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
   export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_40000_pytorch_model.pt"
 fi
-cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 
 
 cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 # conda activate simpler_env4 # make sure you are in the right conda env
 export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
+
 
 policy_model=QwenACTAFormer
 
@@ -40,7 +40,7 @@ for urdf_version in "${urdf_version_arr[@]}"; do
 
   EXTRA_ARGS="--enable-raytracing --additional-env-build-kwargs station_name=mk_station_recolor light_mode=simple disable_bad_material=True urdf_version=${urdf_version}"
 
-  EvalOverlay() {
+  EvalSim() {
     # A0
     CUDA_VISIBLE_DEVICES=${gpu_id} python simpler_env/main_inference.py --policy-model ${policy_model} --ckpt-path ${ckpt_path} \
       --robot google_robot_static \

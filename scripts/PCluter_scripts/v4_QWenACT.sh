@@ -51,10 +51,11 @@ echo "Total GPUs: $TOTAL_GPUS"
 datasets_vlm=aokvqa_cauldron_llava_format,sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
 datasets_grounding=asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
 # ,${datasets_grounding}
-export system2_datasets="${datasets_vlm}"
-export llm_loss_weight=0.3
+export system2_datasets="${datasets_vlm},${datasets_grounding}"
+export llm_loss_weight=0.5
+export llm_hook_weight=0.1
 
-export run_id=0612_noflash_vlm_bridge_rt_1_${TOTAL_GPUS}gpus_vlm_${vlm_per_batch_size}_${llm_loss_weight}
+export run_id=0620_noflash_vlm_grounding_bridge_rt_1_${TOTAL_GPUS}gpus_hook_${llm_hook_weight}_hook2
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -79,7 +80,7 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
   llavavla/training/train_qwenvla_cotrain.py \
-  --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
+  --config_yaml ./llavavla/conf/qwenvla_cotrain_v2.yaml \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.qformer_start_layer ${qformer_start_layer} \

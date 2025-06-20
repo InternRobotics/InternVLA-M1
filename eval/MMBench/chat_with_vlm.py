@@ -1,62 +1,43 @@
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
 from qwen_vl_utils import process_vision_info
-# from llavavla.model.framework.qwenact import QwenQFormerDiT
+from llavavla.model.framework.qwenact import QwenQFormerDiT
 import os, torch
 
 
-# import debugpy, torch
-# debugpy.listen(("0.0.0.0", 5678))
-# print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-# debugpy.wait_for_client()
+import debugpy, torch
+debugpy.listen(("0.0.0.0", 5678))
+print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+debugpy.wait_for_client()
 
-# saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/checkpoints/steps_10000_pytorch_model.pt"
-# qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
-#           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
-#         )
+saved_model_path = "/mnt/petrelfs/share/yejinhui/Models/Checkpoints/llavavla/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/checkpoints/steps_10000_pytorch_model.pt"
+qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
+          saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
+        )
 
 
-# # default: Load the model on the available device(s)
-# model = qwenact.qwen_vl_interface.model
-# # default processer
-# processor = qwenact.qwen_vl_interface.processor
+# default: Load the model on the available device(s)
+model = qwenact.qwen_vl_interface.model
+# default processer
+processor = qwenact.qwen_vl_interface.processor
 
 
 
 model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"  # or your local path
-qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_path,
     torch_dtype=torch.bfloat16,
     # attn_implementation="flash_attention_2",
 )
+
 processor = AutoProcessor.from_pretrained(
     model_path, use_fast=True
 )
 tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
 tokenizer.padding_side = "left"  # BATCH INFER
 processor.tokenizer = tokenizer
-qwen_model.to("cuda")  # 将模型移动到 GPU
-qwen_model.eval()
+model.to("cuda")  # 将模型移动到 GPU
+model.eval()
 
-# 读取 saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/checkpoints/steps_5000_pytorch_model.pt"？
-saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/checkpoints/steps_10000_pytorch_model.pt"
-
-model_state = torch.load(saved_model_path, map_location="cuda")
-# Load the model state dict
-
-# 筛选并处理 model_state 的参数
-model_state_qwen = {
-    key.replace("qwen_vl_interface.model.", ""): value
-    for key, value in model_state.items()
-    if key.startswith("qwen_vl_interface.model.")
-}
-qwen_model.load_state_dict(model_state_qwen, strict=True)  # strict=False to ignore missing keys
-
-model = qwen_model
-# The default range for the number of visual tokens per image in the model is 4-16384.
-# You can set min_pixels and max_pixels according to your needs, such as a token range of 256-1280, to balance performance and cost.
-# min_pixels = 256*28*28
-# max_pixels = 1280*28*28
-# processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", min_pixels=min_pixels, max_pixels=max_pixels)
 
 messages = [
     {
@@ -108,7 +89,7 @@ messages2 = [
     {"role": "user", "content": "Who are you?"},
 ]
 # Combine messages for batch processing
-messages = [messages3 ]
+messages = [messages1, messages2, messages3, messages_text]
 
 # Preparation for batch inference
 texts = [

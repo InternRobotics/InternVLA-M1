@@ -1,19 +1,25 @@
 import torch
-
+import transformers
 from typing import Optional, List
-
+import copy
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from transformers.modeling_outputs import CausalLMOutputWithPast
 # from prismatic.models.vlms.base_vlm import VLM
+from typing import Dict, Optional, Sequence, List, Tuple
+from torch.nn.utils.rnn import pad_sequence
+from transformers import BatchFeature
+
 from prismatic.overwatch import initialize_overwatch
 from qwen_vl_utils import process_vision_info
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
-
-
-# Registry =>> Support Qwen-2.5 Models (from HF Transformers)
+IGNORE_INDEX = -100
+IMAGE_TOKEN_INDEX = 151655
+VIDEO_TOKEN_INDEX = 151656
+DEFAULT_IMAGE_TOKEN = "<image>\n"
+DEFAULT_VIDEO_TOKEN = "<video>\n"
 
 # add by jinhui
 
@@ -75,9 +81,6 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         """
         
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            # @Jinhui TBD TODO 
-            # pixel_values = pixel_values["pixel_values"]
-            # print(kwargs["image_grid_thw"])
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -95,7 +98,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         
         # QWen2.5 默认返回的可能是 QWenXXXModelOutput；这里示例将它包装成一个 CausalLMOutputWithPast
         # 仅做示例：如果 QWen2.5 返回的字段名不同，你需要做对应处理
-        dummy_output = CausalLMOutputWithPast(
+        dummy_output = CausalLMOutputWithPast( # TODO 后期移除？ 需要讨论返回的格式
             loss=outputs.loss if hasattr(outputs, "loss") else None,
             logits=outputs.logits if hasattr(outputs, "logits") else None,
             past_key_values=outputs.past_key_values if hasattr(outputs, "past_key_values") else None,
@@ -130,7 +133,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs(self, images, instructions, prompt="What is in this image?"):
+    def build_qwenvl_inputs_v1(self, images, instructions):
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -143,12 +146,12 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         Returns:
             inputs: dict with input_ids, attention_mask, pixel_values, etc., ready for model.generate or model(...)
         """
-        # TODO 这里要和 QWen 官方对齐
+        # TODO 这里要和 QWen 官方对齐 --> infer 这样更快， 但是 我们可以写成
         pass
         # Create messages: one message per sample
         messages = []
         assert len(images) == len(instructions), "Images and instructions must have the same length"
-        for imgs, instruction in zip(images,instructions):
+        for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
             # prompt = f"{instruction}."
@@ -157,6 +160,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             messages.append(msg)
 
         # Prepare text prompts using processor
+        # default 流程是 json --> message --> texts --> input_ids
         texts = [
             self.processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
             for m in messages
@@ -164,22 +168,231 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
         # image_inputs = list of PIL
         image_inputs, video_inputs = process_vision_info(messages)
-        # Prepare visual inputs
-        # Tokenize all together
         inputs = self.processor( # @JinhuiYE TODO 这里需要检查是否图片是否放到的指定地方， 要去对比 官方dataloader
             text=texts,
-            images=image_inputs, # list of PIL, can not to tensor by ourself? yes, will be a bug
+            images=image_inputs, # list of PIL
             videos=video_inputs,
             padding=True,
             return_tensors="pt"
         )
-        # 检查
-        # inputs.keys()
-        # inputs["pixel_values"].shape
-        # torch.Size([512, 1176]) 这个很奇怪, 它将全部 pixel_values 压缩在一起了？
+        # torch.distributed.barrier()
+        return inputs.to(self.model.device)
+    
+    def build_qwenvl_inputs(self, images, instructions):
+        # TODO 其实也可以放到dataloader 内部， 但是导致的是 dataloader 需要依赖 model processor
+        """
+        Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
+        Args:
+            images: B*list of PIL (muilti-view), image format: RGB, value in [0, 255]
+            processor: Qwen2.5 VL processor (AutoProcessor.from_pretrained)
+            instructions: Text prompt to use for each instruction
+            device: Target device (default: "cuda")
+
+        Returns:
+            inputs: dict with input_ids, attention_mask, pixel_values, etc., ready for model.generate or model(...)
+        """
+        # default 流程是 json, source --> message --> texts --> input_ids
+        # 这里我们做 Lerobot --> message -->json source --> text --> inputs with label
+        # Create messages: one message per sample
+        messages = []
+        assert len(images) == len(instructions), "Images and instructions must have the same length"
+        
+        # build conversation messages
+        for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
+            content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
+            prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
+            # prompt = f"{instruction}."
+            content.append({"type": "text", "text": prompt})
+            msg = [{"role": "user", "content": content}]
+            messages.append(msg)
+
+        # Prepare visul inputs = list of PIL
+        
+        images, videos = process_vision_info(messages) # 这样可以处理不同 图片的复炸情况
+        # TODO v1 暂时不支持video 的处理. # 目前还不能image, video 交错， 如果实现需要而外的统一
+        # copy from .../transformers/models/qwen2_5_vl/processing_qwen2_5_vl.py
+        # copy from llavavla/dataloader/vlm_datasets.py, ⚠️， 为了 能够适用 批处理，做了修改
+        # TODO 要修改 官方的 preprocess_qwen_2_visual 中的函数， 同时确保多模态那边不会出现bug
+        # TODO 其实可以直接用 processor， 弊端是处理了两次 tokenizer, 但是我觉得开销 不大， 值得做的个更加美观
+        image_inputs = {}
+        image_grid_thw = None
+        video_inputs = {}
+        video_grid_thw = None
+
+        if images is not None:
+            image_inputs = self.processor.image_processor(images=images, return_tensors="pt") # 这里是直接处理成 tensor 的
+            image_grid_thw = copy.deepcopy(image_inputs["image_grid_thw"]) 
+            image_grid_thw_merged = [
+                merged_thw.prod() // self.processor.image_processor.merge_size**2
+                for merged_thw in image_grid_thw
+            ] 
+            grid_thw_merged = image_grid_thw_merged # 目前还不能image, video 交错
+            text_inputs = preprocess_qwen_2_visual( # 对 官方代码进行了修改，sources --> massage， 支持 batch padding
+                messages, self.processor.tokenizer, grid_thw=grid_thw_merged, visual_type="image"
+            ) # 拿到 input_ids and labels
+        elif videos is not None:
+            video_inputs = self.processor.video_processor(videos=videos, return_tensors="pt")
+            video_grid_thw = copy.deepcopy(video_inputs["video_grid_thw"])
+            video_grid_thw_merged = [
+                merged_thw.prod() // self.processor.image_processor.merge_size**2
+                for merged_thw in video_grid_thw
+            ]
+            grid_thw_merged = video_grid_thw_merged
+            text_inputs = preprocess_qwen_2_visual( # 对 官方代码进行了修改，sources --> massage， 支持 batch padding
+                messages, self.processor.tokenizer, grid_thw=grid_thw_merged, visual_type="video"
+            )
+        else: 
+            ResourceWarning("No visual inputs provided. 还不确定这个框架是否支持这样的混合输出.")
+            pass
+
+        # torch.distributed.barrier()
+        inputs = BatchFeature(data={**text_inputs, **image_inputs, **video_inputs}, tensor_type="pt")
+        # qwen 官方： dict_keys(['input_ids', 'labels', 'position_ids', 'pixel_values', 'image_grid_thw'])
+        # 我们 的： dict_keys(['input_ids', 'labels', 'attention_mask', 'pixel_values', 'image_grid_thw']) # 
         return inputs.to(self.model.device)
 
+
+
+def messages_to_sources(batch_messages):
+    """
+    将 batch 格式的 messages 转换为 sources 格式，支持多模态（image/text）。
+    
+    Args:
+        batch_messages: List[List[Dict]]，每个样本是一组 message 对话
+
+    Returns:
+        List[List[Dict]]，每个样本的 source 对话
+    """
+    batch_sources = []
+
+    for messages in batch_messages:
+        source = []
+        for msg in messages:
+            role = msg["role"]
+            segments = msg["content"]
+
+            parts = []
+            for seg in segments:
+                if seg["type"] == "text":
+                    parts.append(seg["text"])
+                elif seg["type"] == "image":
+                    parts.append(DEFAULT_IMAGE_TOKEN) # VIDEO 还不支持
+                else:
+                    raise ValueError(f"Unsupported content type: {seg['type']}")
+
+            content = "\n".join(parts)
+            source.append({"from": "human" if role == "user" else "gpt", "value": content})
+
+        batch_sources.append(source)
+
+    return batch_sources
+
+def preprocess_qwen_2_visual(
+    massages,
+    tokenizer: transformers.PreTrainedTokenizer,
+    grid_thw: List = [],
+    visual_type: str = "image",
+) -> Dict:
+    # massage --> sources json
+    pass
+    
+
+    sources = messages_to_sources(massages)  # 转换为 source 格式
+    # torch.distributed.barrier()
+    # 复用 QWenvl 代码
+    roles = {"human": "user", "gpt": "assistant"}
+    system_message = "You are a helpful assistant."
+    if visual_type not in ["image", "video"]:
+        raise ValueError("visual_type must be either 'image' or 'video'")
+
+    tokenizer = copy.deepcopy(tokenizer)
+    chat_template = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+    tokenizer.chat_template = chat_template
+
+    visual_replicate_index = 0
+    input_ids, targets = [], []
+
+    for i, source in enumerate(sources):
+        try:
+            if roles[source[0]["from"]] != roles["human"]:
+                source = source[1:]
+        except:
+            print(sources)
+
+        input_id, target = [], []
+
+        input_id += tokenizer.apply_chat_template(
+            [{"role": "system", "content": system_message}]
+        )
+        target += [IGNORE_INDEX] * len(input_id)
+
+        for conv in source:
+            try:
+                role = conv["role"]
+                content = conv["content"]
+            except:
+                role = conv["from"]
+                content = conv["value"]
+
+            role = roles.get(role, role)
+            if role == "user":
+                visual_tag = f"<{visual_type}>"
+                if visual_tag in content:
+                    parts = content.split(visual_tag)
+                    new_parts = []
+                    for i in range(len(parts) - 1):
+                        new_parts.append(parts[i])
+                        replacement = (
+                            "<|vision_start|>"
+                            + f"<|{visual_type}_pad|>"
+                            * grid_thw[visual_replicate_index]
+                            + "<|vision_end|>"
+                        )
+                        new_parts.append(replacement)
+                        visual_replicate_index += 1
+                    new_parts.append(parts[-1])
+                    content = "".join(new_parts)
+
+            conv = [{"role": role, "content": content}]
+            encode_id = tokenizer.apply_chat_template(conv)
+            input_id += encode_id
+            if role in ["user", "system"]:
+                target += [IGNORE_INDEX] * len(encode_id)
+            else:
+                target_mask = encode_id.copy()
+                target_mask[:3] = [IGNORE_INDEX] * 3
+                target += target_mask
+
+        assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
+        input_ids.append(input_id)
+        targets.append(target)
+
+    # TODO Batch padding 
+    # TODO 不建议在这里执行padding
+    
+    # Padding input_ids 和 targets
+    input_ids = pad_sequence(
+        [torch.tensor(ids, dtype=torch.long) for ids in input_ids],
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id,
+        padding_side=tokenizer.padding_side
+    )
+    targets = pad_sequence(
+        [torch.tensor(tgt, dtype=torch.long) for tgt in targets],
+        batch_first=True,
+        padding_value=IGNORE_INDEX,
+        padding_side=tokenizer.padding_side
+    )
+
+    # 构建 attention_mask：非 pad 的位置为 1，pad 的为 0
+    attention_mask = (input_ids != tokenizer.pad_token_id).long()
+    
+    return dict(
+        input_ids=input_ids,
+        labels=targets,
+        attention_mask=attention_mask,
+    )
 
     
 def get_qwen2_5_interface(model_id, config=None):

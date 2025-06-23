@@ -358,3 +358,44 @@ def normalize_dotlist_args(args): # 其实可以交给 OmegaConf 内部的， �
         else:
             pass  # skip orphaned values
     return normalized
+
+
+def build_param_lr_groups(vla, cfg): # TODO 后面要和 trainer 绑定
+    """
+    根据 cfg.trainer.learning_rate 构建多 param group 的参数组。
+    支持指定模块使用不同学习率，其余使用 base。
+    
+    Args:
+        vla: nn.Module 模型对象
+        cfg: 配置对象，要求有 cfg.trainer.learning_rate 字典
+
+    Returns:
+        List[Dict]: 可用于 torch.optim 构建 optimizer 的 param_groups
+    """
+
+    lr_cfg = cfg.trainer.learning_rate
+    base_lr = lr_cfg.get("base", 1e-4)  # 默认 base 学习率
+
+    used_params = set()
+    param_groups = []
+
+    for module_name, lr in lr_cfg.items():
+        if module_name == "base":
+            continue
+        # 尝试按 module_name 在 vla 下找到模块（支持嵌套路径）
+        module = vla
+        try:
+            for attr in module_name.split("."):
+                module = getattr(module, attr)
+            params = list(module.parameters())
+            param_groups.append({"params": params, "lr": lr, "name": module_name})
+            used_params.update(id(p) for p in params)
+        except AttributeError:
+            ReferenceError(f"⚠️ 模块路径 `{module_name}` 无法在 vla 中找到")
+
+    # 将其余未使用的参数分配 base 学习率
+    other_params = [p for p in vla.parameters() if id(p) not in used_params]
+    if other_params:
+        param_groups.append({"params": other_params, "lr": base_lr, "name": "base"})
+
+    return param_groups

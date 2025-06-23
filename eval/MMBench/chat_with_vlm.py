@@ -9,7 +9,7 @@ debugpy.listen(("0.0.0.0", 5678))
 print("🔍 Rank 0 waiting for debugger attach on port 5678...")
 debugpy.wait_for_client()
 
-saved_model_path = "/mnt/petrelfs/share/yejinhui/Models/Checkpoints/llavavla/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/checkpoints/steps_10000_pytorch_model.pt"
+saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0620_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1_hook2/checkpoints/steps_10000_pytorch_model.pt"
 qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
         )
@@ -22,24 +22,26 @@ processor = qwenact.qwen_vl_interface.processor
 
 
 
-model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"  # or your local path
-model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    model_path,
-    torch_dtype=torch.bfloat16,
-    # attn_implementation="flash_attention_2",
-)
+# model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"  # or your local path
+# model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+#     model_path,
+#     torch_dtype=torch.bfloat16,
+#     # attn_implementation="flash_attention_2",
+# )
 
-processor = AutoProcessor.from_pretrained(
-    model_path, use_fast=True
-)
-tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
-tokenizer.padding_side = "left"  # BATCH INFER
-processor.tokenizer = tokenizer
+# processor = AutoProcessor.from_pretrained(
+#     model_path, use_fast=True
+# )
+# tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+# tokenizer.padding_side = "left"  # BATCH INFER
+# processor.tokenizer = tokenizer
+
+
 model.to("cuda")  # 将模型移动到 GPU
 model.eval()
 
 
-messages = [
+messages0 = [
     {
         "role": "user",
         "content": [
@@ -70,7 +72,7 @@ messages_text = [
     {
         "role": "user",
         "content": [
-            {"type": "text", "text": "中国的首都是哪里？"},
+            {"type": "text", "text": "中国的首都是哪里？"}, # 过拟合了
         ],
     }
 ]
@@ -85,8 +87,8 @@ messages1 = [
     }
 ]
 messages2 = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Who are you?"},
+    # {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "讲个笑话"},
 ]
 # Combine messages for batch processing
 messages = [messages1, messages2, messages3, messages_text]

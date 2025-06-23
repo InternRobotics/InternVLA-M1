@@ -85,8 +85,8 @@ def preprocess_qwen_2_visual(
 
             role = roles.get(role, role)
             if role == "user":
-                visual_tag = f"<{visual_type}>"
-                if visual_tag in content:
+                visual_tag = f"<{visual_type}>" # @Jinhui 这里为什么不用 DEFAULT_IMAGE_TOKEN?
+                if visual_tag in content: # 一旦文本中有 visual_type， 就会导致错位
                     parts = content.split(visual_tag)
                     new_parts = []
                     for i in range(len(parts) - 1):
@@ -116,6 +116,7 @@ def preprocess_qwen_2_visual(
         input_ids.append(input_id)
         targets.append(target)
 
+    # 这里似乎可以 预留了给batch 的处理， 但是又默认 batch = 1
     input_ids = torch.tensor(input_ids, dtype=torch.long)
     targets = torch.tensor(targets, dtype=torch.long)
 
@@ -330,7 +331,7 @@ class LazySupervisedDataset(Dataset):
         if "images" in sources[0] and len(sources[0]["images"]): #@jinhui here is a bug, 只能在一开头加入 images?
             image_folder = self.list_data_dict[i]["data_path"]
             image_file = self.list_data_dict[i]["images"]
-            if isinstance(image_file, List):
+            if isinstance(image_file, List): # TODO Jinhui 这里是官方代码，为什么要分两个分支？
                 if len(image_file) > 1:
                     image_file = [
                         os.path.join(image_folder, file) for file in image_file
@@ -400,8 +401,8 @@ class LazySupervisedDataset(Dataset):
                 video_grid_thw=torch.stack(grid_thw, dim=0),
                 second_per_grid_ts=second_per_grid_ts,
             )
-        else:
-            grid_thw_merged = None #@ here is a bug
+        else: # 这个是纯文本的分支， 但是目前要和 Qwen 官方对齐
+            grid_thw_merged = None #@ here is a bug --> qwen 官方已经更新了这个位置，需要找时间 mergin 一下
             sources = copy.deepcopy([e["conversations"] for e in sources])
             data_dict = preprocess_qwen_2_visual(
                 sources, self.tokenizer, grid_thw=grid_thw_merged
@@ -717,7 +718,7 @@ if __name__ == "__main__":
     # data config
     # 
     import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
+    debugpy.listen(("0.0.0.0", 10092))
     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
     debugpy.wait_for_client()
 

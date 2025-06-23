@@ -51,7 +51,6 @@ vla:
   weight_decay: 0.0
   qwenvl:
     attn_implementation: flash_attention_2
-    llm_loss_weight: 0.1
 
 wandb_entity: jinhuiye
 wandb_project: llavavla

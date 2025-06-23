@@ -169,7 +169,7 @@ def trainer(model,vlm_train_dataloader, optimizer, lr_scheduler, accelerator, cf
             action_loss = vlm_loss
             # dist.barrier()
         
-        accelerator.backward(vlm_loss * cfg.vla.qwenvl.llm_loss_weight) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
+        accelerator.backward(vlm_loss) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
 
         if cfg.gradient_clipping is not None:
             accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)

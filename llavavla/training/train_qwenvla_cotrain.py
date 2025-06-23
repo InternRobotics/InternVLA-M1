@@ -166,10 +166,10 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
             # print(batch_samples_vlm["input_ids"].shape, batch_samples_vlm["pixel_values"].shape)
 
             output = model.qwen_vl_interface(**batch_samples_vlm) # TODO make vlm and action loss
-            vlm_loss = output.loss
+            vlm_loss = output.loss * cfg.trainer.loss_scale.vlm 
             # dist.barrier()
 
-        accelerator.backward(vlm_loss * cfg.vla.qwenvl.llm_loss_weight) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
+        accelerator.backward(vlm_loss) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
 
         if cfg.gradient_clipping is not None:
             accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
@@ -242,7 +242,9 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
         logger.info(f"Training finished. Final checkpoint saved at {checkpoint_path}")
         wandb.finish()
 
-# @draccus.wrap()
+
+
+from llavavla.training.metrics import build_param_lr_groups
 def train(cfg) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
     # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
@@ -335,14 +337,19 @@ def train(cfg) -> None:
 
     # Initialize optimizer
     # learning_rate = 1e-4
-
+    param_groups = build_param_lr_groups(vla=vla, cfg=cfg) # TODO 这里的参数应该是从 config 中获取的， 而不是直接写死
     optimizer = torch.optim.AdamW(
-        vla.parameters(),
+        param_groups,
         lr=cfg.vla.learning_rate,
-        betas=(0.9, 0.95),
-        weight_decay=1e-8,
+        betas=(0.9, 0.95), # 这是用于 一阶和二阶动量估计 的两个超参数：
+        weight_decay=1e-8, # 这是用于 L2 正则化 的项（惩罚参数值太大的趋势）：
         eps=1e-8,
     )
+    pass
+    dist.barrier()
+    if overwatch.is_rank_zero(): # 想办法写成一个修饰函数
+        for i, group in enumerate(optimizer.param_groups):
+            print(f"LR Group {group['name']}: lr={group['lr']}, num_params={len(group['params'])}")
     # Initialize learning rate scheduler
     
     max_train_steps = cfg.vla.max_steps # TODO 统一 max_train_steps 和 max_steps, 和 epoch

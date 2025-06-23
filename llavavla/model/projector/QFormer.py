@@ -38,13 +38,13 @@ class CrossAttentionBlock(nn.Module):
 
 
 class LayerwiseQFormer(nn.Module):
-    def __init__(self, input_hidden_dim=2048, output_hidden_dim=768, num_query_tokens=64, num_layers=37, num_heads=8):
+    def __init__(self, input_hidden_dim=2048, output_hidden_dim=768, num_query_tokens=64, num_layers=37, num_heads=8, config=None):
         super().__init__()
         self.input_hidden_dim = input_hidden_dim
         self.output_hidden_dim = output_hidden_dim
         self.num_query_tokens = num_query_tokens
         self.num_layers = num_layers
-
+        self.config = config
         # 先把输入投影到 output_dim
         self.proj = nn.Linear(input_hidden_dim, output_hidden_dim)
         # Learnable query tokens
@@ -61,7 +61,8 @@ class LayerwiseQFormer(nn.Module):
         encoder_attention_mask: optional [B, L]
         return: updated query tokens [B, Q, D]
         """
-        hidden_states_list = self.scale_hook(hidden_states_list) #TODO 需要查看是否影响速度
+
+        hidden_states_list = self.scale_hook(hidden_states_list) #TODO 需要查看是否影响速度, 也需要check 是否影响性能
 
         assert len(hidden_states_list) == self.num_layers, f"Expected {self.num_layers} layers, got {len(hidden_states_list)}"
 
@@ -85,12 +86,19 @@ class LayerwiseQFormer(nn.Module):
     
     def scale_hook(self, hidden_states_list, scale_factor=0.1): #TODO 需要查看是否会影响分布式， 记得参数化
         # --- 1. 对输入 hidden_states_list 的梯度注册缩放钩子 ---
-        # TODO @Jinhui 如果影响数独，需要用 lr 来曲线实现 --> 似乎是和 Deepspeed 加速冲突. lr 来曲线实现 这个不一定能够解，因为涉及到陡峭问题
+        # TODO @Jinhui 如果影响速度，需要用 lr 来曲线实现 --> 似乎是和 Deepspeed 加速冲突. lr 来曲线实现 这个不一定能够解，因为涉及到陡峭问题
+        # TODO Jinhui： 即使要写， 也是写在 QFormer 里面
+        if self.config and hasattr(self.config.vla, 'layer_qformer') and hasattr(self.config.vla.layer_qformer, 'grad_scale') \
+        and self.config.vla.layer_qformer.grad_scale != 1 and False:
+            scale_factor = self.config.vla.layer_qformer.grad_scale
+        else:
+            return hidden_states_list  # 如果没有配置 grad_scale，直接返回原始列表
+
         scaled_hidden_states_list = []
         for hidden_states in hidden_states_list:
             if hidden_states.requires_grad:
                 # 确保在分布式环境下梯度缩放只执行一次
-                if not hasattr(hidden_states, '_scaled_hook'):  # 防止重复注册
+                if not hasattr(hidden_states, '_scaled_hook'):  # 防止重复注册 --> 看起来可以加速，
                     hook = lambda grad: grad * scale_factor
                     hidden_states.register_hook(hook)
                     hidden_states._scaled_hook = True  # 标记已处理
@@ -194,5 +202,5 @@ def get_layerwise_qformer(
     num_layers = config.vla.qformer_end_layer - config.vla.qformer_start_layer  if config else num_layers
     num_query_tokens = 64 # 这里还没有参数化
                                 # TODO 需要变成全局参数赋值， 如果兼顾 可读性和灵活性？
-    qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads) 
+    qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads, config=config) 
     return qformer

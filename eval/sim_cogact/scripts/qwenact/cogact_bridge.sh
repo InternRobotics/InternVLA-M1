@@ -16,8 +16,6 @@ if [ -z "$MODEL_PATH" ]; then
   export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_64gpus_vlm_4_0.1/checkpoints/steps_30000_pytorch_model.pt"
 fi
 
-export PATH=/mnt/petrelfs/share/ffmpeg-4.2.1/bin:$PATH
-
 policy_model=QwenACTAFormer
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small
 

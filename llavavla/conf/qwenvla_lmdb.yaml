@@ -1,7 +1,6 @@
 # 参数要求： 写了可以不用，但是用了就一定不能错
-action_dim: 7
+action_dim: 8
 action_model_type: DiT-B
-data_root_dir: playground/Datasets/OXE_openvla
 future_action_window_size: 15
 logging_frequency: 10
 gradient_clipping: 1.0
@@ -26,15 +25,17 @@ trackers:
 use_ema: false
 wandb_entity: jinhuiye
 wandb_project: llavavla
-
+action_type: delta_qpos
+data_root_dir: /mnt/petrelfs/share/yejinhui/Datasets/
 vla:
   base_vlm: /mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
-  data_mix: bridge_rt_1
   enable_gradient_checkpointing: true
   enable_mixed_precision_training: true
   epochs: 100
   expected_world_size: 32
-  action_dim: 7
+  action_dim: 8
+  data_mix: place_on_the_board_lmdb
+  data_mix_info: place_on_the_board_lmdb_53
   freeze_llm_backbone: false
   freeze_modules: ''
   freeze_vision_backbone: false
@@ -58,17 +59,14 @@ vla:
   weight_decay: 0.0
   qwenvl:
     attn_implementation: flash_attention_2
-  layer_qformer: # 似乎会影响学习
+  layer_qformer:
     grad_scale: 0.5 # 让梯度经过这个模块的时候进行衰减，避免破坏VLM
 
 trainer:
   learning_rate:
     base: 5.0e-05
-    # qwen_vl_interface: 1.0e-05
-    # action_model: 1.0e-04
-  loss_scale:
-    vla: 1.0
-    vlm: 0.1
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
 
 
 vlm_data:
@@ -83,4 +81,3 @@ vlm_data:
   model_type: qwen2.5vl
   per_device_batch_size: 4
   
-

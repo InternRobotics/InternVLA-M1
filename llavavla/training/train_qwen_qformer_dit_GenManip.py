@@ -50,7 +50,7 @@ from prismatic.overwatch import initialize_overwatch
 from llavavla.dataloader.lmdb.data_utils import save_dataset_statistics
 
 
-from llavavla.dataloader.lmdb_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
+from llavavla.dataloader.lmdb_datasets_real import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
@@ -388,7 +388,7 @@ if __name__ == "__main__":
     # # if cfg.is_debug:
     # if cfg.is_debug and overwatch.is_rank_zero():
     #     import debugpy
-    #     debugpy.listen(("0.0.0.0", 5678))
+    #     debugpy.listen(("0.0.0.0", 10092))
     #     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
     #     debugpy.wait_for_client()
 

@@ -3,7 +3,6 @@ cogactvla.py
 
 """
 from __future__ import annotations
-from typing import Union, List
 
 import os
 from pathlib import Path
@@ -124,9 +123,10 @@ class QwenQFormerDiT(nn.Module):
             end_layer = self.config.vla.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
     
-        # actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
+        # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
         # 先将 actions 转换为单个 NumPy 数组，再转换为 PyTorch 张量
-        actions = torch.tensor(np.array(actions), device=action_latent_feature.device)  # [B, chunk, 7] TODO to tensor 的逻辑可以放到 transform 里面
+        actions = torch.tensor(np.array(actions), device=action_latent_feature.device)  # [B, chunk, 7]
+        
         actions_future = actions[:, -(self.future_action_window_size+1):, :]
         
         # Repeat 'actions' 'repeated_diffusion_steps' times, resulting in [repeated_diffusion_steps*B, T, D]
@@ -138,7 +138,7 @@ class QwenQFormerDiT(nn.Module):
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
     def predict_action( # 
-        self, image: Union[Image, List[Image]],
+        self, image: Image, 
         instruction: str, 
         unnorm_key: Optional[str] = None, 
         cfg_scale: float = 1.5, 
@@ -161,11 +161,7 @@ class QwenQFormerDiT(nn.Module):
         """
 
         # @之后写入模型内部， 变成私有化方法
-        if not isinstance(image, list):
-            imgs = [image.resize((224, 224))]  # list of PIL RGB for one instruction
-        else:
-            imgs = [img.resize((224, 224)) for img in image]
-        
+        imgs = [image.resize((224, 224))]  # list of PLT RGB for one instruction
         lang = instruction.lower() 
 
         inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[imgs], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
@@ -309,13 +305,9 @@ class QwenQFormerDiT(nn.Module):
         返回：
             替换，loaded_modules: 成功加载参数的模块路径列表；若全局加载则为 ["<full_model>"]
         """
-        # TODO 好像就没有执行这里
-        print("好像就没有执行这里"*100)
-        checkpoint_path = getattr(self.config.vla, "pretrained_checkpoint", None)
-        reload_module_name = getattr(self.config.vla, "reload_modules", None)
-        # pass
-        # torch.distributed.barrier()  # 确保所有进程都加载完毕
-        return []  
+        checkpoint_path = getattr(self.config, "pretrained_checkpoint", None)
+        reload_module_name = getattr(self.config, "reload_modules", None)
+
         if not checkpoint_path:
             return []  
 
@@ -376,7 +368,7 @@ class QwenQFormerDiT(nn.Module):
         # model_config TODO DEBUE @JinhuiYE 这里应该保证training infer 的参数和模型🔗是一致的 （特别是 QFormer)
         # TODO 
         config = dict_to_namespace(model_config)
-        model_config = config # TODO 不要使用相对变量 model_config， 需要换名字
+        model_config = config.vla
         qwenQFormerACT = build_model_framework(model_config) 
         # set for action un-norm
         qwenQFormerACT.norm_stats = norm_stats
@@ -439,7 +431,7 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
     qwen_model_name='/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct',
     action_model_type='DiT-B',
     vl_token_dim=2048,
-    action_dim=model_config.vla.action_dim if hasattr(model_config.vla, 'action_dim') else 7,  # @Jinhui TODO 这里应该是config
+    action_dim=7,
     future_action_window_size=15,
     past_action_window_size=0,
     # use_ema=False,
@@ -483,9 +475,9 @@ def load_from_pretrained(pretrained_checkpoint):
         pretrained_checkpoint=pretrained_checkpoint)
     return model
 
-
+from omegaconf import OmegaConf
 if __name__ == "__main__":
-    from omegaconf import OmegaConf
+
     # 模型参数
     import debugpy
     debugpy.listen(("0.0.0.0", 5678))

@@ -7,12 +7,13 @@ MODEL_PATH=$1
 # 可选：判断是否传入了参数
 if [ -z "$MODEL_PATH" ]; then
   echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
-  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/steps_40000_pytorch_model.pt"
+  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/checkpoints/steps_70000_pytorch_model.pt"
 fi
 cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 
 # conda activate simpler_env4 # make sure you are in the right conda env
 export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
+
 
 policy_model=QwenACTAFormer
 
@@ -53,7 +54,11 @@ EvalSim() {
 for ckpt_path in "${ckpt_paths[@]}"; do
   for env_name in "${env_names[@]}"; do
     gpu_id=$((count % total_gpus))
-    EvalSim &
+    if (( (count + 1) == 32 )); then
+      EvalSim
+    else
+      EvalSim &
+    fi
     count=$((count + 1))
   done
 done
@@ -69,7 +74,11 @@ for scene_name in "${scene_names[@]}"; do
     for env_name in "${env_names[@]}"; do
       EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt"
       gpu_id=$((count % total_gpus))
-      EvalSim &
+      if (( (count + 1) == 32 )); then
+        EvalSim
+      else
+        EvalSim &
+      fi
       count=$((count + 1))
     done
   done
@@ -107,12 +116,20 @@ for ckpt_path in "${ckpt_paths[@]}"; do
   for env_name in "${env_names[@]}"; do
     EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt station_name=mk_station2"
     gpu_id=$((count % total_gpus))
-    EvalSim &
+    if (( (count + 1) % 32 == 0 )); then
+      EvalSim
+    else
+      EvalSim &
+    fi
     count=$((count + 1))
 
     EXTRA_ARGS="--additional-env-build-kwargs shader_dir=rt station_name=mk_station3"
     gpu_id=$((count % total_gpus))
-    EvalSim &
+    if (( (count + 1) % 32 == 0 )); then
+      EvalSim
+    else
+      EvalSim &
+    fi
     count=$((count + 1))
   done
 done

@@ -48,13 +48,9 @@ from prismatic.overwatch import initialize_overwatch
 # from prismatic.vla import get_vla_dataset_and_collator
 # from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 from llavavla.dataloader.lmdb.data_utils import save_dataset_statistics
-# from llavavla.training import VLAMetrics, get_train_strategy
 
-# from llavavla.training import VLAMetrics
 
-# from llavavla.conf import VLAConfig, VLARegistry
-
-from llavavla.dataloader.lmdb_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
+from llavavla.dataloader.lmdb_datasets_real import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
@@ -69,78 +65,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 overwatch = initialize_overwatch(__name__) # 后期移除， 不要基于 prismatic 来玩输出
 logger = get_logger(__name__)
 
-# @dataclass
-# class TrainConfig:
-#     # fmt: off
-
-#     # VLAConfig (`conf/vla.py`); override with --vla.type `VLARegistry.<VLA>.vla_id`
-#     vla: VLAConfig = field(
-#         default_factory=VLAConfig.get_choice_class(VLARegistry.EXP_COGACT_OXE_MAGIC_SOUP_PLUS_MINUS.vla_id)
-#     )
-
-#     # Directory Paths
-#     data_root_dir: Path = Path(                                     # Path to Open-X dataset directory
-#         "datasets/open-x-embodiment"
-#     )
-#     run_root_dir: Path = Path("runs")                               # Path to directory to store logs & checkpoints
-
-#     # Resume Run Parameters
-#     pretrained_checkpoint: Optional[Union[str, Path]] = None                  # Absolute Path to Checkpoint
-#     is_resume: bool = True                                          # Whether we are continuing a prior training run
-#                                                                     # (only applicable given pretrained checkpoint)
-#     resume_step: Optional[int] = None                               # Global Step to Resume (should match checkpoint)
-#     resume_epoch: Optional[int] = None                              # Epoch to Resume (should match checkpoint)
-
-#     # Run Arguments
-#     run_id: Optional[str] = None                                    # Run ID for logging, Weights & Biases
-#     run_id_note: Optional[str] = None                               # Extra note for logging, Weights & Biases
-#     save_interval: int = 2500                                       # Interval for saving checkpoints (in steps)
-#     image_aug: bool = False                                         # Whether to enable image augmentations
-#     seed: int = 42                                                  # Random seed (for reproducibility)
-
-#     # HF Hub Credentials (for any gated models)
-#     hf_token: Union[str, Path] = Path(".hf_token")                  # Environment variable or Path to HF Token
-
-#     # Tracking Parameters
-#     trackers: Tuple[str, ...] = ("jsonl", "wandb")                  # Trackers to initialize (if W&B, add config!)
-#     #trackers: Tuple[str, ...] = ("jsonl",)                         # Trackers to initialize (if W&B, add config!)
-#     wandb_project: str = ""                                         # Name of W&B project to log to (use default!)
-#     wandb_entity: str = ""                                          # Name of entity to log under
-#     repeated_diffusion_steps: int = 8                               # Repeated steps for training action model (a diffusion model)
-#     load_all_data_for_training: bool = True                         # Load all training data 
-#     future_action_window_size: int = 15                             # Action chunking, predicting future actions + current action
-#     past_action_window_size: int = 0                                # Action history window size, not used now, set to be 0 
-#     action_model_type: str = 'DiT-B'                                # Action model type, chose from ['DiT-S', 'DiT-B', 'DiT-L']
-#     use_ema: bool = False                                           # EMA version of action model
-#     action_dim: int = 7                                             # Dimension of action space
-
-#     #@Jinhui overwrite 
-#     is_debug: Optional[bool] = False                              # Epoch to Resume (should match checkpoint)
-
-#     # @fangjing add:
-#     action_type: Optional[str] = 'delta_ee_pose'
-
-#     def __post_init__(self) -> None:
-#         """Lift optimization parameters from `self.vla` for ease of use =>> validate on `expected_world_size`"""
-#         self.epochs = self.vla.epochs
-#         self.max_steps = self.vla.max_steps
-#         self.global_batch_size = self.vla.global_batch_size
-#         self.per_device_batch_size = self.vla.per_device_batch_size
-
-#         self.learning_rate = self.vla.learning_rate
-#         self.weight_decay = self.vla.weight_decay
-#         self.max_grad_norm = self.vla.max_grad_norm
-#         self.lr_scheduler_type = self.vla.lr_scheduler_type
-#         self.warmup_ratio = self.vla.warmup_ratio
-
-#         self.train_strategy = self.vla.train_strategy
-
-#         # [Validate] Assert on `expected_world_size`
-#         assert (
-#             self.vla.expected_world_size == overwatch.world_size()
-#         ), f"Expected World Size = {self.vla.expected_world_size} but Found {overwatch.world_size()} GPUs!"
-
-    # fmt: on
 
 from llavavla.model.framework.qwenact import build_model_framework
 
@@ -464,7 +388,7 @@ if __name__ == "__main__":
     # # if cfg.is_debug:
     # if cfg.is_debug and overwatch.is_rank_zero():
     #     import debugpy
-    #     debugpy.listen(("0.0.0.0", 5678))
+    #     debugpy.listen(("0.0.0.0", 10092))
     #     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
     #     debugpy.wait_for_client()
 

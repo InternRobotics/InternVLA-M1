@@ -66,7 +66,7 @@ class LMDBDataset(Dataset):
         self.dataset_name = dataset_name
         self.data_dir = data_dir
         self.dataset_info_name = dataset_info_name if dataset_info_name is not None else dataset_name
-        self.dataset_path = f'{data_dir}/{dataset_name}/render'
+        self.dataset_path = f'{data_dir}/{dataset_name}'
         self.obs_type = obs_type
         self.action_type = action_type
         self.window_size = window_size
@@ -75,7 +75,11 @@ class LMDBDataset(Dataset):
 
         # Load dataset info
         logger.info(f"loading dataset at {data_dir}/{dataset_name}")
-        assert os.path.exists(f"{data_dir}/data_info/{self.dataset_info_name}.json")
+        torch.distributed.barrier() 
+        
+        assert os.path.exists(f"{data_dir}/data_info/{self.dataset_info_name}.json"), f"Dataset info file {data_dir}/data_info/{self.dataset_info_name}.json does not exist"
+        
+         # Ensure all processes wait for dataset info to be loaded
         with open(f"{data_dir}/data_info/{self.dataset_info_name}.json", 'r') as f:
             self.episode_info_list = json.load(f)
             self.episode_list = [f[0] for f in self.episode_info_list]
@@ -145,79 +149,36 @@ class LMDBDataset(Dataset):
             meminit=True
         )
 
-        # Load meta info
-        meta_info = pickle.load(open(f"{self.dataset_path}/{episode_name}/meta_info.pkl", "rb"))
-
-        # Get data keys
-        if self.action_type == "abs_qpos":
-            arm_index = meta_info["keys"]["scalar_data"].index(b'arm_action')
-            arm_key = meta_info["keys"]["scalar_data"][arm_index]
-            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
-            state_key = meta_info["keys"]["scalar_data"][state_index]
-        elif self.action_type == "delta_qpos":
-            arm_index = meta_info["keys"]["scalar_data"].index(b'delta_arm_action')
-            arm_key = meta_info["keys"]["scalar_data"][arm_index]
-            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
-            state_key = meta_info["keys"]["scalar_data"][state_index]
-        elif self.action_type == "abs_ee_pose":
-            arm_index = meta_info["keys"]["scalar_data"].index(b'ee_pose_action')
-            arm_key = meta_info["keys"]["scalar_data"][arm_index]
-            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/ee_pose_state')
-            state_key = meta_info["keys"]["scalar_data"][state_index]
-        elif self.action_type == "delta_ee_pose":
-            arm_index = meta_info["keys"]["scalar_data"].index(b'delta_ee_pose_action')
-            arm_key = meta_info["keys"]["scalar_data"][arm_index]
-            state_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/ee_pose_state')
-            state_key = meta_info["keys"]["scalar_data"][state_index]
-        else:
-            raise NotImplementedError(f"Action type {self.action_type} not supported")
-        
-        gripper_index = meta_info["keys"]["scalar_data"].index(b'gripper_close') 
-        gripper_key = meta_info["keys"]["scalar_data"][gripper_index]
-        # qpos_index = meta_info["keys"]["scalar_data"].index(b'observation/robot/qpos')
-        # qpos_key = meta_info["keys"]["scalar_data"][qpos_index]
-
-        primary_index = meta_info["keys"][f"observation/{self.obs_type}/color_image"]
-        wrist_index = meta_info["keys"]["observation/realsense/color_image"]
-
-        language_instruction = meta_info["language_instruction"]
-
-        # Load sequence data
         sequence = []
         with lmdb_env.begin(write=False) as txn:
-
-            arm_action = pickle.loads(txn.get(arm_key))
-            if self.action_type == "abs_ee_pose" or self.action_type == "delta_ee_pose":
-                positions = np.array([pos for pos, quat in arm_action])
-                quaternions = np.array([quat for pos, quat in arm_action])
-                arm_action = np.concatenate([positions, quaternions], axis=1).tolist()
-            gripper_action = pickle.loads(txn.get(gripper_key))
-
-            primary_data = pickle.loads(txn.get(primary_index[start_id]))
-            primary_data = cv2.imdecode(np.frombuffer(primary_data, np.uint8), cv2.IMREAD_COLOR)
-            # convert to PIL Image
-            primary_data = Image.fromarray(primary_data)
-
+            arm_action = pickle.loads(txn.get("action".encode("utf-8"))).tolist()
+            primary_image_key = f"observations/images/camera_0/{start_id}"
+            wrist_image_key = f"observations/images/camera_1/{start_id}"
+            primary_image = cv2.imdecode(pickle.loads(txn.get(primary_image_key.encode("utf-8"))), cv2.IMREAD_COLOR)
+            wrist_image = cv2.imdecode(pickle.loads(txn.get(wrist_image_key.encode("utf-8"))), cv2.IMREAD_COLOR)
+        language_instruction = 'Place the cucumber on the plate'
         lmdb_env.close()
         # action chuck: window_size
         action_length = len(arm_action)
         if action_length >= self.window_size + start_id:
             action = arm_action[start_id:start_id + self.window_size]
-            gripper = gripper_action[start_id:start_id + self.window_size]
+            gripper = [a[7] for a in arm_action[start_id:start_id + self.window_size]]
         else:
             # last action repeat
             # action = arm_action[start_id:action_length] + np.zeros(self.window_size - (action_length - start_id))
             # gripper = gripper_action[start_id:action_length] + np.ones(self.window_size - (action_length - start_id))
 
             action = arm_action[start_id:action_length] + np.repeat(arm_action[-1], self.window_size - (action_length - start_id), axis=0)
-            gripper = gripper_action[start_id:action_length] + np.repeat(gripper_action[-1], self.window_size - (action_length - start_id), axis=0)
+            gripper = [a[7] for a in arm_action[start_id:action_length]] + np.repeat(arm_action[-1][7], self.window_size - (action_length - start_id), axis=0)
 
         collected_action = []
         for a, g in zip(action, gripper):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
 
-        
-        return dict(action=collected_action,image=[primary_data],lang=language_instruction, dataset_name=self.dataset_name)
+        primary_image = Image.fromarray(primary_image).resize((224,224))  # Convert to PIL Image
+        wrist_image = Image.fromarray(wrist_image).resize((224,224))
+        # wrist_image
+        return dict(action=collected_action,image=[primary_image],lang=language_instruction, dataset_name=self.dataset_name)
 
     def __iter__(self):
         """Iterate through the dataset sequentially."""
@@ -329,20 +290,20 @@ if __name__ == "__main__":
 
 
     import debugpy 
-    debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
+    debugpy.listen(("0.0.0.0", 5678))  # 监听端口 
     print("Waiting for debugger to attach...")
     debugpy.wait_for_client()  # 等待 VS Code 附加
 
     # test  get_vla_dataset
     cfg = {
-        'data_root_dir': '/mnt/petrelfs/share/efm_p/wangfangjing/datasets',
-        'obs_type': 'obs_camera',
-        'action_type': 'delta_ee_pose',
+        'data_root_dir': '/mnt/petrelfs/share/yejinhui/Datasets/',
+        # 'obs_type': 'camera_0',
+        'action_type': 'abs_qpos',
         'window_size': 16,
         'vla': {
-            'per_device_batch_size': 1,
-            'data_mix': 'Banana/banana_plate_4035_none-wot-wow-woh-0529',
-            'data_mix_info': 'Banana/banana_plate_4035_none-wot-wow-woh-0529_200',
+            'per_device_batch_size': 2,
+            'data_mix': 'place_on_the_board_lmdb',
+            'data_mix_info': 'place_on_the_board_lmdb_53',
         }
     }
     cfg = dict_to_namespace(cfg)

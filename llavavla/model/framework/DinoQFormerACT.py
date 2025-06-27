@@ -383,10 +383,10 @@ class QwenDinoQFormerDiT(nn.Module):
 
 # TODO 写一个build model 函数
 
-def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
+def build_model_framework(model_config: dict = {}) -> QwenDinoQFormerDiT:
     # TODO  实现和config 对应的 load 逻辑
 
-    model = QwenQFormerDiT(
+    model = QwenDinoQFormerDiT(
     qwen_model_name='/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct',
     action_model_type='DiT-B',
     vl_token_dim=2048,

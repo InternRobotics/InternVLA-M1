@@ -460,6 +460,7 @@ def calc_drawer_stats(root_result_dir):
                             extra_pattern_require=extra_pattern_require_sim_variants,
                         )
                     )
+                    #  OpenBottomDrawerCustomInScene-v0_shader_dir_rt_station_name_mk_station3
                     if np.isnan(avg_sim_success):
                         print(f"WARNING: avg_sim_success is nan for {variant}")
                     drawer_sim_variant_success[drawer_task][ckpt_alias].append(avg_sim_success)
@@ -976,14 +977,21 @@ CKPT_MAPPING = {
     "octo-base": "octo-base",
     "octo-small": "octo-small",
     "octo-server": "octo-server",
-    "QWenACT": "need_steps_40000_pytorch_model.pt", 
+    "QWenACT": "steps_70000_pytorch_model.pt", 
 }
 # /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/videos/need_steps_40000_pytorch_model.pt
 parser = argparse.ArgumentParser()
+model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/videos/steps_30000_pytorch_model.pt"
+# 获得 文件名字
+model_name = model_path.split("/")[-1]
+model_path = model_path.replace(model_name, "")
 parser.add_argument("--task", type=str, default="drawer", help="task name")
-parser.add_argument("--log-dir-root", type=str, default="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/videos", help="log directory")
+parser.add_argument("--log-dir-root", type=str, default=f"{model_path}", help="log directory")
 
 args = parser.parse_args()
+
+
+CKPT_MAPPING["QWenACT"] = model_name
 
 if args.task == "pick_coke_can":
     calc_pick_coke_can_stats(args.log_dir_root)

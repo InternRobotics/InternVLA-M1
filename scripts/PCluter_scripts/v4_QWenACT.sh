@@ -51,10 +51,17 @@ echo "Total GPUs: $TOTAL_GPUS"
 datasets_vlm=aokvqa_cauldron_llava_format,sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
 datasets_grounding=asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
 # ,${datasets_grounding}
-export system2_datasets="${datasets_vlm}"
-export llm_loss_weight=0.3
+export system2_datasets="${datasets_vlm},${datasets_grounding}"
 
-export run_id=0612_noflash_vlm_bridge_rt_1_${TOTAL_GPUS}gpus_vlm_${vlm_per_batch_size}_${llm_loss_weight}
+export llm_hook_weight=1 # 暂时不使用， 过于复炸， 效果不确定
+# 其实如果能够生效，上面的方式是最直接的
+
+export qwen_vl_interface_lr=5e-5
+export action_model_lr=5e-5
+export loss_scale_vla=1.0 # 1.0 is the default value, you can change it if needed
+export loss_scale_vlm=0.1 # 1.0 is the default value, you can change it if needed
+
+export run_id=0624_fixed_vlm_bridge_rt_1_vlr_${qwen_vl_interface_lr}_alr_${action_model_lr}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -66,8 +73,10 @@ cp $0 ${output_dir}/
   # --num_processes=${TOTAL_GPUS} 是要说一共有多少卡，这个没有torchrun 直观， 之后改成torchrun 来管理
 # 这个地方很😡直觉，需要check一下, 确认了官方的说法确实 total
 
+# TODO 分组和 freeze 是相互 排斥的， 需要在代码中修复
   # --vla.freeze_modules qwen_vl_interface \
-
+  # --trainer.learning_rate.qwen_vl_interface ${qwen_vl_interface_lr} \
+  # --trainer.learning_rate.action_model ${action_model_lr} \
 # bridge_rt_1
 # oxe_magic_soup_plus 
 
@@ -79,29 +88,29 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
   llavavla/training/train_qwenvla_cotrain.py \
-  --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
+  --config_yaml ./llavavla/conf/qwenvla_cotrain_v2.yaml \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.qformer_start_layer ${qformer_start_layer} \
   --vla.qformer_end_layer ${qformer_end_layer} \
-  --vla.freeze_modules "" \
+  --vla.freeze_modules "qwen_vl_interface" \
   --vla.data_mix bridge_rt_1 \
   --vlm_data.dataset_use ${system2_datasets} \
-  --vla.max_steps 500000 \
+  --vla.max_steps 5000000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size ${global_batch_size} \
   --vla.per_device_batch_size ${vla_per_device_batch_size} \
   --vlm_data.per_device_batch_size ${vlm_per_batch_size} \
-  --vla.learning_rate ${lr} \
-  --vla.qwenvl.llm_loss_weight ${llm_loss_weight} \
+  --trainer.learning_rate.base ${lr} \
+  --trainer.loss_scale.vlm ${loss_scale_vlm} \
   --data_root_dir ${data_root_dir} \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \
   --image_aug True \
-  --wandb_project llavavla \
+  --wandb_project llavavla2 \
   --wandb_entity jinhuiye \
   --hf_token HF_TOKEN \
-  --save_interval 5000 \
+  --save_interval 10000 \
   --repeated_diffusion_steps 8 \
   --future_action_window_size 15 \
   --action_model_type DiT-B \

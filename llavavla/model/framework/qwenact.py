@@ -15,12 +15,12 @@ import torch.nn as nn
 import numpy as np
 from PIL import Image
 import re
-from prismatic.overwatch import initialize_overwatch
+# from prismatic.overwatch import initialize_overwatch
 
 from llavavla.model.action_model.action_model import ActionModel
 import torch.distributed as dist
 # Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
+# overwatch = initialize_overwatch(__name__)
 
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
@@ -43,7 +43,7 @@ from llavavla.model.projector.QFormer import get_layerwise_qformer
 class QwenQFormerDiT(nn.Module):
     def __init__(
         self,
-        qwen_model_name:str = './playground/Pretrained_models/Qwen2.5-VL-3B-Instruct', # 这是不好的实现， 一定不能是互相依赖
+        qwen_model_name:str = '/data/share/yujunqiu/ckpt/llavavla/0624/Qwen2.5-VL-3B-Instruct', # 这是不好的实现， 一定不能是互相依赖
         action_model_type: str = 'DiT-B', 
         vl_token_dim: int = 2048,
         action_hidden_dim: int = 768,  # @Jinhui # 这个 应该是和DiT-B
@@ -250,9 +250,15 @@ class QwenQFormerDiT(nn.Module):
         # Un-normalize Actions        
         action_norm_stats = self.get_action_stats(unnorm_key)
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
-        action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
+        
+        action_high, action_low = np.array(action_norm_stats["max"]), np.array(action_norm_stats["min"])
+        # action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
         normalized_actions = np.clip(normalized_actions, -1, 1)
-        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        # normalized_actions[:, 7] = np.where(normalized_actions[:, 7] < 0.5, 0, 1)
+        # normalized_actions = np.concatenate(
+        #     [normalized_actions, normalized_actions[:, -1:].copy()], axis=1
+        # )
+        
         actions = np.where(
             mask,
             0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
@@ -260,6 +266,7 @@ class QwenQFormerDiT(nn.Module):
         )
         # actions max 1, min -0.05 # 感觉不再一个 scale
         return actions, normalized_actions
+        # return normalized_actions, actions # TODO: for debug
 
 
     def freeze_backbones(self):
@@ -423,6 +430,7 @@ class QwenQFormerDiT(nn.Module):
 
     def get_action_stats(self, unnorm_key=None):
         """Dimensionality of the policy's action space."""
+        # print(self.norm_stats.keys())
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
         return self.norm_stats[unnorm_key]["action"]
 
@@ -432,7 +440,7 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
     # TODO  实现和 config 对应的 load 逻辑
 
     model = QwenQFormerDiT(
-    qwen_model_name='/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct',
+    qwen_model_name='/data/share/yujunqiu/ckpt/llavavla/0624/Qwen2.5-VL-3B-Instruct',
     action_model_type='DiT-B',
     vl_token_dim=2048,
     action_dim=model_config.vla.action_dim if hasattr(model_config.vla, 'action_dim') else 7,  # @Jinhui TODO 这里应该是config
@@ -447,9 +455,10 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
 
 def read_mode_config(pretrained_checkpoint):
     if os.path.isfile(pretrained_checkpoint):
-        overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
+        # overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 
         # [Validate] Checkpoint Path should look like `.../<RUN_ID>/checkpoints/<CHECKPOINT_PATH>.pt`
+        checkpoint_pt = Path(pretrained_checkpoint)
         assert (checkpoint_pt.suffix == ".pt")
         run_dir = checkpoint_pt.parents[1]
 
@@ -483,10 +492,10 @@ def load_from_pretrained(pretrained_checkpoint):
 if __name__ == "__main__":
     from omegaconf import OmegaConf
     # 模型参数
-    import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
-    print("🔍 Rank 0 waiting for debugger attach on port 5878...")
-    debugpy.wait_for_client()
+    # import debugpy
+    # debugpy.listen(("0.0.0.0", 5678))
+    # print("🔍 Rank 0 waiting for debugger attach on port 5878...")
+    # debugpy.wait_for_client()
     samples = {}
 
     config_yaml = "llavavla/conf/qwenvla_cotrain_v2.yaml"

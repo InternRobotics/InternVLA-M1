@@ -9,12 +9,13 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from typing import Dict, Optional, Sequence, List, Tuple
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BatchFeature
+from transformers import AutoConfig
 
-from prismatic.overwatch import initialize_overwatch
+# from prismatic.overwatch import initialize_overwatch
 from qwen_vl_utils import process_vision_info
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
+# overwatch = initialize_overwatch(__name__)
 IGNORE_INDEX = -100
 IMAGE_TOKEN_INDEX = 151655
 VIDEO_TOKEN_INDEX = 151656
@@ -42,6 +43,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
     ):  
         super().__init__()
         # QWen 原生模型
+        # if False:
         if load_for_training or True: #TODO model -> vlm 
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_id,  
@@ -133,7 +135,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs_v1(self, images, instructions):
+    def build_qwenvl_inputs(self, images, instructions):
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -178,7 +180,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         # torch.distributed.barrier()
         return inputs.to(self.model.device)
     
-    def build_qwenvl_inputs(self, images, instructions):
+    def build_qwenvl_inputs_v2(self, images, instructions):
         # TODO 其实也可以放到dataloader 内部， 但是导致的是 dataloader 需要依赖 model processor
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.

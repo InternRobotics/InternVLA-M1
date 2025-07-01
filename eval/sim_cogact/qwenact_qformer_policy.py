@@ -3,7 +3,7 @@ cogact_policy.py
 
 """
 from collections import deque
-from typing import Optional, Sequence
+from typing import Optional, Sequence, List
 import os
 from PIL import Image
 import torch
@@ -11,7 +11,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 
-from transforms3d.euler import euler2axangle
+# from transforms3d.euler import euler2axangle
 
 from llavavla.model.framework.qwenact import QwenQFormerDiT
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
@@ -68,7 +68,7 @@ class QwenACTAFormerInference:
         # debugpy.listen(("0.0.0.0", 5878))
         # print("🔍 Rank 0 waiting for debugger attach on port 5678...")
         # debugpy.wait_for_client()
-        self.vla = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
+        self.vla : QwenQFormerDiT = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
         )
 
@@ -112,8 +112,22 @@ class QwenACTAFormerInference:
         self.sticky_gripper_action = 0.0
         self.previous_gripper_action = None
 
+    def test(self, images, lang):
+        ts = images.shape[0]
+        actions = []
+        
+        for t in range(ts):
+            img = images[t]
+            # img = [img[i] for i in range(img.shape[0])]
+            img = [img[i] for i in range(1)]
+            act = self.step(img, lang)
+            actions.append(act[0])
+        actions = np.stack(actions, axis=0)
+        return actions
+
+
     def step(
-        self, image: np.ndarray, task_description: Optional[str] = None, *args, **kwargs
+        self, image: List[np.ndarray], task_description: Optional[str] = None, *args, **kwargs
     ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
         Input:
@@ -131,9 +145,9 @@ class QwenACTAFormerInference:
             if task_description != self.task_description:
                 self.reset(task_description)
 
-        assert image.dtype == np.uint8
-        self._add_image_to_history(self._resize_image(image))
-        image: Image.Image = Image.fromarray(image)
+        # assert image.dtype == np.uint8
+        # self._add_image_to_history(self._resize_image(image))
+        image: List[Image.Image] = [Image.fromarray(img) for img in image] if type(image) == list else [Image.fromarray(image)]
 
 
         raw_actions, normalized_actions = self.vla.predict_action(image=image, 
@@ -144,6 +158,8 @@ class QwenACTAFormerInference:
                                                                 use_ddim=self.use_ddim,
                                                                 num_ddim_steps=self.num_ddim_steps,
                                                                 )
+        
+        return raw_actions
 
         if self.action_ensemble:
             raw_actions = self.action_ensembler.ensemble_action(raw_actions)[None]
@@ -158,10 +174,10 @@ class QwenACTAFormerInference:
         action["world_vector"] = raw_action["world_vector"] * self.action_scale
         action_rotation_delta = np.asarray(raw_action["rotation_delta"], dtype=np.float64)
 
-        roll, pitch, yaw = action_rotation_delta
-        axes, angles = euler2axangle(roll, pitch, yaw)
-        action_rotation_axangle = axes * angles
-        action["rot_axangle"] = action_rotation_axangle * self.action_scale
+        # roll, pitch, yaw = action_rotation_delta
+        # axes, angles = euler2axangle(roll, pitch, yaw)
+        # action_rotation_axangle = axes * angles
+        # action["rot_axangle"] = action_rotation_axangle * self.action_scale
 
         if self.policy_setup == "google_robot":
             action["gripper"] = 0

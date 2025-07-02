@@ -147,7 +147,7 @@ class QwenACTAFormerInference:
 
         # assert image.dtype == np.uint8
         # self._add_image_to_history(self._resize_image(image))
-        image: List[Image.Image] = [Image.fromarray(img) for img in image] if type(image) == list else [Image.fromarray(image)]
+        image: List[Image.Image] = [Image.fromarray(img) for img in image] if len(image.shape) == 4 else [Image.fromarray(image)]
 
 
         raw_actions, normalized_actions = self.vla.predict_action(image=image, 

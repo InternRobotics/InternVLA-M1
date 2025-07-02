@@ -40,22 +40,17 @@ from torch.utils.data import Dataset, DataLoader
 from typing import Optional
 import argparse
 from omegaconf import OmegaConf
-from hydra import initialize
+# from hydra import initialize
 
 from llavavla.training.metrics import normalize_dotlist_args
 
 from prismatic.overwatch import initialize_overwatch
 # from prismatic.vla import get_vla_dataset_and_collator
-from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
+# from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
+from llavavla.dataloader.lmdb.data_utils import save_dataset_statistics
 
-# from llavavla.training import VLAMetrics, get_train_strategy
 
-from llavavla.training import VLAMetrics
-
-from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
-from llavavla.conf import VLAConfig, VLARegistry
-
-from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
+from llavavla.dataloader.lmdb_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
@@ -79,11 +74,10 @@ def load_fast_tokenizer():
     )
     return fast_tokenizer
 
-# TODO 🙅写成强参数传递
-def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
+def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
 
     cfg.logging_frequency = 10
-    cfg.gradient_accumulation_steps = 1 # TODO 实现梯度累计
+    cfg.gradient_accumulation_steps = 1
     cfg.gradient_clipping = 1.0
     max_train_steps = cfg.vla.max_train_steps #TODO 注意各种参数的统一
 
@@ -125,103 +119,86 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
     completed_steps = 0
 
     progress_bar = tqdm(range(cfg.vla.max_steps), disable=not accelerator.is_local_main_process)
-
-    # -------------- 准备阶段：放在 while 外 --------------
-    vla_iter = iter(vla_train_dataloader)   # 句柄保留下来
-    vlm_iter = iter(vlm_train_dataloader)
+    action_total_loss = 0.0
+    Intern_vlm_total_loss = 0.0
+    global_batch_size = cfg.vla.expected_world_size * cfg.vla.per_device_batch_size
+    
     while completed_steps < cfg.vla.max_train_steps:
-        # ---- 拿 VLA 批次 ----
-        try:
-            batch_samples_vla = next(vla_iter)
-        except StopIteration:                 # 当前 epoch 结束
-            vla_iter = iter(vla_train_dataloader)
-            batch_samples_vla = next(vla_iter)
-        # ---- 拿 VLM 批次 ----
-        try:
-            batch_samples_vlm = next(vlm_iter)
-        except StopIteration:
-            vlm_iter = iter(vlm_train_dataloader)
-            batch_samples_vlm = next(vlm_iter) # batch = batch_samples_vla.extend(batch_samples_vlm) 
-            
-        # for batch in vla_train_dataloader:
-        # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许 TODO 开看fangjing 怎么解决了这个问题
-        optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
-        # dist.barrier()
-
-        # forward action data
-        with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            action_loss, action_vlm_loss = model.forward(batch_samples_vla) # TODO make vlm and action loss
-
-        accelerator.backward(action_loss+action_vlm_loss)
-        
-        # 会导致 爆内存， 看来要用 flash attention, 但是不清楚会对 action有什么影响。 TODO 先取消掉 多轮对话？和使用 data-flatten
-        with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            output = model.qwen_vl_interface(**batch_samples_vlm) # TODO make vlm and action loss
-            vlm_loss = output.loss * cfg.trainer.loss_scale.vlm 
+        for batch in train_dataloader:
+            # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
+            optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
             # dist.barrier()
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                action_loss, Intern_vlm_loss = model.forward(batch) # TODO make vlm and action loss
 
-        accelerator.backward(vlm_loss) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
+                # TODO 考虑如何和 VLM loss 兼容
+                action_total_loss += action_loss.detach().float()
+                Intern_vlm_total_loss += Intern_vlm_loss.detach().float() if Intern_vlm_loss is not None else 0.0
 
-        if cfg.gradient_clipping is not None:
-            accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
 
-        if accelerator.sync_gradients:
-            progress_bar.update(1)
-            completed_steps += 1
-
-        optimizer.step()
-        lr_scheduler.step()
-
-        # Logging
-        if completed_steps % cfg.logging_frequency == 0:
-            if accelerator.is_main_process:
-                
-                total_norm = 0.0
-                for p in model.parameters(): #TODO 这里已经看不到梯度了，想办法看看DS 是怎么看grad 的
-                    if p.grad is not None:
-                        total_norm += p.grad.data.norm(2).item() ** 2
-                total_norm = total_norm**0.5
-                lr = lr_scheduler.get_last_lr()[0]
-                logger.info(f"Step {completed_steps}, Loss: {action_loss.item()}, Grad Norm: {total_norm}")
-                lr = lr_scheduler.get_last_lr()[0]
-                epoch = int(completed_steps) // len(vla_train_dataloader) # 他们都是经过 DDP的
-                result = {
-                    "action_dit_loss": action_loss.item(),
-                    "action_vlm_loss": action_vlm_loss.item(),
-                    "vlm_loss": vlm_loss.item(),
-                    "grad_norm": total_norm,
-                    "learning_rate": lr,
-                    "epoch": epoch,
-                }
-                if cfg.is_debug:
-                    print(result)
-                # Compute epoch value using number of completed gradient steps
-                
-                wandb.log(result, step=completed_steps)
             
-        # Checkpointing
-        if completed_steps% cfg.save_interval == 0 and completed_steps > 0:
-            accelerator.wait_for_everyone()
-            if accelerator.is_main_process:
-                # dist.barrier()
-                # accelerator.save_state(os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}"))
-                state_dict = accelerator.get_state_dict(model)
-                output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                
-                torch.save(state_dict, output_path+"_pytorch_model.pt")
-                print(f"✅ Saved state_dict to {output_path}")
-                summary_data = {"steps": completed_steps, "train_loss": action_vlm_loss.item()}
-                with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
-                    f.write(json.dumps(summary_data) + "\n")
-                logger.info(f"Checkpoint saved at step {completed_steps}")
+            accelerator.backward(action_loss)
 
-            accelerator.wait_for_everyone()
-            
-        # dist.barrier()  # Ensure all processes log at the same time
+            if cfg.gradient_clipping is not None:
+                accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
+
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                completed_steps += 1
+
+            optimizer.step()
+            lr_scheduler.step()
+
+            # Logging
+            if completed_steps % cfg.logging_frequency == 0:
+                if accelerator.is_main_process:
+                    
+                    total_norm = 0.0
+                    for p in model.parameters(): #TODO 这里已经看不到梯度了，想办法看看DS 是怎么看grad 的
+                        if p.grad is not None:
+                            total_norm += p.grad.data.norm(2).item() ** 2
+                    total_norm = total_norm**0.5
+                    lr = lr_scheduler.get_last_lr()[0]
+                    logger.info(f"Step {completed_steps}, Loss: {action_loss.item()}, Grad Norm: {total_norm}")
+                    lr = lr_scheduler.get_last_lr()[0]
+                    epoch = int(completed_steps) // len(train_dataloader) # 他们都是经过 DDP的
+                    result = {
+                        "train_loss": action_loss.item(),
+                        "grad_norm": total_norm,
+                        "learning_rate": lr,
+                        "epoch": epoch,
+                    }
+                    if cfg.is_debug:
+                        print(result)
+                    # Compute epoch value using number of completed gradient steps
+                    
+                    wandb.log(result, step=completed_steps)
+               
+            # Checkpointing
+            if completed_steps% cfg.save_interval == 0 and completed_steps > 0:
+                accelerator.wait_for_everyone()
+                if accelerator.is_main_process:
+                    # dist.barrier()
+                    # accelerator.save_state(os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}"))
+                    state_dict = accelerator.get_state_dict(model)
+                    output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    
+                    torch.save(state_dict, output_path+"_pytorch_model.pt")
+                    print(f"✅ Saved state_dict to {output_path}")
+                    summary_data = {"steps": completed_steps, "train_loss": action_total_loss.item()/cfg.save_interval}
+                    with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
+                        f.write(json.dumps(summary_data) + "\n")
+                    logger.info(f"Checkpoint saved at step {completed_steps}")
+                    action_total_loss = 0.0
+                accelerator.wait_for_everyone()
                 
-        if completed_steps >= cfg.vla.max_train_steps:
-            break
+            # dist.barrier()  # Ensure all processes log at the same time
+                    
+            if completed_steps >= cfg.vla.max_train_steps:
+                break
+
+
 
     # Save final checkpoint
     if accelerator.is_main_process:
@@ -234,12 +211,23 @@ def trainer(model, vla_train_dataloader,vlm_train_dataloader, optimizer, lr_sche
         logger.info(f"Training finished. Final checkpoint saved at {checkpoint_path}")
         wandb.finish()
 
-
-
-from llavavla.training.metrics import build_param_lr_groups
+# @draccus.wrap()
 def train(cfg) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
     # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
+    if cfg.is_debug:
+        if int(os.environ.get("RANK", -1)) == 0:
+            import debugpy
+            debugpy.listen(("0.0.0.0", 10092))
+            print("🔍 Rank 0 waiting for debugger attach on port 10092...")
+            debugpy.wait_for_client()
+
+    # accelerator.dataloader_config.dispatch_batches =  False
+    # Configure Unique Run Name & Save Directory
+    # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
+    # torch.cuda.set_device(device_id := overwatch.local_rank())
+    # torch.cuda.empty_cache() # 全权交给 Accelerator 管理多机多卡
+    
 
     vla_id = cfg.vla.vla_id
     cfg.run_id = (
@@ -270,7 +258,7 @@ def train(cfg) -> None:
 
     overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
     vla = build_model_framework(cfg)
-    fast_tokenizer = load_fast_tokenizer() # TODO 考虑架构时候的事情
+    # fast_tokenizer = load_fast_tokenizer() # TODO 考虑架构时候的事情
     # processor = vla.vlm.processor # @Jinhui TODO 不应该在这个地方 赋值， 数据准备应该和 封装类绑定为函数
     # [Validate] Model should be in Full Precision! @Jinhui TODO Why?
     for param in vla.parameters():
@@ -294,8 +282,10 @@ def train(cfg) -> None:
     overwatch.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.vla.data_mix}`")
     #   text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     vla_dataset = get_vla_dataset( # 拒绝任何内部转换
-        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
-        cfg.vla.data_mix,
+        data_root_dir=cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+        data_mix=cfg.vla.data_mix,
+        data_mix_info=cfg.vla.data_mix_info,
+        action_type=cfg.action_type,
         default_image_resolution=(3, 224, 224),
         shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
         image_aug=cfg.image_aug,
@@ -306,46 +296,39 @@ def train(cfg) -> None:
 
     # Create DataLoader
     
-    vla_train_dataloader = DataLoader(
+    train_dataloader = DataLoader(
         vla_dataset,
         batch_size=cfg.vla.per_device_batch_size, # @Jinhui TODO 感觉即使有个空的 collate_fn 也会让代码 扩展性 更好
         collate_fn=collate_fn
     )
 
-    vlm_data_mudule = make_vlm_dataloader(cfg) # TODO 👆构建dataloader 的逻辑也不能放到这里。 思考一下，为什么 SFTTrainer 需要这样写
-    vlm_train_dataloader = vlm_data_mudule["train_dataloader"]
     # sample = next(iter(vla_dataset)) #for debug
 
     # Save dataset statistics for de-normalization at inference time
     if overwatch.is_rank_zero():
         save_dataset_statistics(vla_dataset.dataset_statistics, run_dir)
     
-    
-    # Create Train Strategy
-    
-    # Prepare everything with Accelerator
     dist.barrier()
+    # Create Train Strategy
+    # overwatch.info(f"Initializing Train Strategy `{cfg.train_strategy}`")
+    # Prepare everything with Accelerator
+    
     accelerator.dataloader_config.dispatch_batches =  False
 
     # Initialize optimizer
     # learning_rate = 1e-4
-    param_groups = build_param_lr_groups(vla=vla, cfg=cfg) # TODO 这里的参数应该是从 config 中获取的， 而不是直接写死
+
     optimizer = torch.optim.AdamW(
-        param_groups,
+        vla.parameters(),
         lr=cfg.vla.learning_rate,
-        betas=(0.9, 0.95), # 这是用于 一阶和二阶动量估计 的两个超参数：
-        weight_decay=1e-8, # 这是用于 L2 正则化 的项（惩罚参数值太大的趋势）：
+        betas=(0.9, 0.95),
+        weight_decay=1e-8,
         eps=1e-8,
     )
-    pass
-    dist.barrier()
-    if overwatch.is_rank_zero(): # 想办法写成一个修饰函数
-        for i, group in enumerate(optimizer.param_groups):
-            print(f"LR Group {group['name']}: lr={group['lr']}, num_params={len(group['params'])}")
     # Initialize learning rate scheduler
     
     max_train_steps = cfg.vla.max_steps # TODO 统一 max_train_steps 和 max_steps, 和 epoch
-    cfg.vla.max_train_steps = max_train_steps
+    cfg.vla.max_train_steps = max_train_steps # TODO 应该放到 trainer group
     num_warmup_steps = min(int(cfg.vla.max_train_steps*0.1), 10000)
     cfg.num_warmup_steps = num_warmup_steps
 
@@ -357,11 +340,9 @@ def train(cfg) -> None:
     )
 
     # Prepare everything with Accelerator, setup
-    vla, optimizer, vla_train_dataloader, vlm_train_dataloader = accelerator.prepare( # @JinhuiYE 第三方工具 or DDP？
-        vla, optimizer, vla_train_dataloader, vlm_train_dataloader
+    vla, optimizer, train_dataloader = accelerator.prepare( # @JinhuiYE 第三方工具 or DDP？
+        vla, optimizer, train_dataloader
     )
-    # @Jinhui 推荐用 accelerator， 这里用DDP是因为之前的脚本是torch run
-
 
     # Create Metrics =>> Handles on the fly tracking, logging to specified trackers (e.g., JSONL, Weights & Biases)
     overwatch.info(f"Creating Metrics with Active Trackers => `{cfg.trackers}`")
@@ -369,8 +350,7 @@ def train(cfg) -> None:
     # Run VLA Training # TODO move them to class tainer 
     trainer(
         model=vla,
-        vla_train_dataloader=vla_train_dataloader,
-        vlm_train_dataloader=vlm_train_dataloader,
+        train_dataloader=train_dataloader,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
         accelerator=accelerator,
@@ -394,11 +374,11 @@ if __name__ == "__main__":
     cli_cfg = OmegaConf.from_dotlist(dotlist)
     cfg = OmegaConf.merge(cfg, cli_cfg)
 
-    # if cfg.is_debug:
-    if cfg.is_debug and overwatch.is_rank_zero():
-        import debugpy
-        debugpy.listen(("0.0.0.0", 5678))
-        print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-        debugpy.wait_for_client()
+    # # if cfg.is_debug:
+    # if cfg.is_debug and overwatch.is_rank_zero():
+    #     import debugpy
+    #     debugpy.listen(("0.0.0.0", 10092))
+    #     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+    #     debugpy.wait_for_client()
 
     train(cfg)

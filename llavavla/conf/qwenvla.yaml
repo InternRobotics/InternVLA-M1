@@ -1,4 +1,4 @@
-action_dim: 7
+
 action_model_type: DiT-B
 data_root_dir: playground/Datasets/OXE_openvla
 future_action_window_size: 15
@@ -39,6 +39,7 @@ vla:
   per_device_batch_size: 16
   qformer_end_layer: 37
   qformer_start_layer: 36
+  action_dim: 7
   reduce_in_full_precision: true
   shuffle_buffer_size: 250000
   train_strategy: fsdp-full-shard

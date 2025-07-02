@@ -64,7 +64,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 overwatch = initialize_overwatch(__name__) # 后期移除， 不要基于 prismatic 来玩输出
 logger = get_logger(__name__)
 
-from llavavla.model.framework.qwenact import build_model_framework
+from llavavla.model.framework.qwenpi import build_model_framework
 
 def load_fast_tokenizer():
     fast_tokenizer = AutoProcessor.from_pretrained(
@@ -122,12 +122,7 @@ def trainer(model, vla_train_dataloader, optimizer, lr_scheduler, accelerator, c
     global_batch_size = cfg.vla.expected_world_size * cfg.vla.per_device_batch_size
     
     while completed_steps < cfg.vla.max_train_steps:
-        # train_dataloader_vla
-        # train_dataloader_vlm
-        # batch_samples_vla = next(iter(train_dataloader_vla)) 
-        # batch_samples_vlm = next(iter(train_dataloader_vlm))
-        # batch = batch_samples_vla.extend(batch_samples_vlm) 
-        
+
         for batch in vla_train_dataloader:
             # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
             optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
@@ -218,13 +213,6 @@ def trainer(model, vla_train_dataloader, optimizer, lr_scheduler, accelerator, c
 def train(cfg) -> None:
     overwatch.info("CogACT-VLA Training :: Warming Up")
     # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
-
-    # accelerator.dataloader_config.dispatch_batches =  False
-    # Configure Unique Run Name & Save Directory
-    # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
-    # torch.cuda.set_device(device_id := overwatch.local_rank())
-    # torch.cuda.empty_cache() # 全权交给 Accelerator 管理多机多卡
-    
 
     vla_id = cfg.vla.vla_id
     cfg.run_id = (
@@ -369,12 +357,5 @@ if __name__ == "__main__":
     dotlist = normalize_dotlist_args(clipargs)  # Normalize CLI args to dotlist format
     cli_cfg = OmegaConf.from_dotlist(dotlist)
     cfg = OmegaConf.merge(cfg, cli_cfg)
-
-    # # if cfg.is_debug:
-    # if cfg.is_debug and overwatch.is_rank_zero():
-    #     import debugpy
-    #     debugpy.listen(("0.0.0.0", 5678))
-    #     print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-    #     debugpy.wait_for_client()
 
     train(cfg)

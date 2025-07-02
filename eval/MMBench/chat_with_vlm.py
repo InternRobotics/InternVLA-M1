@@ -23,19 +23,19 @@ processor = qwenact.qwen_vl_interface.processor
 
 
 
-model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"  # or your local path
-model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    model_path,
-    torch_dtype=torch.bfloat16,
-    # attn_implementation="flash_attention_2",
-)
-
-processor = AutoProcessor.from_pretrained(
-    model_path, use_fast=True
-)
-tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
-tokenizer.padding_side = "left"  # BATCH INFER
-processor.tokenizer = tokenizer
+# model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"  # or your local path
+# model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+#     model_path,
+#     torch_dtype=torch.bfloat16,
+#     # attn_implementation="flash_attention_2",
+# )
+# model.forward
+# processor = AutoProcessor.from_pretrained(
+#     model_path, use_fast=True
+# )
+# tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+# tokenizer.padding_side = "left"  # BATCH INFER
+# processor.tokenizer = tokenizer
 
 
 model.to("cuda")  # 将模型移动到 GPU

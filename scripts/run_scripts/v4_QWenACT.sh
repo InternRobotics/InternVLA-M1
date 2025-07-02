@@ -37,19 +37,18 @@ export system2_datasets="${datasets_vlm},${datasets_grounding}"
 # ,${datasets_grounding}
   # --vlm_data.min_pixels 3136 \
   # --vlm_data.max_pixels 12845056 \
-ls /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0_bar/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000
+  # --vla.freeze_modules qwen_vl_interface.model.model.visual \
 
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
   --num_processes 8 \
-  llavavla/training/train_qwenvla_cotrain.py \
-  --config_yaml ./llavavla/conf/qwenvla_cotrain_v2.yaml \
+  llavavla/training/train_qwenvla.py \
+  --config_yaml ./llavavla/conf/qwenvla.yaml \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vlm_data.dataset_use ${system2_datasets} \
   --vla.per_device_batch_size 16 \
   --vlm_data.per_device_batch_size 4 \
-  --vla.freeze_modules "" \
   --trainer.learning_rate.base 5e-5 \
   --vla.qformer_start_layer 36 \
   --vla.qformer_end_layer 37 \
@@ -66,7 +65,7 @@ accelerate launch \
   --future_action_window_size 15 \
   --action_model_type DiT-B \
   --is_resume False \
-  --is_debug True
+  # --is_debug True
 
 
 

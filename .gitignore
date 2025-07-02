@@ -159,3 +159,5 @@ length_distribution.png
 eval/MMBench/*.jpg
 eval/*/*.jpg
 eval/*/*.png
+
+scripts

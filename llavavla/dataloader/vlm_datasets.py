@@ -362,7 +362,7 @@ class LazySupervisedDataset(Dataset):
             position_ids, _ = self.get_rope_index(
                 self.data_args.image_processor.merge_size,
                 data_dict["input_ids"],
-                torch.stack(grid_thw, dim=0),
+                torch.stack(grid_thw, dim=0), # (1,16,16)
             )
         elif "videos" in sources[0] and  len(sources[0]["videos"]): # 明显这里不支持 video / image 交错
             video_file = self.list_data_dict[i]["videos"]
@@ -435,7 +435,7 @@ class LazySupervisedDataset(Dataset):
             data_dict["input_ids"] = data_dict["input_ids"][:max_len]
             data_dict["labels"] = data_dict["labels"][:max_len]
             data_dict["position_ids"] = position_ids[:, :, :max_len]
-                    
+            
         return data_dict
 
 

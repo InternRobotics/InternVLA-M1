@@ -1,5 +1,5 @@
 # 参数要求： 写了可以不用，但是用了就一定不能错
-action_dim: 7
+
 action_model_type: DiT-B
 data_root_dir: playground/Datasets/OXE_openvla
 future_action_window_size: 15
@@ -35,11 +35,9 @@ vla:
   epochs: 100
   expected_world_size: 32
   action_dim: 7
-  freeze_llm_backbone: false
   freeze_modules: ''
-  freeze_vision_backbone: false
-  pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0_bar/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
-  reload_modules: 'action_model,layer_qformer'
+  # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0_bar/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
+  # reload_modules: 'action_model,layer_qformer'
   global_batch_size: 512
   learning_rate: 5.0e-05
   lr_scheduler_type: constant

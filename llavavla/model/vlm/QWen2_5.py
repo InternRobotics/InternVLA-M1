@@ -13,6 +13,8 @@ from transformers import BatchFeature
 from prismatic.overwatch import initialize_overwatch
 from qwen_vl_utils import process_vision_info
 
+from llavavla.dataloader.rope2d import get_rope_index_25
+
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 IGNORE_INDEX = -100
@@ -74,14 +76,15 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         output_attentions: Optional[bool] = False,
         output_hidden_states: Optional[bool] = True,  # 需要 hidden_states
         return_dict: Optional[bool] = True,
+        # TODO position_ids 是否生效了？
         **kwargs
     ) -> CausalLMOutputWithPast:
         """
         调用 QWen2.5 的 forward，输出类似 CausalLMOutputWithPast 的结构，供 CogACT 使用。
         """
-        
+        #  TODO 这里需要更加简洁的接口
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            outputs = self.model(
+            outputs = self.model( # TODO 验证   1. 验证position id 是干什么的， 这里要定义**input 就是唯一传惨， 不能够中途调换
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 pixel_values=pixel_values,
@@ -133,7 +136,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs(self, images, instructions):
+    def build_qwenvl_inputs(self, images, instructions, **kwargs):
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -147,6 +150,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             inputs: dict with input_ids, attention_mask, pixel_values, etc., ready for model.generate or model(...)
         """
         # TODO 这里要和 QWen 官方对齐 --> infer 这样更快， 但是 我们可以写成
+        # TODO 保留的原因是相比  v2 似乎更快， 更容易出结果
         pass
         # Create messages: one message per sample
         messages = []
@@ -176,10 +180,13 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             return_tensors="pt"
         )
         # torch.distributed.barrier()
+        # inputs.keys() # dict_keys(['input_ids', , 'attention_mask', 'pixel_values', 'image_grid_thw']) # 验证 position_ids 不提的话， 内部会自己算
         return inputs.to(self.model.device)
     
-    def build_qwenvl_inputs_v2(self, images, instructions):
+    def build_qwenvl_inputs_v2(self, images, instructions, solutions=None):
         # TODO 其实也可以放到dataloader 内部， 但是导致的是 dataloader 需要依赖 model processor
+        # TODO 相比 v2 速度慢了一倍， 去看看什么原因 --> 好像并没有慢
+        # TODO 后期可以可以在这里写成多线程并行吧 --> 不需要了
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -200,11 +207,18 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         
         # build conversation messages
         for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
+
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
-            prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to locate the object"
+            prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
+            # prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object"
             # prompt = f"{instruction}."
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
+            if solutions is not None:
+                # add solution if provided
+                solution = solutions[len(messages)]
+                solution_content = [{"type": "text", "text": f": {solution}"}]
+                msg.append({"role": "assistant", "content": solution_content})
             messages.append(msg)
 
         # Prepare visul inputs = list of PIL
@@ -220,28 +234,29 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         video_inputs = {}
         video_grid_thw = None
 
-        if images is not None:
+        if images is not None: # TODO 看一下这里是否要并行处理，或者直接
             image_inputs = self.processor.image_processor(images=images, return_tensors="pt") # 这里是直接处理成 tensor 的
             image_grid_thw = copy.deepcopy(image_inputs["image_grid_thw"]) 
             image_grid_thw_merged = [
                 merged_thw.prod() // self.processor.image_processor.merge_size**2
                 for merged_thw in image_grid_thw
-            ] 
+            ]
             grid_thw_merged = image_grid_thw_merged # 目前还不能image, video 交错
             text_inputs = preprocess_qwen_2_visual( # 对 官方代码进行了修改，sources --> massage， 支持 batch padding
                 messages, self.processor.tokenizer, grid_thw=grid_thw_merged, visual_type="image"
-            ) # 拿到 input_ids and labels
+            ) # 拿到 input_ids and SFT labels
+
+            # position_ids, _ = get_rope_index_25( #
+            #     self.processor.image_processor.merge_size,
+            #     text_inputs["input_ids"],
+            #     image_grid_thw, # (B,16,16)
+            #     attention_mask=text_inputs["attention_mask"],
+            # )
+            # text_inputs["position_ids"] = position_ids # TODO 验证是否影响速度， 不建议自己算，容易出错
         elif videos is not None:
-            video_inputs = self.processor.video_processor(videos=videos, return_tensors="pt")
-            video_grid_thw = copy.deepcopy(video_inputs["video_grid_thw"])
-            video_grid_thw_merged = [
-                merged_thw.prod() // self.processor.image_processor.merge_size**2
-                for merged_thw in video_grid_thw
-            ]
-            grid_thw_merged = video_grid_thw_merged
-            text_inputs = preprocess_qwen_2_visual( # 对 官方代码进行了修改，sources --> massage， 支持 batch padding
-                messages, self.processor.tokenizer, grid_thw=grid_thw_merged, visual_type="video"
-            )
+            # need more alignment with official code
+            RuntimeWarning("Video inputs are not yet supported in this interface. 还不确定这个框架是否支持这样的混合输出.")
+            pass
         else:
             ResourceWarning("No visual inputs provided. 还不确定这个框架是否支持这样的混合输出.")
             pass
@@ -249,7 +264,8 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         # torch.distributed.barrier()
         inputs = BatchFeature(data={**text_inputs, **image_inputs, **video_inputs}, tensor_type="pt")
         # qwen 官方： dict_keys(['input_ids', 'labels', 'position_ids', 'pixel_values', 'image_grid_thw'])
-        # 我们 的： dict_keys(['input_ids', 'labels', 'attention_mask', 'pixel_values', 'image_grid_thw']) # 
+        # 我们 的： dict_keys(['input_ids', 'labels', 'attention_mask','position_ids', 'pixel_values', 'image_grid_thw']) # 
+        # 验证了 position_ids 可以不提供， 内部自己会算 ../transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py
         return inputs.to(self.model.device)
 
 
@@ -289,16 +305,16 @@ def messages_to_sources(batch_messages):
     return batch_sources
 
 def preprocess_qwen_2_visual(
-    massages,
+    messages,
     tokenizer: transformers.PreTrainedTokenizer,
     grid_thw: List = [],
     visual_type: str = "image",
 ) -> Dict:
-    # massage --> sources json
+    # message --> sources json
     pass
     
 
-    sources = messages_to_sources(massages)  # 转换为 source 格式
+    sources = messages_to_sources(messages)  # 转换为 source 格式
     # torch.distributed.barrier()
     # 复用 QWenvl 代码
     roles = {"human": "user", "gpt": "assistant"}

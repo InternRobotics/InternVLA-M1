@@ -9,7 +9,7 @@ format to OpenVLA, IterableDataset shim.
 import os, json, pickle, bisect, logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict, Tuple, Type, List, Optional
 
 import lmdb
 from itertools import accumulate
@@ -182,6 +182,17 @@ class LMDBDataset(Dataset):
 
         language_instruction = meta_info["language_instruction"]
 
+        # get grounding info
+        pick_uid = meta_info['task_data']['goal'][0][0]['obj1_uid']
+        place_uid = meta_info['task_data']['goal'][0][0]['obj2_uid']
+        target_position = meta_info['task_data']['goal'][0][0]['position']
+        
+        
+        # 一次性缩放轨迹
+        # scale_x = image_size[0] / 224
+        # scale_y = image_size[1] / 224
+        
+
         # Load sequence data
         sequence = []
         with lmdb_env.begin(write=False) as txn:
@@ -197,6 +208,40 @@ class LMDBDataset(Dataset):
             primary_data = cv2.imdecode(np.frombuffer(primary_data, np.uint8), cv2.IMREAD_COLOR)
             # convert to PIL Image
             primary_data = Image.fromarray(primary_data)
+            
+            # TODO mv to func
+            all_trace_2d = pickle.loads(txn.get(b'observation/obs_camera/tcp_2d_trace'))
+            all_gripper_close = pickle.loads(txn.get(b'gripper_close'))
+
+            # 2) current / target bbox
+            all_raw_boxes = pickle.loads(txn.get( b'observation/obs_camera/bbox2d_loose' ))
+            all_labels_list = pickle.loads(txn.get(b'observation/obs_camera/bbox2d_loose_id2labels'))
+            curr_boxes, curr_labels = get_bbox_and_label_arrays(all_raw_boxes, all_labels_list, start_id)
+
+            # resize to 224*224
+            image_size = primary_data.size
+            primary_data = primary_data.resize((224, 224), Image.BILINEAR)
+            scale_x = 224 / image_size[0]
+            scale_y = 224 / image_size[1]
+            all_trace_2d_scaled = scale_trace(all_trace_2d, scale_x, scale_y)
+
+             # 3) affordance point
+             # 并不是全部都有 这个？
+            future_griper_change = detect_first_change_point(start_id, all_gripper_close,
+                                                    all_trace_2d_scaled,
+                                                    point_index=1)
+
+
+            # 4) 轨迹
+            j = future_griper_change["frame_idx"] #future_griper_change_idx
+
+            future_traj = get_trajectory_plan(all_trace_2d_scaled, start_id, j,
+                                                horizon=10)
+            
+            sol = {
+                "future_traj": future_traj
+            }
+
 
         lmdb_env.close()
         # action chuck: window_size
@@ -217,7 +262,9 @@ class LMDBDataset(Dataset):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
 
         
-        return dict(action=collected_action,image=[primary_data],lang=language_instruction, dataset_name=self.dataset_name)
+        return dict(action=collected_action,image=[primary_data],lang=language_instruction, 
+                    solution=sol,
+                    dataset_name=self.dataset_name)
 
     def __iter__(self):
         """Iterate through the dataset sequentially."""
@@ -252,12 +299,125 @@ class EpisodicLMDBDataset(LMDBDataset):
     pass
 
 
+def scale_point(p, scale_x, scale_y):
+    return [int(p[0] * scale_x), int(p[1] * scale_y)]
 
+def scale_trace(trace_2d, scale_x, scale_y):
+    return [np.array([scale_point(p,scale_x, scale_y) for p in frame]) for frame in trace_2d]
 
+def get_bbox_and_label_arrays(key_bbox, key_label, frame_idx: int) -> tuple:
+    """
+    从 txn 中读取指定帧的 loose bbox 数组与 id2label dict。
+    返回： (boxes_np, labels_dict)
+    boxes_np: numpy array shape (N,5) 每行 [label, xmin,ymin,xmax,ymax]
+    labels_dict: dict[label_id->{class: uid}]
+    """
+
+    frame_boxes = np.stack([np.array(x).item() for x in key_bbox[frame_idx]])
+    labels_list = key_label[frame_idx]
+    return frame_boxes, labels_list
 
 def get_dummy_dataset(dataconfig: dict):
 
     pass
+
+
+
+def get_trajectory_plan(
+    all_trace_2d: list,
+    start_idx: int = 0,
+    end_idx: int = -1,
+    horizon: int=10,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0
+) -> list:
+    """
+    从 start_idx 到 end_idx 之间，均匀采样 horizon 个第二投影点，并缩放到图像坐标。
+    如果 horizon 大于帧数差（end_idx - start_idx + 1），会对相邻帧做线性插值以补齐采样点。
+
+    参数:
+      all_trace_2d: list of shape [(n_points, 2), ...]，每帧若有多点，则选第 2 个点
+      start_idx: 起始帧索引
+      end_idx: 结束帧索引（包含）
+      horizon: 采样点总数
+      scale_x, scale_y: 缩放因子
+
+    返回:
+      traj: list of [x, y]，长度为 horizon
+    """
+    T = len(all_trace_2d)
+    if end_idx == -1:
+        end_idx = T - 1
+    if not (0 <= start_idx < T):
+        raise IndexError(f"start_idx {start_idx} out of range [0, {T})")
+    if not (0 <= end_idx < T):
+        raise IndexError(f"end_idx {end_idx} out of range [0, {T})")
+    if end_idx <= start_idx:
+        raise ValueError(f"end_idx ({end_idx}) must be > start_idx ({start_idx})")
+    if horizon < 2:
+        raise ValueError("horizon must be at least 2 to interpolate")
+
+    # 在 [start_idx, end_idx] 区间生成均匀浮点索引
+    positions = np.linspace(start_idx, end_idx, num=horizon)
+
+    traj = []
+    for pos in positions:
+        # 若 pos 正好是整数索引，直接取该帧
+        if pos.is_integer():
+            idx = int(pos)
+            pts = all_trace_2d[idx]
+            x, y = pts[1]
+        else:
+            # 否则对 floor 和 ceil 帧坐标做线性插值
+            lo, hi = int(np.floor(pos)), int(np.ceil(pos))
+            alpha = pos - lo
+            pts_lo = all_trace_2d[lo][1]
+            pts_hi = all_trace_2d[hi][1]
+            x = (1 - alpha) * pts_lo[0] + alpha * pts_hi[0]
+            y = (1 - alpha) * pts_lo[1] + alpha * pts_hi[1]
+
+        # 缩放并取整
+        traj.append([int(x * scale_x), int(y * scale_y)])
+
+    return traj
+
+
+def detect_first_change_point(
+    current_index: int,
+    gripper_close: List[int],
+    trace_2d: List[List[List[float]]],
+    point_index: int = 1
+) -> Optional[Dict]:
+    """
+    从 current_index 开始，找到 gripper_close 列表中第一次发生值变化的时刻，
+    并返回该帧的指定关键点坐标。
+
+    参数:
+        current_index: 开始检测的帧索引
+        gripper_close: 手爪状态列表（例如，-1 表示张开，1 表示闭合）
+        trace_2d: 每帧的 2D 关键点列表，形状为 [帧数][关键点数][2]
+        point_index: 要返回的关键点在每帧列表中的索引
+
+    返回:
+        {'frame_idx': i, 'point': [x, y]} 或 None（如果到末尾都没有变化）
+    """
+    assert len(gripper_close) == len(trace_2d), "长度不一致，无法对应每一帧"
+
+    prev = gripper_close[current_index]
+    # 从下一个帧开始检测
+    for i in range(current_index + 1, len(gripper_close)):
+        curr = gripper_close[i]
+        x, y = trace_2d[i][point_index]
+        change_point =  {
+                'frame_idx': i,
+                'point': [int(x), int(y)]
+            }
+        if curr != prev:
+            return change_point
+        prev = curr
+
+    # 没有检测到任何变化, 返回最后一个点
+    return change_point
 
 from typing import List, Dict, Any, Callable, Optional
 from torch.utils.data import DataLoader
@@ -335,13 +495,13 @@ if __name__ == "__main__":
 
     # test  get_vla_dataset
     cfg = {
-        'data_root_dir': '/mnt/petrelfs/share/efm_p/wangfangjing/datasets',
+        'data_root_dir': '/mnt/petrelfs/share/yejinhui/Datasets',
         'obs_type': 'obs_camera',
         'action_type': 'delta_ee_pose',
         'window_size': 16,
         'vla': {
             'per_device_batch_size': 1,
-            'data_mix': 'Banana/banana_plate_4035_none-wot-wow-woh-0529',
+            'data_mix': 'banana_plate_4035_none-wot-wow-woh-0529',
             'data_mix_info': 'Banana/banana_plate_4035_none-wot-wow-woh-0529_200',
         }
     }

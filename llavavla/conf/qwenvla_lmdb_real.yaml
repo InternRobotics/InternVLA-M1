@@ -1,5 +1,4 @@
 # 参数要求： 写了可以不用，但是用了就一定不能错
-action_dim: 8
 action_model_type: DiT-B
 future_action_window_size: 15
 logging_frequency: 10

@@ -16,7 +16,7 @@ if [ -z "$MODEL_PATH" ]; then
   export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_64gpus_vlm_4_0.1/checkpoints/steps_30000_pytorch_model.pt"
 fi
 
-policy_model=QwenACTAFormer
+policy_model=Qwenpi
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small
 
 
@@ -42,14 +42,6 @@ declare -a ENV_NAMES=(
   PutSpoonOnTableClothInScene-v0
 )
 
-# 如果 DEBUG 被设置为 1，则定义 ENV_NAMES
-if [ "$DEBUG" -eq 1 ]; then
-  declare -a ENV_NAMES=(
-    # StackGreenCubeOnYellowCubeBakedTexInScene-v0
-    # PutCarrotOnPlateInScene-v0
-    # PutSpoonOnTableClothInScene-v0
-  )
-fi
 
 # 遍历任务，每个 env 执行 5 次，依次分配 GPU 并打 tag
 # 遍历每个 env（通过下标 i）并执行多次 run

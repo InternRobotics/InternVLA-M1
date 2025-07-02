@@ -1,5 +1,4 @@
 # 参数要求： 写了可以不用，但是用了就一定不能错
-action_dim: 8
 action_model_type: DiT-B
 future_action_window_size: 15
 logging_frequency: 10
@@ -34,8 +33,8 @@ vla:
   epochs: 100
   expected_world_size: 32
   action_dim: 8
-  data_mix: place_0625_lmdb
-  data_mix_info: place_0625_lmdb
+  data_mix: banana_plate_4035_none-wot-wow-woh-0529
+  data_mix_info: Banana/banana_plate_4035_none-wot-wow-woh-0529
   freeze_llm_backbone: false
   freeze_modules: ''
   freeze_vision_backbone: false

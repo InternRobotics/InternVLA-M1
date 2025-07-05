@@ -46,9 +46,6 @@ from prismatic.overwatch import initialize_overwatch
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
 
-
-from llavavla.conf import VLAConfig, VLARegistry
-
 from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin
 
@@ -297,8 +294,6 @@ def train(cfg) -> None:
     dist.barrier()
     accelerator.dataloader_config.dispatch_batches =  False
 
-    # Initialize optimizer
-    # learning_rate = 1e-4
 
     optimizer = torch.optim.AdamW(
         vla.parameters(),

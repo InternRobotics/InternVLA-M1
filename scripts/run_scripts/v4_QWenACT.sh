@@ -42,8 +42,8 @@ export system2_datasets="${datasets_vlm},${datasets_grounding}"
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
   --num_processes 8 \
-  llavavla/training/train_qwenvla.py \
-  --config_yaml ./llavavla/conf/qwenvla.yaml \
+  llavavla/training/train_qwenvla_cotrain.py \
+  --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vlm_data.dataset_use ${system2_datasets} \

@@ -108,6 +108,11 @@ class QwenQFormerDiT(nn.Module):
         # dist.barrier
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
         
+        if DEBUG := os.environ.get("DEBUG"):
+            _, num_dict = read_mode_config(self.config.vla.pretrained_checkpoint)
+            self.norm_stats = num_dict
+            self.predict_action_withCoT(image=images[0], instruction=instructions[0])
+            
         with torch.autocast("cuda", dtype=torch.float16):
             # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
@@ -274,6 +279,135 @@ class QwenQFormerDiT(nn.Module):
         # actions max 1, min -0.05 # 感觉不再一个 scale
         return actions, normalized_actions
 
+    # @torch.inference_mode() # @Jinhui DEBUG 临时取消
+    def predict_action_withCoT( # 
+        self, image: Union[Image, List[Image]],
+        instruction: str, 
+        solution: Union[Dict, List[Dict]] = None, # @Jinhui TODO 这里是为了兼容旧的格式, 可以用于出中间表征的评测？
+        unnorm_key: Optional[str] = None, 
+        cfg_scale: float = 1.5, 
+        use_ddim: bool = False,
+        num_ddim_steps: int = 5,
+        **kwargs: str
+    ) -> np.ndarray:
+        """
+
+        @return Unnormalized (continuous) action vector --> end-effector deltas.
+        """
+
+        # @之后写入模型内部， 变成私有化方法
+        if not isinstance(image, list):
+            imgs = [image.resize((224, 224))]  # list of PIL RGB for one instruction
+        else:
+            imgs = [img.resize((224, 224)) for img in image]
+        
+        lang = instruction.lower() 
+        
+        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[imgs], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
+        qwen_inputs = inferface_inputs
+        # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
+
+        # Generate feature through vlm
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            # fmt: off
+            qwenvl_outputs = self.qwen_vl_interface.model.generate(
+                input_ids=qwen_inputs.input_ids,
+                attention_mask=qwen_inputs.attention_mask,
+                pixel_values=qwen_inputs.pixel_values, 
+                image_grid_thw =qwen_inputs.image_grid_thw, # 2* [1,16,16] --> 512 = 16*16*2, 1176 = (224/16)^2 * 3 * 2 @JinhuiYE TODO 这个需要找Qwen 的官方文档验证
+                output_hidden_states=True,
+                 max_new_tokens=256,
+                return_dict_in_generate=True,
+            ) 
+            # for check output format
+            decoded_sequences = self.qwen_vl_interface.processor.tokenizer.batch_decode(
+            qwenvl_outputs.sequences, 
+            skip_special_tokens=True 
+            )
+            print(decoded_sequences[0])
+
+            hidden_states = qwenvl_outputs.hidden_states # [num_layers, batch_size, 1 + new token, hidden_dim]
+
+            # 这里要将生成的token拼接回来
+            prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, prefix_len, hidden_dim]
+            prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
+            
+            # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, 1, hidden_dim]
+            new_hidden_states = torch.stack([
+                torch.stack(layer_hiddens, dim=0) 
+                for layer_hiddens in hidden_states[1:]
+            ], dim=0)
+            
+            # Step 2: Remove singleton dimension and transpose to [num_layers, B, num_new_tokens, hidden_dim]
+            new_hidden_states = new_hidden_states.squeeze(2).permute(1,2,0,3)  # [num_layers, B, num_new_tokens, hidden_dim]
+            
+            # Concatenate prefix and new tokens
+            combined_hidden_states = torch.cat([
+                prefix_hidden_states,  # [num_layers, B, prefix_len, hidden_dim]
+                new_hidden_states     # [num_layers, B, num_new_tokens, hidden_dim]
+            ], dim=2)  # Shape: [num_layers, B, total_len, hidden_dim]
+
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            start_layer = self.config.vla.qformer_start_layer
+            end_layer = self.config.vla.qformer_end_layer
+            latent_features = []
+            # TODO 上面为可读性，牺牲了速度, 稳定后可以考虑 只转换需要用的feature
+            for i in range(start_layer, end_layer):
+                latent_features.append(combined_hidden_states[i]) # 
+            action_latent_feature = self.layer_qformer(latent_features) # [B, 64, D_action]
+        using_cfg = cfg_scale > 1.0
+
+        model_dtype = next(self.action_model.net.parameters()).dtype
+        B = action_latent_feature.shape[0]
+
+        # Sample random noise
+        noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=action_latent_feature.device).to(model_dtype)  #[B, T, D]
+
+        # Setup classifier-free guidance:
+        if using_cfg:
+            noise = torch.cat([noise, noise], 0) #[2,16,7]
+            uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
+            uncondition_shape = uncondition.shape
+            uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
+            uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
+            z = torch.cat([action_latent_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
+            cfg_scale = cfg_scale
+            model_kwargs = dict(z=z, cfg_scale=cfg_scale)
+            sample_fn = self.action_model.net.forward_with_cfg
+        else:
+            model_kwargs = dict(z=action_latent_feature)
+            sample_fn = self.action_model.net.forward
+        
+        # if os.environ.get("DEBUG"):
+        #     print(z .shape)
+        # DDIM Sampling
+        if use_ddim and num_ddim_steps is not None:
+            if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
+                self.action_model.create_ddim(ddim_step=num_ddim_steps)
+            samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
+                                                                noise.shape, 
+                                                                noise, 
+                                                                clip_denoised=False,
+                                                                model_kwargs=model_kwargs,
+                                                                progress=False,
+                                                                device=action_latent_feature.device,
+                                                                eta=0.0
+                                                                )
+        else:
+            # DDPM Sampling
+            samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
+                                                                    noise.shape, 
+                                                                    noise, 
+                                                                    clip_denoised=False,
+                                                                    model_kwargs=model_kwargs,
+                                                                    progress=False,
+                                                                    device=action_latent_feature.device
+                                                                    )
+        if using_cfg:
+            samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+        normalized_actions = samples[0].cpu().numpy()
+        # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
+        return normalized_actions, normalized_actions # TODO Debug with stats is dim=7
 
     def freeze_backbones(self):
         """
@@ -489,6 +623,9 @@ def read_mode_config(pretrained_checkpoint):
         # Load Dataset Statistics for Action Denormalization
         with open(dataset_statistics_json, "r") as f:
             norm_stats = json.load(f)
+    else:
+        overwatch.error(f"❌ Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
+        raise FileNotFoundError(f"Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
     return vla_cfg, norm_stats
 
 def load_from_pretrained(pretrained_checkpoint):

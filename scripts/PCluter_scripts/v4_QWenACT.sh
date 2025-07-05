@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=f_vit       # name
+#SBATCH --job-name=vlma        # name
 #SBATCH -p efm_p
 #SBATCH -N 4                    # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
@@ -56,9 +56,12 @@ export system2_datasets="${datasets_vlm},${datasets_grounding}"
 export llm_hook_weight=1 # 暂时不使用， 过于复炸， 效果不确定
 # 其实如果能够生效，上面的方式是最直接的
 
-export qwen_vl_interface_lr=5e-5
-export action_model_lr=5e-5
-export run_id=0630_rp_v1_freeze_vit_v2
+export qwen_vl_interface_lr=5e-5 
+export action_model_lr=1e-4 
+export loss_scale_vla=1.0 # 1.0 is the default value, you can change it if needed
+export loss_scale_vlm=0.1 # 1.0 is the default value, you can change it if needed
+
+export run_id=0701_vlma_v2
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -70,13 +73,10 @@ cp $0 ${output_dir}/
   # --num_processes=${TOTAL_GPUS} 是要说一共有多少卡，这个没有torchrun 直观， 之后改成torchrun 来管理
 # 这个地方很😡直觉，需要check一下, 确认了官方的说法确实 total
 
-# TODO 分组和 freeze 是相互 排斥的， 需要在代码中修复
   # --vla.freeze_modules qwen_vl_interface \
-  # --trainer.learning_rate.qwen_vl_interface ${qwen_vl_interface_lr} \
-  # --trainer.learning_rate.action_model ${action_model_lr} \
+
 # bridge_rt_1
 # oxe_magic_soup_plus 
-  # --vla.freeze_modules qwen_vl_interface.model.model.visual \
 
 srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
@@ -85,16 +85,15 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --machine_rank $SLURM_PROCID \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
-  llavavla/training/train_qwenvla.py \
-  --config_yaml ./llavavla/conf/qwenvla_cotrain_v2.yaml \
-  --vla.freeze_modules qwen_vl_interface.model.model.visual \
+  llavavla/training/train_qwenvla_cotrain.py \
+  --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
   --vla.type prism-dinosiglip-224px+oxe+diffusion \
   --vla.base_vlm ${MODEL_PATH} \
   --vla.qformer_start_layer ${qformer_start_layer} \
   --vla.qformer_end_layer ${qformer_end_layer} \
   --vla.data_mix bridge_rt_1 \
   --vlm_data.dataset_use ${system2_datasets} \
-  --vla.max_steps 5000000 \
+  --vla.max_steps 500000 \
   --vla.expected_world_size ${TOTAL_GPUS} \
   --vla.global_batch_size ${global_batch_size} \
   --vla.per_device_batch_size ${vla_per_device_batch_size} \

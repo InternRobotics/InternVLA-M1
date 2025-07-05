@@ -13,7 +13,7 @@ cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 # conda activate simpler_env4 # make sure you are in the right conda env
 export PYTHONPATH=$PYTHONPATH:/mnt/petrelfs/yejinhui/Projects/llavavla # make your llavavla seeable for SimplerEnv envs
 
-policy_model=QwenACTAFormer
+policy_model=Qwenpi
 
 declare -a arr=(${MODEL_PATH})
 

@@ -137,7 +137,7 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
 
 
             
-            accelerator.backward(action_loss)
+            accelerator.backward(action_loss + Intern_vlm_loss)
 
             if cfg.gradient_clipping is not None:
                 accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
@@ -163,7 +163,8 @@ def trainer(model, train_dataloader, optimizer, lr_scheduler, accelerator, cfg):
                     lr = lr_scheduler.get_last_lr()[0]
                     epoch = int(completed_steps) // len(train_dataloader) # 他们都是经过 DDP的
                     result = {
-                        "train_loss": action_loss.item(),
+                        "vla_loss": action_loss.item(),
+                        "vlam_loss": Intern_vlm_loss.detach().float() if Intern_vlm_loss is not None else 0.0,
                         "grad_norm": total_norm,
                         "learning_rate": lr,
                         "epoch": epoch,

@@ -63,7 +63,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         self.model = model
         self.processor = processor
 
-    def forward( # 后期这里应该是总结和qwen forward 对齐， 但是这里
+    def forward( # 后期这里应该是总结和qwen forward 对齐， 但是这里 TODO 移除这个逻辑， 直接调用qwen的逻辑
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -136,7 +136,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs(self, images, instructions, **kwargs):
+    def build_qwenvl_inputs_v1(self, images, instructions, **kwargs):
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -183,7 +183,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         # inputs.keys() # dict_keys(['input_ids', , 'attention_mask', 'pixel_values', 'image_grid_thw']) # 验证 position_ids 不提的话， 内部会自己算
         return inputs.to(self.model.device)
     
-    def build_qwenvl_inputs_v2(self, images, instructions, solutions=None):
+    def build_qwenvl_inputs(self, images, instructions, solutions=None):
         # TODO 其实也可以放到dataloader 内部， 但是导致的是 dataloader 需要依赖 model processor
         # TODO 相比 v2 速度慢了一倍， 去看看什么原因 --> 好像并没有慢
         # TODO 后期可以可以在这里写成多线程并行吧 --> 不需要了
@@ -210,7 +210,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
-            # prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object"
+            prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object"
             # prompt = f"{instruction}."
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
@@ -218,6 +218,10 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
                 # add solution if provided
                 solution = solutions[len(messages)]
                 solution_content = [{"type": "text", "text": f": {solution}"}]
+                msg.append({"role": "assistant", "content": solution_content})
+            else: # 是否要判断是否走 infer？
+                # add a dummy assistant response
+                solution_content = [{"type": "text", "text": ""}]
                 msg.append({"role": "assistant", "content": solution_content})
             messages.append(msg)
 

@@ -50,10 +50,8 @@ from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
 # from llavavla.training import VLAMetrics, get_train_strategy
 
-from llavavla.training import VLAMetrics
 
 from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
-from llavavla.conf import VLAConfig, VLARegistry
 
 from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
 from accelerate import Accelerator, DeepSpeedPlugin

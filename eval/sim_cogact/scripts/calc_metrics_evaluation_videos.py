@@ -977,11 +977,13 @@ CKPT_MAPPING = {
     "octo-base": "octo-base",
     "octo-small": "octo-small",
     "octo-server": "octo-server",
-    "QWenACT": "steps_70000_pytorch_model.pt", 
+    "QWenACT": "steps_33333_pytorch_model.pt", 
 }
+
+
 # /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/videos/need_steps_40000_pytorch_model.pt
 parser = argparse.ArgumentParser()
-model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0611_noflash_vlm_bridge_rt_1_32gpus_vlm_4_0.1/videos/steps_30000_pytorch_model.pt"
+model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0630_rp_v1_configv2/videos/steps_33333_pytorch_model.pt"
 # 获得 文件名字
 model_name = model_path.split("/")[-1]
 model_path = model_path.replace(model_name, "")

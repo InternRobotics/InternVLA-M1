@@ -512,8 +512,8 @@ data_dict.update({
 
 # Grounding data
 
-llava_format_root = "/mnt/petrelfs/share/efm_p/zhuyangkun/sys2_data/coco/coco_internvl3/qwen_224_format_minp_3136_maxp_12845056"
-data_root = "/mnt/petrelfs/share/efm_p/zhuyangkun/sys2_data/coco"
+llava_format_root = "/mnt/petrelfs/share/efm_p/sys2_data/coco/coco_internvl3/qwen_224_format_minp_3136_maxp_12845056"
+data_root = "/mnt/petrelfs/share/efm_p/sys2_data/coco"
 # Define llava_format datasets
 asv2_conversation_en = {
     "annotation_path": f"{llava_format_root}/asv2_conversation_en.jsonl",

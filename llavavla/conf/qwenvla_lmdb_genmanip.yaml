@@ -24,7 +24,7 @@ trackers:
 use_ema: false
 wandb_entity: jinhuiye
 wandb_project: llavavla
-action_type: abs_qpos
+action_type: abs_qpos #@Jinhui delta doesn't work
 data_root_dir: /mnt/petrelfs/share/yejinhui/Datasets/
 vla:
   base_vlm: /mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct

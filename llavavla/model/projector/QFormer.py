@@ -110,97 +110,22 @@ class LayerwiseQFormer(nn.Module):
 import torch
 import torch.nn as nn
 
-class QFormer(nn.Module):
-    def __init__(self, hidden_dim=2048, num_query_tokens=64, num_layers=6, num_heads=8):
-        super().__init__()
-        self.num_query_tokens = num_query_tokens
-        self.hidden_dim = hidden_dim
-
-        # learnable query tokens
-        self.query_tokens = nn.Parameter(torch.randn(num_query_tokens, hidden_dim))
-
-        # Transformer layers with cross-attention
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=hidden_dim,
-            nhead=num_heads,
-            dim_feedforward=hidden_dim * 4,
-            batch_first=True
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-
-    def forward(self, encoder_hidden_states):
-        """
-        encoder_hidden_states: [B, L, D] from QwenVL (qwenvl_feature.hidden_states[0])
-        returns: updated query tokens [B, num_queries, D]
-        """
-        B = encoder_hidden_states.size(0)
-        # Expand query tokens for each batch
-        queries = self.query_tokens.unsqueeze(0).expand(B, -1, -1)  # [B, num_queries, D]
-
-        # Cross-attention:
-        # In PyTorch's TransformerEncoder, it only supports self-attention.
-        # So we concatenate query+encoder, and mask out self-attention on encoder tokens if needed.
-
-        # Here we simply concatenate queries and encoder tokens as input
-        input_cat = torch.cat([queries, encoder_hidden_states], dim=1)  # [B, num_queries + L, D]
-
-        # Run through transformer
-        output = self.transformer(input_cat)  # [B, num_queries + L, D]
-
-        # Slice back updated query tokens
-        updated_queries = output[:, :self.num_query_tokens, :]  # [B, num_queries, D]
-        return updated_queries
-    
-
-import torch
-import torch.nn as nn
-
-class ActionFeatureProjector(nn.Module):
-    def __init__(self, in_dim=2048, out_dim=512):
-        super().__init__()
-        self.proj = nn.Linear(in_dim, out_dim)
-
-    def forward(self, x):
-        """
-        x: Tensor of shape [B, T, D] → [B, D', T]
-        """
-        x = self.proj(x)           # [B, T, out_dim]
-        x = x.permute(0, 2, 1)     # → [B, out_dim, T]
-        return x
-
-
-
-def get_qformer(
-    hidden_dim=2048,
-    num_query_tokens=64,
-    num_layers=6,
-    num_heads=8
-):
-    """
-    Returns a QFormer model with specified parameters.
-    """
-    return QFormer(
-        hidden_dim=hidden_dim,
-        num_query_tokens=num_query_tokens,
-        num_layers=num_layers,
-        num_heads=num_heads
-    )
 def get_layerwise_qformer(
-    input_hidden_dim=2048,
-    output_hidden_dim=768, #TODO 这里要和action model 对齐的
-    num_query_tokens=64,
-    num_layers=6,
     num_heads=8,
-    # 你应该全程允许参数config 进来 @Jinhui TODO 
-    config=None
+    config=None,
+    **kwargs
 ):
     """
     Returns a LayerwiseQFormer model with specified parameters.
 
     """
     # dist.barrier()
-    num_layers = config.vla.qformer_end_layer - config.vla.qformer_start_layer  if config else num_layers
-    num_query_tokens = 64 # 这里还没有参数化
-                                # TODO 需要变成全局参数赋值， 如果兼顾 可读性和灵活性？
+    qformer_cfg = config.framework.layer_qformer
+    num_layers = qformer_cfg.qformer_end_layer - qformer_cfg.qformer_start_layer  if config else num_layers
+    num_query_tokens = qformer_cfg.num_query_tokens
+    input_hidden_dim=config.framework.qwenvl.vl_hidden_dim
+    output_hidden_dim=config.framework.action_model.action_hidden_dim
+    num_query_tokens=qformer_cfg.num_query_tokens
+
     qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads, config=config) 
     return qformer

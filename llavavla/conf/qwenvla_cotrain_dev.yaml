@@ -9,15 +9,18 @@ is_debug: false
 
 
 framework:
-  qwenvl:
+  qwenvl: # TODO 后期不能交qwenvl 应该直接vlm
     base_vlm: /mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
     attn_implementation: flash_attention_2
+    vl_hidden_dim: 2048 # TODO 应该是要去读取 内部的config
   layer_qformer: 
     qformer_end_layer: 37
     qformer_start_layer: 36
+    num_query_tokens: 64
     grad_scale: 0.5 # 让梯度经过这个模块的时候进行衰减，避免破坏VLM， # 似乎会影响学习
   action_model:
     action_model_type: DiT-B
+    action_hidden_dim: 768
     action_dim: 7
     use_ema: false
     future_action_window_size: 15
@@ -46,20 +49,23 @@ datasets:
     dataformat: rlds
     data_root_dir: playground/Datasets/OXE_openvla
     data_mix: bridge_rt_1
+    default_image_resolution: [3, 224, 224]
     shuffle_buffer_size: 250000
     image_aug: true
     per_device_batch_size: 16
+    load_all_data_for_training: true # 考虑如何启用 eval set
 
 
 trainer:
   epochs: 100
-  max_steps: 100000
+  max_train_steps: 100000
+  max_warmup_steps: 10000
   save_interval: 5000
   learning_rate:
     base: 5.0e-05
     qwen_vl_interface: 1.0e-05
     action_model: 1.0e-04
-  lr_scheduler_type: constant
+  lr_scheduler_type: cosine
   freeze_modules: ''
   loss_scale:
     vla: 1.0
@@ -67,10 +73,18 @@ trainer:
   # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0_bar/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
   # reload_modules: 'action_model,layer_qformer'
   max_grad_norm: 1.0
-  warmup_ratio: 0.0
+  warmup_ratio: 0.1
   weight_decay: 0.0
   logging_frequency: 10
   gradient_clipping: 1.0
+  gradient_accumulation_steps: 1
+
+  optimizer:
+    name: AdamW
+    betas: [0.9, 0.95]
+    eps: 1.0e-08
+    weight_decay: 1.0e-08
+
   # 待确定的参数
   is_resume: false
   resume_epoch: null

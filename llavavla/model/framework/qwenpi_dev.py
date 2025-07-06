@@ -35,49 +35,34 @@ def dict_to_namespace(d):
         return d
 
 # get QWen2.5
-from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类, TODO 不要实现 hard 接口类， 使用 **kwargs
 from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
 from llavavla.model.vlm.QWen2_5 import get_qwen2_5_interface
 from llavavla.model.projector.QFormer import get_layerwise_qformer
+from llavavla.model.action_model.action_model import get_action_model 
 
 class QwenQFormerDiT(nn.Module):
     def __init__(
         self,
-        qwen_model_name:str = './playground/Pretrained_models/Qwen2.5-VL-3B-Instruct', # 这是不好的实现， 一定不能是互相依赖
-        action_model_type: str = 'DiT-B', 
-        vl_token_dim: int = 2048,
-        action_hidden_dim: int = 768,  # @Jinhui # 这个 应该是和DiT-B
-        action_dim: int = 7,
-        future_action_window_size: int = 15,
-        past_action_window_size: int = 0,
-        use_ema: bool = False,
-        norm_stats: Dict[str, Dict[str, Dict[str, Dict[str, List[float]]]]] = None,
         config: Optional[dict] = None,  # @Jinhui TODO 这里应该是config, 但是现在是直接传入参数
+        norm_stats: Dict[str, Dict[str, Dict[str, Dict[str, List[float]]]]] = None,
         **kwargs,
     ) -> None:
         super().__init__()
-        
-        # TODO 全部转 全局config, 要面向对象编程
-        self.qwen_vl_interface = get_qwen2_5_interface(qwen_model_name, config) 
-        self.layer_qformer = get_layerwise_qformer(config=config) # @Jinhui 需要逻辑从QWen 中对齐 hidden
-        self.action_model = ActionModel(model_type = action_model_type,  # TODO @Jinhui 应该写到 get_action_model()
-                                            action_hidden_dim = action_hidden_dim, # 这些参数关系要 TODO集中 设置到config
-                                            in_channels = action_dim, 
-                                            future_action_window_size = future_action_window_size, 
-                                            past_action_window_size = past_action_window_size) # 也应该用 函数封装
-        
-        # TODO ActionModel 需要和qformer 一起设计
         self.config = config
-        # self.qwen_processor = vlm.processor # 要面向对象编程， 不要 属性外泄
-        # 这些是 action chunck 的参数
-        self.future_action_window_size = future_action_window_size
-        self.past_action_window_size = past_action_window_size
+
+        # TODO 全部转 全局config, 要面向对象编程
+        self.qwen_vl_interface = get_qwen2_5_interface(model_id=config.framework.qwenvl.base_vlm, config=self.config) 
+        self.layer_qformer = get_layerwise_qformer(config=self.config) # @Jinhui 一般来说 人们喜欢总分结构， 但是有讨厌递归， 实验framework 下面就不能太总分了
+        self.action_model = get_action_model(config=self.config)
+        
+       
+        # TODO 为什么要在这个位置开始 看到 这些？--> 去思考， framework level 用户其他看到什么， 需要看到什么
+        self.future_action_window_size = config.framework.action_model.future_action_window_size
+        self.past_action_window_size = config.framework.action_model.past_action_window_size
 
         # self.all_module_keys = auto_get_module_keys(self) #  TODO 这个是trainer的 funx， 或许是多余的
         self.norm_stats = norm_stats # 这个是 inference 时候用到的， 不应该是放到这个位置？
-
-        # if we need some pretrain prameters, we can load them here
-        # TODO 需要考虑这个是谁的职责 --> 按照扁平管理，切实应该在内部做条件判断
+        self.use_ema = config.framework.action_model.use_ema
 
 
     @property
@@ -104,12 +89,11 @@ class QwenQFormerDiT(nn.Module):
         else: #  还有if else 和模型可阅读性的 trade off
             solutions = None
 
-        # print("DEBUG"*10)
         # dist.barrier
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
         
         if DEBUG := os.environ.get("DEBUG"):
-            _, num_dict = read_mode_config(self.config.vla.pretrained_checkpoint)
+            _, num_dict = read_mode_config(self.config.trainer.pretrained_checkpoint)
             self.norm_stats = num_dict
             self.predict_action_withCoT(image=images[0], instruction=instructions[0])
             
@@ -117,11 +101,9 @@ class QwenQFormerDiT(nn.Module):
             # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
                 **qwen_inputs, # 兼容性和可读性的 trade off
-                # use_cache=use_cache,
                 output_attentions=False, # Flash attention 还不确定是否支持返回attention， 官方代码有bug
                 output_hidden_states=True,
                 return_dict=True,
-                # **kwargs
                 )
             pass
             # dist.barrier()
@@ -131,8 +113,8 @@ class QwenQFormerDiT(nn.Module):
             Intern_vlm_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            start_layer = self.config.vla.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
-            end_layer = self.config.vla.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
+            start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
+            end_layer = self.config.framework.layer_qformer.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
     
         # actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
@@ -201,8 +183,8 @@ class QwenQFormerDiT(nn.Module):
             ) # generation 拿不到前面token 的信息，考虑使用 forward?
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            start_layer = self.config.framework.layer_qformer.qformer_start_layer 
-            end_layer = self.config.framework.layer_qformer.qformer_end_layer
+            start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
+            end_layer = self.config.framework.layer_qformer.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
             
@@ -341,9 +323,8 @@ class QwenQFormerDiT(nn.Module):
             ], dim=2)  # Shape: [num_layers, B, total_len, hidden_dim]
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            start_layer = self.config.framework.layer_qformer.qformer_start_layer # TODO 这些模型framework 层面的setting 应该放到 initial 中就拿到？ 还是全局统一 在参数中拿到？
+            start_layer = self.config.framework.layer_qformer.qformer_start_layer
             end_layer = self.config.framework.layer_qformer.qformer_end_layer
-            
             latent_features = []
             # TODO 上面为可读性，牺牲了速度, 稳定后可以考虑 只转换需要用的feature
             for i in range(start_layer, end_layer):
@@ -403,7 +384,7 @@ class QwenQFormerDiT(nn.Module):
         # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
         return normalized_actions, normalized_actions # TODO Debug with stats is dim=7
 
-    def freeze_backbones(self):
+    def freeze_backbones(self, freeze_modules=ModuleNotFoundError):
         """
         根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
           - patterns: 从 config.vla.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表
@@ -412,6 +393,7 @@ class QwenQFormerDiT(nn.Module):
         返回值：
           - frozen: 实际找到并冻结的模块路径列表
         """
+        # TODO 这个应该是trainer的 职能
         freeze_modules = ( # 我觉得全局就应该只有一个config， 使用没必要相对路径
             self.config.trainer.freeze_modules
             if (self.config and hasattr(self.config.trainer, "freeze_modules"))
@@ -441,7 +423,7 @@ class QwenQFormerDiT(nn.Module):
         print(f"🔒 Frozen modules (by relative path): {frozen}")
         return frozen
     
-    def load_pretrained_backbones(self, config): # TODO Jinhui 这在哪里被调用还是需要商量
+    def load_pretrained_backbones(self, checkpoint_path=None, reload_module_name=None): # TODO Jinhui 这在哪里被调用还是需要商量
         """
         加载 checkpoint：
         - 如果设置了 config.vla.reload_modules（逗号分隔的模块路径）→ 按路径部分加载
@@ -450,10 +432,7 @@ class QwenQFormerDiT(nn.Module):
         返回：
             替换，loaded_modules: 成功加载参数的模块路径列表；若全局加载则为 ["<full_model>"]
         """
-        # TODO 好像就没有执行这里
-        # print("好像就没有执行这里"*100)
-        checkpoint_path = getattr(self.config.trainer, "pretrained_checkpoint", None)
-        reload_module_name = getattr(self.config.trainer, "reload_modules", None)
+        # TODO 似乎这个应该是 trainer 的职责范围
 
         if not checkpoint_path:
             return []  
@@ -574,22 +553,26 @@ class QwenQFormerDiT(nn.Module):
 
 # TODO 写一个build model 函数
 
-def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
+def build_model_framework(config: dict = {}) -> QwenQFormerDiT:
     # TODO  实现和 config 对应的 load 逻辑
 
     model = QwenQFormerDiT(
-    qwen_model_name='/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct',
-    action_model_type='DiT-B',
-    vl_token_dim=2048,
-    action_dim=model_config.framework.action_model.action_dim,
-    future_action_window_size=15,
-    past_action_window_size=0,
-    # use_ema=False,
-    config=model_config
+    # qwen_model_name=config.framework.qwenvl.base_vlm,
+    # action_model_type=config.framework.action_model.action_model_type,
+    # vl_hidden_dim=config.framework.qwenvl.vl_hidden_dim,
+    # action_dim=config.framework.action_model.action_dim,
+    # future_action_window_size=config.framework.action_model.future_action_window_size,
+    # past_action_window_size=config.framework.action_model.past_action_window_size,
+    # use_ema=config.framework.action_model.use_ema,
+    config=config
     )
-    if (hasattr(model_config.trainer, 'pretrained_checkpoint') and model_config.trainer.pretrained_checkpoint):
+
+    if (hasattr(config.trainer, 'pretrained_checkpoint') and config.trainer.pretrained_checkpoint):
         # overwatch.info(f"Loading pretrained backbones from `{model_config.vla.pretrained_checkpoint}`")
-        model.load_pretrained_backbones(model_config)
+        pretrained_checkpoint = config.trainer.pretrained_checkpoint
+        reload_module_name = config.trainer.reload_modules if hasattr(config.trainer, 'reload_modules') else None
+        # TODO 这个应该是trainer的职责
+        model.load_pretrained_backbones(checkpoint_path=pretrained_checkpoint, reload_modules=reload_module_name)
         
     return model
 
@@ -636,16 +619,17 @@ if __name__ == "__main__":
     from omegaconf import OmegaConf
     # 模型参数
     import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
-    print("🔍 Rank 0 waiting for debugger attach on port 5878...")
+    debugpy.listen(("0.0.0.0", 10092))
+    print("🔍 Rank 0 waiting for debugger attach on port 10092...")
     debugpy.wait_for_client()
     samples = {}
 
-    config_yaml = "llavavla/conf/qwenvla_cotrain_v2.yaml"
+    config_yaml = "llavavla/conf/qwenvla_cotrain_dev.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     model_framework = build_model_framework(cfg)
-    model_framework(samples)
+    print(model_framework)
+    # model_framework(samples)
     pass
 
     # git remote add gitee https://gitee.pjlab.org.cn/L2/MultimodalVLA/llavavla.git

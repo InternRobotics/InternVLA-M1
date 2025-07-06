@@ -38,27 +38,20 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
     def __init__(
         self,
         model_id: str,
-        load_for_training: bool = True,
-        vl_config: Optional[dict] = None,  # TODO 
+        config: Optional[dict] = None,
         **kwargs
     ):  
         super().__init__()
         # QWen 原生模型
-        if load_for_training or True: #TODO model -> vlm 
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                model_id,  
-                # attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
-                torch_dtype="auto", 
-                device_map="cuda",
-            ) # 只能到 cpu 先 , device_map="cpu" # 试试auto --> FSDP 还是报错了
-            # torch.distributed.barrier() # 确保所有进程都加载完毕
-        else:
-            config = AutoConfig.from_pretrained(model_id)
-            model = Qwen2_5_VLForConditionalGeneration(config)  # 只初始化模型结构，不加载参数, @Jinhui 发现load 空模型需要更多的时间
-            # 这里会卡住
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            model_id,  
+            # attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
+            torch_dtype="auto", 
+            device_map="cuda",
+        ) 
+        
         processor = AutoProcessor.from_pretrained(model_id) #TODO check 
         processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
-
 
         self.model = model
         self.processor = processor
@@ -416,11 +409,8 @@ def preprocess_qwen_2_visual(
 
     
 def get_qwen2_5_interface(model_id, config=None):
-    if config is None:
-        model = _QWen_VL_Interface(model_id= model_id) # 要时刻记住面向对象编程
-    else:
-        vl_config = config # TODO 后期要统一 config 
-        model = _QWen_VL_Interface(model_id, vl_config)
+
+    model = _QWen_VL_Interface(model_id=model_id) # 要时刻记住面向对象编程
 
     return model
 

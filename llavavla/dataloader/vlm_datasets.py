@@ -662,20 +662,18 @@ def make_supervised_data_module(
 
 
 def make_vlm_dataloader(cfg):
-    data_args = cfg.vlm_data
+    data_args = cfg.datasets.vlm_data
     image_processor = AutoProcessor.from_pretrained(
-        cfg.vla.base_vlm,
+        cfg.framework.qwenvl.base_vlm,
         ).image_processor
 
     #  @Jinhui TODO 后期要移除 和模型绑定的逻辑，直接用qwen_processor
     tokenizer = transformers.AutoTokenizer.from_pretrained( 
-        cfg.vla.base_vlm,
+        cfg.framework.qwenvl.base_vlm,
         model_max_length=data_args.model_max_length,
         padding_side="left", # flash Attention version of Qwen2.5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input.
         use_fast=False, # TODO padding_side="left" 这个事情应该是要和flash Attention 对齐的 
     )
-    # print(tokenizer.padding_side) # 这里是 left
-    # torch.distributed.barrier() # 确保所有进程都在同一时间点
 
     # 避免在dataset 内部处理这些
     image_processor.max_pixels = int(data_args.max_pixels)
@@ -694,7 +692,7 @@ def make_vlm_dataloader(cfg):
     from torch.utils.data import DataLoader
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=cfg.vlm_data.per_device_batch_size,
+        batch_size=cfg.datasets.vlm_data.per_device_batch_size,
         collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
     ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
     

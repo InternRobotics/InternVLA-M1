@@ -82,3 +82,25 @@ class ActionModel(nn.Module):
                                                learn_sigma = False
                                                )
         return self.ddim_diffusion
+    
+def get_action_model(model_typ="DiT-B", config=None):
+    """
+    根据配置创建 ActionModel 实例
+    :param config: 包含模型参数的配置字典或对象
+    :return: ActionModel 实例
+    """
+    action_model_cfg = config.framework.action_model
+
+    model_type = action_model_cfg.action_model_type
+    action_hidden_dim = action_model_cfg.action_hidden_dim
+    action_dim = action_model_cfg.action_dim
+    future_action_window_size = action_model_cfg.future_action_window_size
+    past_action_window_size =  action_model_cfg.past_action_window_size
+    
+    return ActionModel(
+        model_type=model_type,  # 模型类型，例如 'DiT-B'
+        action_hidden_dim=action_hidden_dim,  # 动作隐藏维度
+        in_channels=action_dim,  # 输入通道数
+        future_action_window_size=future_action_window_size,  # 未来动作窗口大小
+        past_action_window_size=past_action_window_size,  # 过去动作窗口大小
+    )

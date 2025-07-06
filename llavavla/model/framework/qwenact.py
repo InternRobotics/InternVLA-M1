@@ -307,7 +307,7 @@ class QwenQFormerDiT(nn.Module):
         print(f"🔒 Frozen modules (by relative path): {frozen}")
         return frozen
     
-    def load_pretrained_backbones(self, config): # TODO Jinhui 这在哪里被调用还是需要商量
+    def load_pretrained_backbones(self, checkpoint_path=None, reload_module_name=""): # TODO Jinhui 这在哪里被调用还是需要商量
         """
         加载 checkpoint：
         - 如果设置了 config.vla.reload_modules（逗号分隔的模块路径）→ 按路径部分加载
@@ -382,7 +382,7 @@ class QwenQFormerDiT(nn.Module):
         # TODO 
         config = dict_to_namespace(model_config)
         model_config = config # TODO 不要使用相对变量 model_config， 需要换名字
-        model_config.vla.pretrained_checkpoint = None # 为了加快加载速度，避免重复加载， TODO 其实不应该在initial的位置设置 load_pretrained_backbones
+        model_config.trainer.pretrained_checkpoint = None # 为了加快加载速度，避免重复加载， TODO 其实不应该在initial的位置设置 load_pretrained_backbones
         qwenQFormerACT = build_model_framework(model_config) 
         # set for action un-norm
         qwenQFormerACT.norm_stats = norm_stats
@@ -452,7 +452,7 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
     config=model_config
     )
     # 要先判断是否有 pretrained_checkpoint
-
+    # TODO 不应该在这里 调用这个，应该在 
     if (hasattr(model_config.vla, 'pretrained_checkpoint') and model_config.vla.pretrained_checkpoint):
         # overwatch.info(f"Loading pretrained backbones from `{model_config.vla.pretrained_checkpoint}`")
         model.load_pretrained_backbones(model_config)

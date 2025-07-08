@@ -325,7 +325,7 @@ def train(cfg) -> None:
 
     # Initialize optimizer
     # learning_rate = 1e-4
-    param_groups = build_param_lr_groups(vla=vla, cfg=cfg) # TODO 这里的参数应该是从 config 中获取的， 而不是直接写死
+    param_groups = build_param_lr_groups(model=vla, cfg=cfg) # TODO 这里的参数应该是从 config 中获取的， 而不是直接写死
     optimizer = torch.optim.AdamW(
         param_groups,
         lr=cfg.vla.learning_rate,

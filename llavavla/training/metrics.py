@@ -360,7 +360,7 @@ def normalize_dotlist_args(args): # 其实可以交给 OmegaConf 内部的， �
     return normalized
 
 
-def build_param_lr_groups(vla, cfg): # TODO 后面要和 trainer 绑定
+def build_param_lr_groups(model, cfg): # TODO 后面要和 trainer 绑定
     """
     根据 cfg.trainer.learning_rate 构建多 param group 的参数组。
     支持指定模块使用不同学习率，其余使用 base。
@@ -383,7 +383,7 @@ def build_param_lr_groups(vla, cfg): # TODO 后面要和 trainer 绑定
         if module_name == "base":
             continue
         # 尝试按 module_name 在 vla 下找到模块（支持嵌套路径）
-        module = vla
+        module = model
         try:
             for attr in module_name.split("."):
                 module = getattr(module, attr)
@@ -394,8 +394,157 @@ def build_param_lr_groups(vla, cfg): # TODO 后面要和 trainer 绑定
             ReferenceError(f"⚠️ 模块路径 `{module_name}` 无法在 vla 中找到")
 
     # 将其余未使用的参数分配 base 学习率
-    other_params = [p for p in vla.parameters() if id(p) not in used_params]
+    other_params = [p for p in model.parameters() if id(p) not in used_params]
     if other_params:
         param_groups.append({"params": other_params, "lr": base_lr, "name": "base"})
 
     return param_groups
+
+
+import torch.distributed as dist
+
+def only_main_process(func):
+    """
+    装饰器：仅在主进程（rank=0）时运行
+    """
+    def wrapper(*args, **kwargs):
+        if dist.is_initialized() and dist.get_rank() != 0:
+            return None  # 非主进程不执行
+        return func(*args, **kwargs)
+    return wrapper
+
+
+import torch.distributed as dist
+
+class TrainerUtils:
+    @staticmethod
+    def freeze_backbones(model, freeze_modules=""):
+        """
+        根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
+          - patterns: 从 config.trainer.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表
+            例如 "qwen_vl_interface, action_model.net"，
+            就意味着冻结 model.qwen_vl_interface 和 model.action_model.net。
+        返回值：
+          - model: 
+        """
+        frozen = []
+        if freeze_modules:
+            # 拆分并去除空白
+            patterns = [p.strip() for p in freeze_modules.split(",") if p.strip()] if freeze_modules else []
+
+            for path in patterns:
+                # 将“相对路径”按点拆分，例如 "action_model.net" → ["action_model", "net"]
+                attrs = path.split(".")
+                module = model
+                try:
+                    for attr in attrs:
+                        module = getattr(module, attr)
+                    # 如果成功 get 到 module，就把它和它的所有子模块参数都 freeze
+                    for param in module.parameters():
+                        param.requires_grad = False
+                    frozen.append(path)
+                except AttributeError:
+                    # 如果某一级属性不存在，就跳过并打印警告
+                    print(f"⚠️ 模块路径不存在，无法冻结：{path}")
+                    continue
+
+        dist.barrier()  # 分布式训练时同步
+        print(f"🔒 Frozen modules (by relative path): {frozen}")
+        return model
+    
+    @staticmethod 
+    def print_trainable_parameters(model):
+        """
+        打印模型的总参数数量和可训练参数数量
+        :param model: PyTorch 模型实例
+        """
+        if dist.get_rank() != 0:
+            return
+        print("📊 模型参数统计：")
+        num_params = sum(p.numel() for p in model.parameters())
+        num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"# Parameters (in millions): {num_params / 10**6:.3f} Total, {num_trainable_params / 10**6:.3f} Trainable")
+        return num_params, num_trainable_params
+    
+    @staticmethod
+    def load_pretrained_backbones(model, checkpoint_path=None, reload_modules=None):
+        """
+        加载 checkpoint：
+        - 如果设置了 reload_modules 按路径部分加载
+        - 否则 → 加载整个模型参数（覆盖 model）
+
+        返回：
+            替换，loaded_modules: 成功加载参数的模块路径列表；若全局加载则为 ["<full_model>"]
+        """
+        if not checkpoint_path:
+            return []  
+        if dist.get_rank() == 0:
+            print(f"📦 正在加载 checkpoint: {checkpoint_path}")
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        except Exception as e:
+            raise RuntimeError(f"❌ 加载 checkpoint 失败: {e}")
+
+        loaded_modules = []
+
+        if reload_modules:  # 部分加载
+            module_paths = [p.strip() for p in reload_modules.split(",") if p.strip()]
+            for path in module_paths:
+                reload_modules = path.split(".")
+                module = model
+                try:
+                    for module_name in reload_modules:  # 逐级找到要修改的模块
+                        module = getattr(module, module_name)
+                    prefix = path + "."
+                    sub_state_dict = {
+                        k[len(prefix):]: v
+                        for k, v in checkpoint.items()
+                        if k.startswith(prefix)
+                    }
+                    if sub_state_dict:
+                        module.load_state_dict(sub_state_dict, strict=True)
+                        if dist.get_rank() == 0:
+                            print(f"✅ 参数已加载到模块 '{path}'")
+                        loaded_modules.append(path)
+                    else:
+                        print(f"⚠️ checkpoint 中未找到 '{path}' 相关参数")
+                except AttributeError:
+                    print(f"❌ 无法找到模块路径：{path}")
+        else:  # 全部加载
+            try:
+                model.load_state_dict(checkpoint, strict=True)
+                if dist.get_rank() == 0:
+                    print("✅ 已加载<full_model>模型参数")
+                loaded_modules = ["<full_model>"]
+            except Exception as e:
+                raise RuntimeError(f"❌ 加载完整模型失败: {e}")
+        return model
+    
+    @staticmethod
+    def print_freeze_status(model):
+        """
+        打印模型中每个参数的冻结状态
+        :param model: PyTorch 模型实例
+        """
+        for name, param in model.named_parameters():
+            status = "Frozen" if not param.requires_grad else "Trainable"
+            print(f"{name:60s}  |  {status}")
+
+    @staticmethod
+    def setup_distributed_training(accelerator, *components):
+        """
+        使用 Accelerator 准备分布式训练组件
+        :param accelerator: Accelerate 的实例
+        :param components: 任意数量的组件（如模型、优化器、数据加载器等）
+        :return: 准备好的分布式组件（与输入顺序一致）
+        """
+        # 使用 accelerator.prepare 方法包装组件
+        prepared_components = accelerator.prepare(*components)
+        return prepared_components
+    
+
+import os
+
+def is_main_process():
+    rank = int(os.environ.get("RANK", 0))  # 如果未设置 RANK，则默认为 0
+    return rank == 0

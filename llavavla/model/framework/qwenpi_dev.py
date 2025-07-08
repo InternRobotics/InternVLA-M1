@@ -384,106 +384,6 @@ class QwenQFormerDiT(nn.Module):
         # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
         return normalized_actions, normalized_actions # TODO Debug with stats is dim=7
 
-    def freeze_backbones(self, freeze_modules=ModuleNotFoundError):
-        """
-        根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
-          - patterns: 从 config.vla.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表
-            例如 "qwen_vl_interface, action_model.net"，
-            就意味着冻结 self.qwen_vl_interface 和 self.action_model.net。
-        返回值：
-          - frozen: 实际找到并冻结的模块路径列表
-        """
-        # TODO 这个应该是trainer的 职能
-        freeze_modules = ( # 我觉得全局就应该只有一个config， 使用没必要相对路径
-            self.config.trainer.freeze_modules
-            if (self.config and hasattr(self.config.trainer, "freeze_modules"))
-            else None
-        )
-        # 拆分并去除空白
-        patterns = [p.strip() for p in freeze_modules.split(",") if p.strip()] if freeze_modules else []
-
-        frozen = []
-        for path in patterns:
-            # 将“相对路径”按点拆分，例如 "action_model.net" → ["action_model", "net"]
-            attrs = path.split(".")
-            module = self
-            try:
-                for attr in attrs:
-                    module = getattr(module, attr)
-                # 如果成功 get 到 module，就把它和它的所有子模块参数都 freeze
-                for param in module.parameters():
-                    param.requires_grad = False
-                frozen.append(path)
-            except AttributeError:
-                # 如果某一级属性不存在，就跳过并打印警告
-                print(f"⚠️ 模块路径不存在，无法冻结：{path}")
-                continue
-
-        dist.barrier()  # 分布式训练时同步
-        print(f"🔒 Frozen modules (by relative path): {frozen}")
-        return frozen
-    
-    def load_pretrained_backbones(self, checkpoint_path=None, reload_module_name=None): # TODO Jinhui 这在哪里被调用还是需要商量
-        """
-        加载 checkpoint：
-        - 如果设置了 config.vla.reload_modules（逗号分隔的模块路径）→ 按路径部分加载
-        - 否则 → 加载整个模型参数（覆盖 self）
-
-        返回：
-            替换，loaded_modules: 成功加载参数的模块路径列表；若全局加载则为 ["<full_model>"]
-        """
-        # TODO 似乎这个应该是 trainer 的职责范围
-
-        if not checkpoint_path:
-            return []  
-        if dist.get_rank() == 0:
-            print(f"📦 正在加载 checkpoint: {checkpoint_path}")
-        try:
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
-        except Exception as e:
-            raise RuntimeError(f"❌ 加载 checkpoint 失败: {e}")
-
-        loaded_modules = []
-
-        if reload_module_name:  # 部分加载
-            module_paths = [p.strip() for p in reload_module_name.split(",") if p.strip()]
-            for path in module_paths:
-                reload_module_name = path.split(".")
-                module = self
-                try:
-                    for module_name in reload_module_name: # 这里 top2down 的找到 要修改的module
-                        module = getattr(module, module_name)
-                    prefix = path + "."
-                    sub_state_dict = {
-                        k[len(prefix):]: v
-                        for k, v in checkpoint.items()
-                        if k.startswith(prefix)
-                    }
-
-                    if sub_state_dict:
-                        module.load_state_dict(sub_state_dict, strict=True)
-                        if dist.get_rank() == 0:
-                            print(f"✅ 参数已加载到模块 '{path}'")
-                        loaded_modules.append(path)
-                    else:
-                        print(f"⚠️ checkpoint 中未找到 '{path}' 相关参数")
-                except AttributeError:
-                    print(f"❌ 无法找到模块路径：{path}")
-        else:  # 全部加载
-            try:
-                self.load_state_dict(checkpoint, strict=True)
-                if dist.get_rank() == 0:
-                    print("✅ 已加载<full_model>模型参数")
-                loaded_modules = ["<full_model>"]
-            except Exception as e:
-                raise RuntimeError(f"❌ 加载完整模型失败: {e}")
-
-        return loaded_modules
-    def print_freeze_status(self): # 这个是 工具类方法。 可以考虑移动
-        for name, param in self.named_parameters():
-            status = "Frozen" if not param.requires_grad else "Trainable"
-            print(f"{name:60s}  |  {status}")
-
     @classmethod
     def from_pretrained( # @Jinhui TODO 这里要写如何resume checkpoints
         cls,
@@ -556,24 +456,8 @@ class QwenQFormerDiT(nn.Module):
 def build_model_framework(config: dict = {}) -> QwenQFormerDiT:
     # TODO  实现和 config 对应的 load 逻辑
 
-    model = QwenQFormerDiT(
-    # qwen_model_name=config.framework.qwenvl.base_vlm,
-    # action_model_type=config.framework.action_model.action_model_type,
-    # vl_hidden_dim=config.framework.qwenvl.vl_hidden_dim,
-    # action_dim=config.framework.action_model.action_dim,
-    # future_action_window_size=config.framework.action_model.future_action_window_size,
-    # past_action_window_size=config.framework.action_model.past_action_window_size,
-    # use_ema=config.framework.action_model.use_ema,
-    config=config
-    )
+    model = QwenQFormerDiT(config=config)
 
-    if (hasattr(config.trainer, 'pretrained_checkpoint') and config.trainer.pretrained_checkpoint):
-        # overwatch.info(f"Loading pretrained backbones from `{model_config.vla.pretrained_checkpoint}`")
-        pretrained_checkpoint = config.trainer.pretrained_checkpoint
-        reload_module_name = config.trainer.reload_modules if hasattr(config.trainer, 'reload_modules') else None
-        # TODO 这个应该是trainer的职责
-        model.load_pretrained_backbones(checkpoint_path=pretrained_checkpoint, reload_modules=reload_module_name)
-        
     return model
 
 

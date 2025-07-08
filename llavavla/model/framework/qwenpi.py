@@ -322,10 +322,10 @@ class QwenQFormerDiT(nn.Module):
             hidden_states = qwenvl_outputs.hidden_states # [num_layers, batch_size, 1 + new token, hidden_dim]
 
             # 这里要将生成的token拼接回来
-            prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, prefix_len, hidden_dim]
+            prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
             prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
             
-            # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, 1, hidden_dim]
+            # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, B, 1, hidden_dim]
             new_hidden_states = torch.stack([
                 torch.stack(layer_hiddens, dim=0) 
                 for layer_hiddens in hidden_states[1:]

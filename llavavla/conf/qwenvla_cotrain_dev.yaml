@@ -59,7 +59,7 @@ datasets:
 trainer:
   epochs: 100
   max_train_steps: 100000
-  max_warmup_steps: 10000
+  num_warmup_steps: 10000
   save_interval: 5000
   learning_rate:
     base: 5.0e-05
@@ -70,8 +70,8 @@ trainer:
   loss_scale:
     vla: 1.0
     vlm: 0.1
-  # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0_bar/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
-  # reload_modules: 'action_model,layer_qformer'
+  pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
+  reload_modules: 'action_model,layer_qformer'
   max_grad_norm: 1.0
   warmup_ratio: 0.1
   weight_decay: 0.0

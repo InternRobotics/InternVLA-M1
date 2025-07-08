@@ -8,7 +8,7 @@ class ModelController:
     def __init__(self, model_path=None, unnorm_key=None, debug=False, debug_path=None):
         if debug:
             self.actions = np.load(debug_path)
-            self.model = QwenACTAFormerInference(saved_model_path=model_path, unnorm_key=unnorm_key)
+            # self.model = QwenACTAFormerInference(saved_model_path=model_path, unnorm_key=unnorm_key)
             # time.sleep(20)
         else:
             self.model = QwenACTAFormerInference(saved_model_path=model_path, unnorm_key=unnorm_key)

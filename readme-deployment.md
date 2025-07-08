@@ -4,3 +4,9 @@ ping 172.16.0.2
 
 
 python -m real_deployment.model_controller_del_ee
+
+
+## install frankx
+conda install frankx
+unzip frankx.zip
+然后按照官网教程来

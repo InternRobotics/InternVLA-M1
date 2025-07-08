@@ -7,13 +7,12 @@ from datetime import datetime
 from loguru import logger
 from scipy.spatial.transform import Rotation as R
 import numpy as np
-from sanic import Sanic, response
 
 
 from embodieddeploy.controller.franka_pandapy_impedance import FrankaController
 from embodieddeploy.sensor.camera.realsense import MultiRealSenseCamera
-from real_deployment.utils import adjust_translation_along_quaternion, RT_to_tran_quaternion, set_seed, trans_quant_to_RT
-from real_deployment.controller import ModelController
+from real_deployment.controller.utils import adjust_translation_along_quaternion, RT_to_tran_quaternion, set_seed, trans_quant_to_RT
+from real_deployment.controller.controller import ModelController
 
 import signal
 import atexit
@@ -45,41 +44,6 @@ def on_press(key):
 
 
 
-
-
-class AgentSingleton:
-    _instance = None
-
-    @staticmethod
-    def get_instance():
-        if AgentSingleton._instance is None:
-            model_path = "/data/share/yujunqiu/0628/checkpoints/steps_20000_pytorch_model.pt"
-            unnorm_key = "place_0627_lmdb"
-            AgentSingleton._instance = ModelController(saved_model_path=model_path, unnorm_key=unnorm_key)
-        return AgentSingleton._instance
-
-
-
-
-class CameraSingleton:
-    _instance = None
-
-    @staticmethod
-    def get_instance():
-        if CameraSingleton._instance is None:
-            CameraSingleton._instance = MultiRealSenseCamera(image_height=480, image_width=640, fps=60)
-            for _ in range(10):
-                images = CameraSingleton._instance.undistorted_rgbd()
-        return CameraSingleton._instance
-        
-    
-    
-    def get_images(self):
-        images = self._instance.undistorted_rgb()
-        return images[0]
-
-
-app = Sanic("InferenceServer")
 
 
 
@@ -146,9 +110,9 @@ def main(model_controller: ModelController):
                         # visualizer.update_images(rgb_images)
 
                         # Predict
-                        # action = model_controller.infer_debug(t) # TODO: for debug
+                        action = model_controller.infer_debug(t) # TODO: for debug
                         # action = model_controller.infer(rgb_images, lang)
-                        action = model_controller.infer_debug_debug(t, rgb_images, lang)
+                        # action = model_controller.infer_debug_debug(t, rgb_images, lang)
                         del_trans, del_ori, gripper = action[:3], action[3:7], action[7:]
 
                         # Update

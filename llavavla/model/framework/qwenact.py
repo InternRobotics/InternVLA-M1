@@ -261,7 +261,7 @@ class QwenQFormerDiT(nn.Module):
         
         actions = np.where(
             mask,
-            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
+            0.5 * (normalized_actions + 1) * (action_high - action_low + 1e-8) + action_low,
             normalized_actions,
         )
         # actions max 1, min -0.05 # 感觉不再一个 scale

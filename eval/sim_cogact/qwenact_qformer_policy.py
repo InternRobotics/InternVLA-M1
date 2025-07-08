@@ -15,7 +15,7 @@ import numpy as np
 
 from llavavla.model.framework.qwenact import QwenQFormerDiT
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
-
+import time
 
 class QwenACTAFormerInference:
     def __init__(
@@ -148,6 +148,10 @@ class QwenACTAFormerInference:
         # assert image.dtype == np.uint8
         # self._add_image_to_history(self._resize_image(image))
         image: List[Image.Image] = [Image.fromarray(img) for img in image] if len(image.shape) == 4 else [Image.fromarray(image)]
+
+        for i in range(2):
+            slot = int(time.time())
+            image[i].save(f"debug/infer_images/image_{slot:04d}_{i}.png")
 
 
         raw_actions, normalized_actions = self.vla.predict_action(image=image, 

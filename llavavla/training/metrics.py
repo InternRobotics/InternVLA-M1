@@ -545,6 +545,6 @@ class TrainerUtils:
 
 import os
 
-def is_main_process():
+def is_main_process(): # TODO 要变成一个修饰函数， 但是是否可以像 if 你要修饰？ 就是修饰每个逻辑？
     rank = int(os.environ.get("RANK", 0))  # 如果未设置 RANK，则默认为 0
     return rank == 0

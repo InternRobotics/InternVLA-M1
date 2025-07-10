@@ -35,49 +35,34 @@ def dict_to_namespace(d):
         return d
 
 # get QWen2.5
-from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类, TODO 不要实现 hard 接口类， 使用 **kwargs
 from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
 from llavavla.model.vlm.QWen2_5 import get_qwen2_5_interface
 from llavavla.model.projector.QFormer import get_layerwise_qformer
+from llavavla.model.action_model.action_model import get_action_model 
 
 class QwenQFormerDiT(nn.Module):
     def __init__(
         self,
-        qwen_model_name:str = './playground/Pretrained_models/Qwen2.5-VL-3B-Instruct', # 这是不好的实现， 一定不能是互相依赖
-        action_model_type: str = 'DiT-B', 
-        vl_token_dim: int = 2048,
-        action_hidden_dim: int = 768,  # @Jinhui # 这个 应该是和DiT-B
-        action_dim: int = 7,
-        future_action_window_size: int = 15,
-        past_action_window_size: int = 0,
-        use_ema: bool = False,
-        norm_stats: Dict[str, Dict[str, Dict[str, Dict[str, List[float]]]]] = None,
         config: Optional[dict] = None,  # @Jinhui TODO 这里应该是config, 但是现在是直接传入参数
+        norm_stats: Dict[str, Dict[str, Dict[str, Dict[str, List[float]]]]] = None,
         **kwargs,
     ) -> None:
         super().__init__()
-        
-        # TODO 全部转 全局config, 要面向对象编程
-        self.qwen_vl_interface = get_qwen2_5_interface(qwen_model_name, config) 
-        self.layer_qformer = get_layerwise_qformer(config=config) # @Jinhui 需要逻辑从QWen 中对齐 hidden
-        self.action_model = ActionModel(model_type = action_model_type,  # TODO @Jinhui 应该写到 get_action_model()
-                                            action_hidden_dim = action_hidden_dim, # 这些参数关系要 TODO集中 设置到config
-                                            in_channels = action_dim, 
-                                            future_action_window_size = future_action_window_size, 
-                                            past_action_window_size = past_action_window_size) # 也应该用 函数封装
-        
-        # TODO ActionModel 需要和qformer 一起设计
         self.config = config
-        # self.qwen_processor = vlm.processor # 要面向对象编程， 不要 属性外泄
-        # 这些是 action chunck 的参数
-        self.future_action_window_size = future_action_window_size
-        self.past_action_window_size = past_action_window_size
+
+        # TODO 全部转 全局config, 要面向对象编程
+        self.qwen_vl_interface = get_qwen2_5_interface(model_id=config.framework.qwenvl.base_vlm, config=self.config) 
+        self.layer_qformer = get_layerwise_qformer(config=self.config) # @Jinhui 一般来说 人们喜欢总分结构， 但是有讨厌递归， 实验framework 下面就不能太总分了
+        self.action_model = get_action_model(config=self.config)
+        
+       
+        # TODO 为什么要在这个位置开始 看到 这些？--> 去思考， framework level 用户其他看到什么， 需要看到什么
+        self.future_action_window_size = config.framework.action_model.future_action_window_size
+        self.past_action_window_size = config.framework.action_model.past_action_window_size
 
         # self.all_module_keys = auto_get_module_keys(self) #  TODO 这个是trainer的 funx， 或许是多余的
         self.norm_stats = norm_stats # 这个是 inference 时候用到的， 不应该是放到这个位置？
-
-        # if we need some pretrain prameters, we can load them here
-        # TODO 需要考虑这个是谁的职责 --> 按照扁平管理，切实应该在内部做条件判断
+        self.use_ema = config.framework.action_model.use_ema
 
 
     @property
@@ -104,12 +89,11 @@ class QwenQFormerDiT(nn.Module):
         else: #  还有if else 和模型可阅读性的 trade off
             solutions = None
 
-        # print("DEBUG"*10)
         # dist.barrier
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
         
         if DEBUG := os.environ.get("DEBUG"):
-            _, num_dict = read_mode_config(self.config.vla.pretrained_checkpoint)
+            _, num_dict = read_mode_config(self.config.trainer.pretrained_checkpoint)
             self.norm_stats = num_dict
             self.predict_action_withCoT(image=images[0], instruction=instructions[0])
             
@@ -117,11 +101,9 @@ class QwenQFormerDiT(nn.Module):
             # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
                 **qwen_inputs, # 兼容性和可读性的 trade off
-                # use_cache=use_cache,
                 output_attentions=False, # Flash attention 还不确定是否支持返回attention， 官方代码有bug
                 output_hidden_states=True,
                 return_dict=True,
-                # **kwargs
                 )
             pass
             # dist.barrier()
@@ -131,8 +113,8 @@ class QwenQFormerDiT(nn.Module):
             Intern_vlm_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            start_layer = self.config.vla.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
-            end_layer = self.config.vla.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
+            start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
+            end_layer = self.config.framework.layer_qformer.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
     
         # actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
@@ -201,8 +183,8 @@ class QwenQFormerDiT(nn.Module):
             ) # generation 拿不到前面token 的信息，考虑使用 forward?
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            start_layer = self.config.framework.layer_qformer.qformer_start_layer 
-            end_layer = self.config.framework.layer_qformer.qformer_end_layer
+            start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
+            end_layer = self.config.framework.layer_qformer.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
             
@@ -258,19 +240,21 @@ class QwenQFormerDiT(nn.Module):
             samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
         normalized_actions = samples[0].cpu().numpy()
 
-        # Un-normalize Actions        
-        action_norm_stats = self.get_action_stats(unnorm_key)
-        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
-        action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
-        normalized_actions = np.clip(normalized_actions, -1, 1)
-        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
-        actions = np.where(
-            mask,
-            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
-            normalized_actions,
-        )
+        # Un-normalize Actions       # TODO 感觉不应该实现在这里， 但是simpler上是这样处理的 
+        # action_norm_stats = self.get_action_stats(unnorm_key)
+        # mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
+        # action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
+        # normalized_actions = np.clip(normalized_actions, -1, 1)
+        # normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        # actions = np.where(
+        #     mask,
+        #     0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
+        #     normalized_actions,
+        # )
         # actions max 1, min -0.05 # 感觉不再一个 scale
-        return actions, normalized_actions
+        action_norm_stats = self.get_action_stats(unnorm_key)
+        raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
+        return raw_actions, normalized_actions # actions, normalized_actions #TODO 得想清楚， Un-normalize Actions  到底是谁控制的。 我觉得必须是模型， 因为减少相对变化， 扁平管理。 但是要单独写成函数
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
     def predict_action_withCoT( # 
@@ -319,31 +303,36 @@ class QwenQFormerDiT(nn.Module):
             )
             print(decoded_sequences[0])
 
-            hidden_states = qwenvl_outputs.hidden_states # [num_layers, batch_size, 1 + new token, hidden_dim]
+            hidden_states = qwenvl_outputs.hidden_states  # [num_layers, batch_size, 1 + new token, hidden_dim]
 
-            # 这里要将生成的token拼接回来
-            prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
-            prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
-            
-            # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, B, 1, hidden_dim]
-            new_hidden_states = torch.stack([
-                torch.stack(layer_hiddens, dim=0) 
-                for layer_hiddens in hidden_states[1:]
-            ], dim=0)
-            
-            # Step 2: Remove singleton dimension and transpose to [num_layers, B, num_new_tokens, hidden_dim]
-            new_hidden_states = new_hidden_states.squeeze(2).permute(1,2,0,3)  # [num_layers, B, num_new_tokens, hidden_dim]
-            
-            # Concatenate prefix and new tokens
-            combined_hidden_states = torch.cat([
-                prefix_hidden_states,  # [num_layers, B, prefix_len, hidden_dim]
-                new_hidden_states     # [num_layers, B, num_new_tokens, hidden_dim]
-            ], dim=2)  # Shape: [num_layers, B, total_len, hidden_dim]
+            if len(hidden_states) == 1: # 表明没有新的token 残生
+                # 如果生成的 token 为 0，仅保留 prefix_hidden_states
+                prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
+                prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
+                combined_hidden_states = prefix_hidden_states  # Shape: [num_layers, B, prefix_len, hidden_dim]
+            else: # 为了逻辑清晰而使用了 if else, 
+                # 正常处理生成的 token
+                prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
+                prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
 
+                # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, 1, hidden_dim]
+                new_hidden_states = torch.stack([
+                    torch.stack(layer_hiddens, dim=0) 
+                    for layer_hiddens in hidden_states[1:]
+                ], dim=0)
+
+                # Step 2: Remove singleton dimension and transpose to [num_layers, B, num_new_tokens, hidden_dim]
+                new_hidden_states = new_hidden_states.squeeze(2).permute(1, 2, 0, 3)  # [num_layers, B, num_new_tokens, hidden_dim]
+
+                # Concatenate prefix and new tokens
+                combined_hidden_states = torch.cat([
+                    prefix_hidden_states,  # [num_layers, B, prefix_len, hidden_dim]
+                    new_hidden_states      # [num_layers, B, num_new_tokens, hidden_dim]
+                ], dim=2)  # Shape: [num_layers, B, total_len, hidden_dim]
+        
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            start_layer = self.config.framework.layer_qformer.qformer_start_layer # TODO 这些模型framework 层面的setting 应该放到 initial 中就拿到？ 还是全局统一 在参数中拿到？
+            start_layer = self.config.framework.layer_qformer.qformer_start_layer
             end_layer = self.config.framework.layer_qformer.qformer_end_layer
-            
             latent_features = []
             # TODO 上面为可读性，牺牲了速度, 稳定后可以考虑 只转换需要用的feature
             for i in range(start_layer, end_layer):
@@ -401,110 +390,39 @@ class QwenQFormerDiT(nn.Module):
             samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
         normalized_actions = samples[0].cpu().numpy()
         # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
-        return normalized_actions, normalized_actions # TODO Debug with stats is dim=7
-
-    def freeze_backbones(self):
-        """
-        根据相对模块路径列表（patterns）直接冻结指定子模块，不再递归查找所有子模块名称：
-          - patterns: 从 config.vla.freeze_modules 中读取，用逗号分隔得到的“相对路径”列表
-            例如 "qwen_vl_interface, action_model.net"，
-            就意味着冻结 self.qwen_vl_interface 和 self.action_model.net。
-        返回值：
-          - frozen: 实际找到并冻结的模块路径列表
-        """
-        freeze_modules = ( # 我觉得全局就应该只有一个config， 使用没必要相对路径
-            self.config.trainer.freeze_modules
-            if (self.config and hasattr(self.config.trainer, "freeze_modules"))
-            else None
-        )
-        # 拆分并去除空白
-        patterns = [p.strip() for p in freeze_modules.split(",") if p.strip()] if freeze_modules else []
-
-        frozen = []
-        for path in patterns:
-            # 将“相对路径”按点拆分，例如 "action_model.net" → ["action_model", "net"]
-            attrs = path.split(".")
-            module = self
-            try:
-                for attr in attrs:
-                    module = getattr(module, attr)
-                # 如果成功 get 到 module，就把它和它的所有子模块参数都 freeze
-                for param in module.parameters():
-                    param.requires_grad = False
-                frozen.append(path)
-            except AttributeError:
-                # 如果某一级属性不存在，就跳过并打印警告
-                print(f"⚠️ 模块路径不存在，无法冻结：{path}")
-                continue
-
-        dist.barrier()  # 分布式训练时同步
-        print(f"🔒 Frozen modules (by relative path): {frozen}")
-        return frozen
+        raw_actions = self.unnormalize_actions(normalized_actions, self.norm_stats) # TODO 这里应该是一个函数， 但是现在是放在模型里面， 需要考虑是否要放到 utils 里面    
+        return raw_actions, normalized_actions # TODO Debug with stats is dim=7
     
-    def load_pretrained_backbones(self, config): # TODO Jinhui 这在哪里被调用还是需要商量
+    @staticmethod
+    def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
         """
-        加载 checkpoint：
-        - 如果设置了 config.vla.reload_modules（逗号分隔的模块路径）→ 按路径部分加载
-        - 否则 → 加载整个模型参数（覆盖 self）
-
-        返回：
-            替换，loaded_modules: 成功加载参数的模块路径列表；若全局加载则为 ["<full_model>"]
+        将归一化的动作转换为原始动作空间。
+        
+        :param normalized_actions: 归一化的动作数组，形状为 [B, T, D]。
+        :param action_norm_stats: 包含动作归一化统计信息的字典，必须包含以下键：
+            - "q01": 动作的第 1 百分位值。
+            - "q99": 动作的第 99 百分位值。
+            - "mask": 可选，布尔数组，用于标记哪些动作需要反归一化。
+        :return: 反归一化后的动作数组，形状与输入 `normalized_actions` 相同。
         """
-        # TODO 好像就没有执行这里
-        # print("好像就没有执行这里"*100)
-        checkpoint_path = getattr(self.config.trainer, "pretrained_checkpoint", None)
-        reload_module_name = getattr(self.config.trainer, "reload_modules", None)
+        # 获取统计信息
+        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
+        action_high = np.array(action_norm_stats["q99"])
+        action_low = np.array(action_norm_stats["q01"])
 
-        if not checkpoint_path:
-            return []  
-        if dist.get_rank() == 0:
-            print(f"📦 正在加载 checkpoint: {checkpoint_path}")
-        try:
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
-        except Exception as e:
-            raise RuntimeError(f"❌ 加载 checkpoint 失败: {e}")
+        # Clip normalized actions to [-1, 1]
+        normalized_actions = np.clip(normalized_actions, -1, 1)
 
-        loaded_modules = []
+        # 特殊处理第 6 维度的动作（例如分类任务）
+        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        # 根据 mask 和统计信息进行反归一化
+        actions = np.where(
+            mask,
+            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
+            normalized_actions
+        )
 
-        if reload_module_name:  # 部分加载
-            module_paths = [p.strip() for p in reload_module_name.split(",") if p.strip()]
-            for path in module_paths:
-                reload_module_name = path.split(".")
-                module = self
-                try:
-                    for module_name in reload_module_name: # 这里 top2down 的找到 要修改的module
-                        module = getattr(module, module_name)
-                    prefix = path + "."
-                    sub_state_dict = {
-                        k[len(prefix):]: v
-                        for k, v in checkpoint.items()
-                        if k.startswith(prefix)
-                    }
-
-                    if sub_state_dict:
-                        module.load_state_dict(sub_state_dict, strict=True)
-                        if dist.get_rank() == 0:
-                            print(f"✅ 参数已加载到模块 '{path}'")
-                        loaded_modules.append(path)
-                    else:
-                        print(f"⚠️ checkpoint 中未找到 '{path}' 相关参数")
-                except AttributeError:
-                    print(f"❌ 无法找到模块路径：{path}")
-        else:  # 全部加载
-            try:
-                self.load_state_dict(checkpoint, strict=True)
-                if dist.get_rank() == 0:
-                    print("✅ 已加载<full_model>模型参数")
-                loaded_modules = ["<full_model>"]
-            except Exception as e:
-                raise RuntimeError(f"❌ 加载完整模型失败: {e}")
-
-        return loaded_modules
-    def print_freeze_status(self): # 这个是 工具类方法。 可以考虑移动
-        for name, param in self.named_parameters():
-            status = "Frozen" if not param.requires_grad else "Trainable"
-            print(f"{name:60s}  |  {status}")
-
+        return actions
     @classmethod
     def from_pretrained( # @Jinhui TODO 这里要写如何resume checkpoints
         cls,
@@ -524,7 +442,7 @@ class QwenQFormerDiT(nn.Module):
         qwenQFormerACT.norm_stats = norm_stats
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
         model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu") #["model"]
-        
+        overwatch.info(f"Loading model weights from `{pretrained_checkpoint}`")
         model_keys = set(qwenQFormerACT.state_dict().keys())
         checkpoint_keys = set(model_state_dict.keys())
 
@@ -574,23 +492,11 @@ class QwenQFormerDiT(nn.Module):
 
 # TODO 写一个build model 函数
 
-def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
+def build_model_framework(config: dict = {}) -> QwenQFormerDiT:
     # TODO  实现和 config 对应的 load 逻辑
 
-    model = QwenQFormerDiT(
-    qwen_model_name='/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct',
-    action_model_type='DiT-B',
-    vl_token_dim=2048,
-    action_dim=model_config.framework.action_model.action_dim,
-    future_action_window_size=15,
-    past_action_window_size=0,
-    # use_ema=False,
-    config=model_config
-    )
-    if (hasattr(model_config.trainer, 'pretrained_checkpoint') and model_config.trainer.pretrained_checkpoint):
-        # overwatch.info(f"Loading pretrained backbones from `{model_config.vla.pretrained_checkpoint}`")
-        model.load_pretrained_backbones(model_config)
-        
+    model = QwenQFormerDiT(config=config)
+
     return model
 
 
@@ -636,16 +542,17 @@ if __name__ == "__main__":
     from omegaconf import OmegaConf
     # 模型参数
     import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
-    print("🔍 Rank 0 waiting for debugger attach on port 5878...")
+    debugpy.listen(("0.0.0.0", 10092))
+    print("🔍 Rank 0 waiting for debugger attach on port 10092...")
     debugpy.wait_for_client()
     samples = {}
 
-    config_yaml = "llavavla/conf/qwenvla_cotrain_v2.yaml"
+    config_yaml = "llavavla/conf/qwenvla_cotrain_dev.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     model_framework = build_model_framework(cfg)
-    model_framework(samples)
+    print(model_framework)
+    # model_framework(samples)
     pass
 
     # git remote add gitee https://gitee.pjlab.org.cn/L2/MultimodalVLA/llavavla.git

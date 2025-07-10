@@ -25,7 +25,7 @@ from transformers import AutoProcessor, get_scheduler
 from llavavla.dataloader.rlds_datasets import collate_fn, get_vla_dataset
 from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
 from llavavla.training.metrics import normalize_dotlist_args
-from llavavla.model.framework.qwenpi_dev import build_model_framework
+from llavavla.model.framework.qwenpi import build_model_framework
 from llavavla.training.metrics import only_main_process
 from llavavla.training.metrics import TrainerUtils
 from llavavla.dataloader import save_dataset_statistics
@@ -140,7 +140,8 @@ def setup_optimizer_and_scheduler(
         name=cfg.trainer.lr_scheduler_type,
         optimizer=optimizer,
         num_warmup_steps=cfg.trainer.num_warmup_steps,
-        num_training_steps=cfg.trainer.max_train_steps
+        num_training_steps=cfg.trainer.max_train_steps,
+        scheduler_specific_kwargs=cfg.trainer.scheduler_specific_kwargs,  # 最小学习率
     )
     
     # TODO mv to trainer
@@ -272,7 +273,7 @@ class VLATrainer(TrainerUtils):
                 metrics["learning_rate"] = self.lr_scheduler.get_last_lr()[0]
                 
                 # 添加epoch信息
-                metrics["epoch"] = self.completed_steps // len(self.vla_train_dataloader)
+                metrics["epoch"] = round(self.completed_steps / len(self.vla_train_dataloader), 2)
                 
                 # 记录到W&B
                 wandb.log(metrics, step=self.completed_steps)

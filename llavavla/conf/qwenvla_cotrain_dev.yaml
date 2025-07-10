@@ -46,7 +46,7 @@ datasets:
     per_device_batch_size: 4
 
   vla_data:
-    dataformat: rlds
+    dataset_py: rlds_datasets
     data_root_dir: playground/Datasets/OXE_openvla
     data_mix: bridge_rt_1
     default_image_resolution: [3, 224, 224]
@@ -59,19 +59,22 @@ datasets:
 trainer:
   epochs: 100
   max_train_steps: 100000
-  num_warmup_steps: 10000
+  num_warmup_steps: 5000
   save_interval: 5000
   learning_rate:
-    base: 5.0e-05
-    qwen_vl_interface: 1.0e-05
-    action_model: 1.0e-04
-  lr_scheduler_type: cosine
+    base: 2.5e-05
+    # qwen_vl_interface: 1.0e-05
+    # action_model: 1.0e-04
+  lr_scheduler_type: cosine_with_min_lr
+  scheduler_specific_kwargs:
+    min_lr: 5.0e-07
+    # min_lr_rate: 0.05
   freeze_modules: ''
   loss_scale:
     vla: 1.0
     vlm: 0.1
-  pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
-  reload_modules: 'action_model,layer_qformer'
+  # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
+  # reload_modules: 'action_model,layer_qformer' # 警告： 这个可能会导致 模型无法收敛
   max_grad_norm: 1.0
   warmup_ratio: 0.1
   weight_decay: 0.0

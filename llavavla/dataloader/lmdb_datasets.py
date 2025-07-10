@@ -423,7 +423,7 @@ from typing import List, Dict, Any, Callable, Optional
 from torch.utils.data import DataLoader
 
 
-def get_vla_dataset(
+def get_lmdb_dataset(
     data_root_dir: Path,
     data_mix: str,
     data_mix_info: str,
@@ -507,7 +507,7 @@ if __name__ == "__main__":
     }
     cfg = dict_to_namespace(cfg)
 
-    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
+    vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换
         cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
         cfg.vla.data_mix,
         cfg.vla.data_mix_info,

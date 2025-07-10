@@ -1,60 +1,40 @@
 """
 train.py
-
-Training script for Vision-Language-Action (VLA) Policies, built on top of pretrained VLMs, trained using mixtures of
-the Open-X Embodiment dataset. Performs training in native PyTorch, using Fully-Sharded Data Parallel (FSDP) to run
-distributed across GPUs (and nodes). By default, assumes that CUDA toolkit is >= 11.0 (to support BF16 mixed precision).
-
-Notes & Prerequisites:
-    - If you want to set a custom location for all HF / TIMM artifacts --> `export HF_HOME="<PATH>"` *before* running!
-        => For example (add to end of .bashrc): `export HF_HOME="/mnt/fsx/skaramcheti/cache"`
-    - If you want to suppress random Tensorflow logs --> `export TF_CPP_MIN_LOG_LEVEL=3`
-
-Run with:
-    - [Single Node One-GPU (Debug)] : torchrun --standalone --nnodes 1 --nproc-per-node 1 vla-scripts/train.py
-    - [Single Node Multi-GPU (= $K)]: torchrun --standalone --nnodes 1 --nproc-per-node $K vla-scripts/train.py
 """
-
+# Standard Library
+import argparse
 import json
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Tuple
+from torch.utils.data import Dataset, DataLoader
 
-import draccus
+# Third-Party Libraries
 import torch
 import torch.distributed as dist
-
-import yaml
 import wandb
-
-from accelerate import Accelerator
+import yaml
+from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from transformers import AutoProcessor
-from transformers import get_scheduler
-
-from tqdm import tqdm
-import wandb
-from torch.utils.data import Dataset, DataLoader
-from typing import Optional
-import argparse
 from omegaconf import OmegaConf
-from hydra import initialize
+from tqdm import tqdm
+from transformers import AutoProcessor, get_scheduler
 
-from llavavla.training.metrics import normalize_dotlist_args
-
-from prismatic.overwatch import initialize_overwatch
-# from prismatic.vla import get_vla_dataset_and_collator
-from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
-
-# from llavavla.training import VLAMetrics, get_train_strategy
-
-
+# Local Modules
+# 这里的变化需要📦封装
+from llavavla.dataloader.rlds_datasets import collate_fn, get_vla_dataset
 from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
 
-from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn# TODO 要移动到dataloader 下面
-from accelerate import Accelerator, DeepSpeedPlugin
+from llavavla.training.metrics import normalize_dotlist_args
+from llavavla.model.framework.qwenpi import build_model_framework
+from llavavla.training.metrics import only_main_process
+from llavavla.training.metrics import TrainerUtils
+from llavavla.dataloader import save_dataset_statistics
+
+# from prismatic.overwatch import initialize_overwatch # TODO 之后要移动出来， 注意 copyright， 考察和loger 的差异， 为什么要用它？ # 感觉得放弃掉，总结用logger
+# from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
+
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
 accelerator = Accelerator(deepspeed_plugin=deepspeed_plugin)
@@ -65,11 +45,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__) # 后期移除， 不要基于 prismatic 来玩输出
 logger = get_logger(__name__)
-
-
-from llavavla.model.framework.qwenact import build_model_framework
 
 def load_fast_tokenizer():
     fast_tokenizer = AutoProcessor.from_pretrained(
@@ -77,300 +53,402 @@ def load_fast_tokenizer():
     )
     return fast_tokenizer
 
-# TODO 🙅写成强参数传递
-def trainer(model,vlm_train_dataloader, optimizer, lr_scheduler, accelerator, cfg): # @TODO make it as trainer
 
-    cfg.logging_frequency = 10
-    cfg.gradient_accumulation_steps = 1 # TODO 实现梯度累计
-    cfg.gradient_clipping = 1.0
-    max_train_steps = cfg.vla.max_train_steps #TODO 注意各种参数的统一
 
+def setup_directories(cfg) -> Path:
+    """创建输出目录并保存配置"""
     cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id)
+    output_dir = Path(cfg.output_dir)
     
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        # 创建输出目录和检查点目录
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir / "checkpoints", exist_ok=True)
+        
+        # 保存配置
+        OmegaConf.save(cfg, output_dir / "config.yaml")
+        with open(output_dir / "config.yaml", "r") as f_yaml, \
+                open(output_dir / "config.json", "w") as f_json:
+            yaml_cfg = yaml.safe_load(f_yaml)
+            json.dump(yaml_cfg, f_json, indent=2)
+        
+    return output_dir
 
-    # Initialize Weights and Biases
-    if accelerator.is_main_process: # @Jinhui TODO 这里可以查看Openvla 之类的，把它坐着tools
-        # wandb.init(project=cfg.wandb_project_name)
 
-        wandb.init(
-            name=cfg.run_id,
-            dir=os.path.join(cfg.output_dir, "wandb"),
-            # config=self.hparams,
-            project=cfg.wandb_project,
-            entity=cfg.wandb_entity,
-            group="vla-train",
+def build_model(cfg) -> torch.nn.Module:
+    """构建模型框架"""
+    logger.info(f"Loading Base VLM `{cfg.framework.qwenvl.base_vlm}` from ID/Path")
+    model = build_model_framework(cfg)
+    
+    return model
+
+
+def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
+    """准备训练数据"""
+    # TODO @JinhuiYE 可以变得更加通用， 不如使用 dict 来传递参数
+    # TODO 逻辑应该封住到 llavavla.dataloader 里面
+    # VLA 数据集
+    logger.info(f"Creating VLA Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
+    vla_dataset = get_vla_dataset(
+        cfg.datasets.vla_data.data_root_dir,
+        cfg.datasets.vla_data.data_mix,
+        default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
+        shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
+        image_aug=cfg.datasets.vla_data.image_aug,
+        future_action_window_size=cfg.framework.action_model.future_action_window_size,
+        past_action_window_size=cfg.framework.action_model.past_action_window_size,
+        load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
+    )
+    
+    # VLA 数据加载器
+    vla_train_dataloader = DataLoader(
+        vla_dataset,
+        batch_size=cfg.datasets.vla_data.per_device_batch_size,
+        collate_fn=collate_fn
+    )
+    
+    # VLM 数据加载器
+    vlm_data_module = make_vlm_dataloader(cfg)
+    vlm_train_dataloader = vlm_data_module["train_dataloader"]
+    
+    # 保存数据集统计信息
+    if accelerator.is_main_process: # TODO 后续要考虑统一判断 rank = 0
+        save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
+    
+    # 拒绝自动分发 # TODO 应该写到 accelerator config
+    accelerator.dataloader_config.dispatch_batches =  False
+    dist.barrier()
+
+    return vla_train_dataloader, vlm_train_dataloader
+
+def setup_optimizer_and_scheduler(
+    model, cfg
+) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler._LRScheduler]:
+    """设置优化器和学习率调度器"""
+    # 初始化优化器
+    param_groups = build_param_lr_groups(model=model, cfg=cfg)
+    optimizer = torch.optim.AdamW(
+        param_groups,
+        lr=cfg.trainer.learning_rate.base,
+        betas=tuple(cfg.trainer.optimizer.betas),
+        weight_decay=cfg.trainer.optimizer.weight_decay,
+        eps=cfg.trainer.optimizer.eps,
+    )
+
+    
+    
+    # 打印优化器组信息
+    if dist.is_initialized() and dist.get_rank() == 0:
+        for i, group in enumerate(optimizer.param_groups):
+            logger.info(f"LR Group {group['name']}: lr={group['lr']}, num_params={len(group['params'])}")
+    
+    # 初始化学习率调度器
+    lr_scheduler = get_scheduler(
+        name=cfg.trainer.lr_scheduler_type,
+        optimizer=optimizer,
+        num_warmup_steps=cfg.trainer.num_warmup_steps,
+        num_training_steps=cfg.trainer.max_train_steps
+    )
+    
+    # TODO mv to trainer
+    # # 准备所有组件
+    # (model, optimizer, vla_train_dataloader, vlm_train_dataloader) = accelerator.prepare(
+    #     model, optimizer, vla_train_dataloader, vlm_train_dataloader
+    # )
+    
+    return optimizer, lr_scheduler
+
+class VLAMTrainer(TrainerUtils):
+    def __init__(self, cfg, model, vla_train_dataloader, vlm_train_dataloader, optimizer, lr_scheduler, accelerator):
+        self.config = cfg
+        self.model = model
+        self.vla_train_dataloader = vla_train_dataloader
+        self.vlm_train_dataloader = vlm_train_dataloader
+        self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
+        self.accelerator = accelerator
+        
+        # 训练状态跟踪
+        self.completed_steps = 0
+        self.total_batch_size = self._calculate_total_batch_size()
+        
+        
+    def prepare_training(self):
+        
+
+        # 加载预训练权重
+        if (hasattr(self.config.trainer, 'pretrained_checkpoint') and self.config.trainer.pretrained_checkpoint):
+            pretrained_checkpoint = self.config.trainer.pretrained_checkpoint
+            reload_modules = self.config.trainer.reload_modules if hasattr(self.config.trainer, 'reload_modules') else None
+            self.model = self.load_pretrained_backbones(self.model, pretrained_checkpoint, reload_modules=reload_modules)
+        
+        # 冻结参数
+        freeze_modules = ( # 我觉得全局就应该只有一个config， 使用没必要相对路径
+            self.config.trainer.freeze_modules
+            if (self.config and hasattr(self.config.trainer, "freeze_modules"))
+            else None
+        )
+        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules) # TODO 思考一下self.config 是全局传参数， 还是相对传参数？
+
+        #  打印模型的可训练参数： --> TODO 他应该是要最后 总结check的， 考虑集权管理
+        self.print_trainable_parameters(self.model)
+
+        # 初始化分布式训练组件
+        self.model, self.optimizer, self.vla_train_dataloader, self.vlm_train_dataloader = self.setup_distributed_training(
+            self.accelerator, # must be the first param
+            self.model,
+            self.optimizer,
+            self.vla_train_dataloader,
+            self.vlm_train_dataloader
         )
 
 
-    # Resume from checkpoint if provided
-    if cfg.pretrained_checkpoint and cfg.is_resume:
-        accelerator.load_state(cfg.resume_from_checkpoint)
-        accelerator.print(f"Resumed from local checkpoint: {cfg.resume_from_checkpoint}")
-
+        self._init_wandb()
+        self._init_checkpointing()
     
-    # Training loop
-    # Right now we assume single node training. I did not test on multi node training.
-    total_batch_size = cfg.vla.per_device_batch_size * accelerator.num_processes * cfg.gradient_accumulation_steps
-    logger.info("***** Running training *****")
-    # logger.info(f"  Num examples = {len(train_dataset)}")
+
+    def _calculate_total_batch_size(self):
+        """计算全局批量大小"""
+        return (
+            self.config.datasets.vla_data.per_device_batch_size
+            * self.accelerator.num_processes
+            * self.accelerator.gradient_accumulation_steps
+        )
     
-    logger.info(f"  Num steps = {cfg.vla.max_train_steps}") # cfg.vla.max_train_steps 
-    logger.info(f"  Instantaneous batch size per device = {cfg.vla.per_device_batch_size}")
-    logger.info(f"  Total train batch size = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {cfg.gradient_accumulation_steps}")
-    logger.info(f"  Total optimization steps = {cfg.vla.max_train_steps}")
-
-    completed_steps = 0
-
-    progress_bar = tqdm(range(cfg.vla.max_steps), disable=not accelerator.is_local_main_process)
-    total_loss = 0.0
-
-    global_batch_size = cfg.vla.expected_world_size * cfg.vla.per_device_batch_size
+    def _init_wandb(self):
+        """初始化Weights & Biases"""
+        if self.accelerator.is_main_process:
+            wandb.init(
+                name=self.config.run_id,
+                dir=os.path.join(self.config.output_dir, "wandb"),
+                project=self.config.wandb_project,
+                entity=self.config.wandb_entity,
+                group="vla-train",
+            )
     
-    # -------------- 准备阶段：放在 while 外 --------------
-    vlm_iter = iter(vlm_train_dataloader)
-    while completed_steps < cfg.vla.max_train_steps:
-        # ---- 拿 VLA 批次 ----
-        try:
-            batch_samples_vla = next(vlm_iter)
-        except StopIteration:                 # 当前 epoch 结束
-            vlm_iter = iter(vlm_train_dataloader)
-            batch_samples_vla = next(vlm_iter)
-        # ---- 拿 VLM 批次 ----
-        try:
-            batch_samples_vlm = next(vlm_iter)
-        except StopIteration:
-            vlm_iter = iter(vlm_train_dataloader)
-            batch_samples_vlm = next(vlm_iter)# batch = batch_samples_vla.extend(batch_samples_vlm) 
+    def _init_checkpointing(self):
+        """初始化检查点目录"""
+        self.checkpoint_dir = os.path.join(self.config.output_dir, "checkpoints")
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        
+        pretrained_checkpoint = getattr(self.config.trainer, "pretrained_checkpoint", None)
+        is_resume = getattr(self.config.trainer, "is_resume", False)
+
+        # 恢复训练状态
+        # 要判断是否有self.config.trainer.pretrained_checkpoint
+        if pretrained_checkpoint and is_resume: # TODO 这里还没能够保存state, 思考是否必要 (state 的存储太大了， 需要实现keep last/best 的逻辑， 包括ckpt)
+            self._load_checkpoint(self.config.resume_from_checkpoint)
+    
+    def _load_checkpoint(self, checkpoint_path):
+        """加载检查点"""
+        self.accelerator.load_state(checkpoint_path)
+        self.accelerator.print(f"Resumed from checkpoint: {checkpoint_path}")
+        # TODO: 恢复训练步数和其他状态
+    
+    def _save_checkpoint(self):
+        """保存当前训练状态"""
+
+        if accelerator.is_main_process:
             
-        # for batch in vla_train_dataloader:
-        # with accelerator.accumulate(model): # zero2 不允许gred 累计, 先保留， 看看zero3 是否允许
-        optimizer.zero_grad() # @Jinhui TODO 之后 put data_processing here 
-        # dist.barrier()
-        # forward vlm data
+            checkpoint_path = os.path.join(self.checkpoint_dir, f"steps_{self.completed_steps}")
+            # 保存模型状态
+            state_dict = self.accelerator.get_state_dict(self.model)
+            torch.save(state_dict, checkpoint_path + "_pytorch_model.pt")
+            
+            # 保存训练元数据
+            summary_data = {
+                "steps": self.completed_steps,
+                # TODO: 添加其他需要保存的训练状态
+            }
+            with open(os.path.join(self.config.output_dir, "summary.jsonl"), "a") as f:
+                f.write(json.dumps(summary_data) + "\n")
+            self.accelerator.print(f"✅ Checkpoint saved at {checkpoint_path}")
+        accelerator.wait_for_everyone()
 
-        # forward action data
-        # with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-        #     action_loss, output = model.forward(batch_samples_vla) # TODO make vlm and action loss
-        #     # dist.barrier()
-        #     # vlm_loss = output.vlm_loss
-        #     # dist.barrier()
-        #     total_loss += action_loss.detach().float()
-        # accelerator.backward(action_loss)
-        
-        # 会导致 爆内存， 看来要用 flash attention, 但是不清楚会对 action有什么影响。 TODO 先取消掉 多轮对话？和使用 data-flatten
-        with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            # print(batch_samples_vlm["input_ids"].shape, batch_samples_vlm["pixel_values"].shape)
-
-            output = model.qwen_vl_interface(**batch_samples_vlm) # TODO make vlm and action loss
-            vlm_loss = output.loss
-            action_loss = vlm_loss
-            # dist.barrier()
-        
-        accelerator.backward(vlm_loss) # @Jinhui TODO 这里的loss weight 是不是应该和 action loss 的weight 一样？ 还是说是不同的？ 目前是一样的
-
-        if cfg.gradient_clipping is not None:
-            accelerator.clip_grad_norm_(model.parameters(), cfg.gradient_clipping)
-
-        if accelerator.sync_gradients:
-            progress_bar.update(1)
-            completed_steps += 1
-
-        optimizer.step()
-        lr_scheduler.step()
-
-        # Logging
-        if completed_steps % cfg.logging_frequency == 0:
-            if accelerator.is_main_process:
-                
+    def _log_metrics(self, metrics):
+        """记录训练指标"""
+        if self.completed_steps % self.config.trainer.logging_frequency == 0: # 有些参数应该是需要intial 给 class 的了
+            if self.accelerator.is_main_process:
+                # 计算梯度范数
                 total_norm = 0.0
-                for p in model.parameters(): #TODO 这里已经看不到梯度了，想办法看看DS 是怎么看grad 的
+                for p in self.model.parameters():
                     if p.grad is not None:
                         total_norm += p.grad.data.norm(2).item() ** 2
-                total_norm = total_norm**0.5
-                lr = lr_scheduler.get_last_lr()[0]
-                logger.info(f"Step {completed_steps}, Loss: {action_loss.item()}, Grad Norm: {total_norm}")
-                lr = lr_scheduler.get_last_lr()[0]
-                epoch = int(completed_steps) // len(vlm_train_dataloader) # 他们都是经过 DDP的
-                result = {
-                    "train_loss": action_loss.item(),
-                    "vlm_loss": vlm_loss.item(),
-                    "grad_norm": total_norm,
-                    "learning_rate": lr,
-                    "epoch": epoch,
-                }
-                if cfg.is_debug:
-                    print(result)
-                # Compute epoch value using number of completed gradient steps
+                metrics["grad_norm"] = total_norm ** 0.5
                 
-                wandb.log(result, step=completed_steps)
-            
-        # Checkpointing
-        if completed_steps% cfg.save_interval == 0 and completed_steps > 0:
-            accelerator.wait_for_everyone()
-            if accelerator.is_main_process:
-                # dist.barrier()
-                # accelerator.save_state(os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}"))
-                state_dict = accelerator.get_state_dict(model)
-                output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                # 添加学习率
+                metrics["learning_rate"] = self.lr_scheduler.get_last_lr()[0]
                 
-                torch.save(state_dict, output_path+"_pytorch_model.pt")
-                print(f"✅ Saved state_dict to {output_path}")
-                summary_data = {"steps": completed_steps, "train_loss": total_loss.item()/cfg.save_interval}
-                with open(os.path.join(cfg.output_dir, "summary.jsonl"), "a") as f:
-                    f.write(json.dumps(summary_data) + "\n")
-                logger.info(f"Checkpoint saved at step {completed_steps}")
-                total_loss = 0.0
-            accelerator.wait_for_everyone()
-            
-        # dist.barrier()  # Ensure all processes log at the same time
+                # 添加epoch信息
+                metrics["epoch"] = self.completed_steps // len(self.vla_train_dataloader)
                 
-        if completed_steps >= cfg.vla.max_train_steps:
-            break
-
-    # Save final checkpoint
-    if accelerator.is_main_process:
-        # accelerator.save_state(os.path.join(cfg.output_dir, f"steps_{completed_steps}"))
-        checkpoint_path = os.path.join(cfg.output_dir, f"steps_{completed_steps}")
-        state_dict = accelerator.get_state_dict(model)
-        output_path = os.path.join(cfg.output_dir, "checkpoints", f"steps_{completed_steps}")
-        os.makedirs(checkpoint_path, exist_ok=True)
-        torch.save(state_dict, os.path.join(checkpoint_path, "pytorch_model.pt"))
-        logger.info(f"Training finished. Final checkpoint saved at {checkpoint_path}")
-        wandb.finish()
-
-
-def train(cfg) -> None:
-    overwatch.info("CogACT-VLA Training :: Warming Up")
-    # accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps)
-
-    vla_id = cfg.vla.vla_id
-    cfg.run_id = (
-        f"{vla_id}+n{cfg.vla.expected_world_size // 8}+b{cfg.vla.per_device_batch_size}+x{cfg.seed}"
-        if cfg.run_id is None
-        else cfg.run_id
-    )
-
-    # Start =>> Build Directories and Set Randomness
-    overwatch.info('"Do or do not; there is no try."', ctx_level=1)
-    dist.barrier()  # Ensure all processes are synchronized before starting training
-    run_dir = Path(cfg.run_root_dir) / cfg.run_id
-    os.makedirs(run_dir, exist_ok=True)
-    os.makedirs(run_dir / "checkpoints", exist_ok=True)
-
-    # Save Configuration =>> additionally save a JSON version for later HF Integration
-    if overwatch.is_rank_zero():
-        # Save as YAML using OmegaConf
-        OmegaConf.save(cfg, run_dir / "config.yaml")
-        # Additionally save as JSON TODO 之后要将 .model 的参数单独save json
-        with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
-            yaml_cfg = yaml.safe_load(f_yaml)
-            json.dump(yaml_cfg, f_json, indent=2)
+                # 记录到W&B
+                wandb.log(metrics, step=self.completed_steps)
+                # 调试输出
+                logger.info(f"Step {self.completed_steps}, Loss: {metrics})")
     
-    dist.barrier()
-    # Load VLA checkpoint (if resuming from training) or Base VLM otherwise (from `cfg.vla.base_vlm` ID or Path)
-    #   =>> Note :: Verifies that all parameters are loaded in FP32 on load!
+    def _create_data_iterators(self):
+        """创建数据迭代器"""
+        self.vla_iter = iter(self.vla_train_dataloader)
+        self.vlm_iter = iter(self.vlm_train_dataloader)
+    
+    def _get_next_batch(self):
+        """获取下一批数据（自动处理数据循环）"""
+        try:
+            batch_vla = next(self.vla_iter)
+        except StopIteration:
+            self.vla_iter = iter(self.vla_train_dataloader)
+            batch_vla = next(self.vla_iter)
+        
+        try:
+            batch_vlm = next(self.vlm_iter) # TODO 首尾循环应该是dataset 自己的功能， 这里是考虑到很多人的dataset 是没有这个功能的
+        except StopIteration:
+            self.vlm_iter = iter(self.vlm_train_dataloader)
+            batch_vlm = next(self.vlm_iter)
+        
+        return batch_vla, batch_vlm
+    
+    def train(self):
+        """执行训练循环"""
+        # 打印训练配置
+        self._log_training_config()
+        
+        # 准备数据迭代器
+        self._create_data_iterators()
+        
+        # 创建进度条
+        progress_bar = tqdm(
+            range(self.config.trainer.max_train_steps),
+            disable=not self.accelerator.is_local_main_process
+        )
+        
+        # 主训练循环
+        while self.completed_steps < self.config.trainer.max_train_steps:
+            # 获取数据批次
+            batch_vla, batch_vlm = self._get_next_batch()
+            
+            # 执行训练步骤
+            step_metrics = self._train_step(batch_vla, batch_vlm)
+            
+            # 更新进度
+            if self.accelerator.sync_gradients:
+                progress_bar.update(1)
+                self.completed_steps += 1
+            
+            # 记录指标
+            self._log_metrics(step_metrics)
+            
+            # 保存检查点
+            if self.completed_steps % self.config.trainer.save_interval == 0 and self.completed_steps > 0:
+                self._save_checkpoint()
 
-    overwatch.info(f"Loading Base VLM `{cfg.vla.base_vlm}` from ID/Path")
+                # TODO 加入eval 逻辑 @MichaelYu781
+                dist.barrier()  # 确保所有进程都完成了保存操作
+            # 检查终止条件
+            if self.completed_steps >= self.config.trainer.max_train_steps:
+                break
+        
+        # 训练结束处理
+        self._finalize_training()
+    
+    def _log_training_config(self):
+        """记录训练配置"""
+        if self.accelerator.is_main_process:
+            logger.info("***** Training Configuration *****")
+            logger.info(f"  Total optimization steps = {self.config.trainer.max_train_steps}")
+            logger.info(f" Per device batch size = {self.config.datasets.vla_data.per_device_batch_size}")
+            logger.info(f"  Gradient accumulation steps = {self.config.trainer.gradient_accumulation_steps}")
+            logger.info(f"  Total batch size = {self.total_batch_size}")
+
+        # TODO 这里应该打印全部 训练中关键的信息： model size, freeze， lr group and so on.
+    
+    def _train_step(self, batch_vla, batch_vlm):
+        """执行单个训练步骤"""
+        # TODO: 实现梯度累积 @Yioutpi
+        with self.accelerator.accumulate(self.model):
+            self.optimizer.zero_grad()
+            
+            # VLA任务前向传播
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                action_loss, action_vlm_loss = self.model.forward(batch_vla)
+                total_loss = action_loss + action_vlm_loss
+            
+            # VLA反向传播
+            self.accelerator.backward(total_loss)
+            
+            # VLM任务前向传播
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                vlm_output = self.model.qwen_vl_interface(**batch_vlm)
+                vlm_loss = vlm_output.loss * self.config.trainer.loss_scale.vlm
+            
+            # VLM反向传播
+            self.accelerator.backward(vlm_loss)
+            
+            # 梯度裁剪
+            if self.config.trainer.gradient_clipping is not None:
+                self.accelerator.clip_grad_norm_(
+                    self.model.parameters(), 
+                    self.config.trainer.gradient_clipping
+                )
+            
+            # 优化器步骤
+            self.optimizer.step()
+            self.lr_scheduler.step()
+        
+        return {
+            "action_dit_loss": action_loss.item(),
+            "action_vlm_loss": action_vlm_loss.item(),
+            "vlm_loss": vlm_loss.item(),
+        }
+    
+    def _finalize_training(self):
+        """训练结束处理"""
+        # 保存最终模型
+        if self.accelerator.is_main_process:
+            final_checkpoint = os.path.join(self.config.output_dir, "final_model")
+            os.makedirs(final_checkpoint, exist_ok=True)
+            state_dict = self.accelerator.get_state_dict(self.model)
+            torch.save(state_dict, os.path.join(final_checkpoint, "pytorch_model.pt"))
+            logger.info(f"Training complete. Final model saved at {final_checkpoint}")
+        
+        # 关闭W&B
+        if self.accelerator.is_main_process:
+            wandb.finish()
+        
+        self.accelerator.wait_for_everyone()
+
+from llavavla.training.metrics import build_param_lr_groups
+def main(cfg) -> None:
+    logger.info("VLA Training :: Warming Up")
+
+    # 创建输出目录并保存配置
+    output_dir = setup_directories(cfg=cfg)
+    # 构建模型
     vla = build_model_framework(cfg)
-    fast_tokenizer = load_fast_tokenizer() # TODO 考虑架构时候的事情
-    # processor = vla.vlm.processor # @Jinhui TODO 不应该在这个地方 赋值， 数据准备应该和 封装类绑定为函数
-    # [Validate] Model should be in Full Precision! @Jinhui TODO Why?
-    for param in vla.parameters():
-        if param.dtype != torch.float32: #@Jinhui TODO Check, why?
-            param.data = param.data.float()
-        assert param.dtype == torch.float32, f"Loaded VLM parameter not in full precision: {param}"
-
-
-    # [Explicit] Call to `freeze_backbones` here for clarity =>> will log exactly what is/is not frozen
+    # 准备数据
+    vla_train_dataloader, vlm_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
+    # 设置优化器和调度器
+    optimizer, lr_scheduler = setup_optimizer_and_scheduler(model=vla, cfg=cfg)
     
-    vla.freeze_backbones()
-
-    # Print number of total/trainable model parameters # TODO 应该集成到trainer 中
-    num_params = sum(p.numel() for p in vla.parameters())
-    num_trainable_params = sum(p.numel() for p in vla.parameters() if p.requires_grad)
-    overwatch.info(
-        f"# Parameters (in millions): {num_params / 10**6:.3f} Total, {num_trainable_params / 10**6:.3f} Trainable"
-    )
-
-
-    overwatch.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.vla.data_mix}`")
-    #   text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
-        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
-        cfg.vla.data_mix,
-        default_image_resolution=(3, 224, 224),
-        shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
-        image_aug=cfg.image_aug,
-        future_action_window_size=cfg.future_action_window_size,
-        past_action_window_size=cfg.past_action_window_size,
-        load_all_data_for_training=cfg.load_all_data_for_training,
-    )
-
-    # Create DataLoader
-    vlm_data_mudule = make_vlm_dataloader(cfg) # TODO 👆构建dataloader 的逻辑也不能放到这里。 思考一下，为什么 SFTTrainer 需要这样写
-    vlm_train_dataloader = vlm_data_mudule["train_dataloader"]
-    # sample = next(iter(vla_dataset)) #for debug
-
-    # Save dataset statistics for de-normalization at inference time
-    if overwatch.is_rank_zero():
-        save_dataset_statistics(vla_dataset.dataset_statistics, run_dir)
-    
-    
-    # Create Train Strategy
-    
-    # Prepare everything with Accelerator
-    dist.barrier()
-    accelerator.dataloader_config.dispatch_batches =  False
-
-    # Initialize optimizer
-    # learning_rate = 1e-4
-
-    optimizer = torch.optim.AdamW(
-        vla.parameters(),
-        lr=cfg.vla.learning_rate,
-        betas=(0.9, 0.95),
-        weight_decay=1e-8,
-        eps=1e-8,
-    )
-    # Initialize learning rate scheduler
-    
-    cfg.vla.max_steps = len(vlm_train_dataloader) * 30
-    max_train_steps =  cfg.vla.max_steps # TODO 统一 max_train_steps 和 max_steps, 和 epoch
-    cfg.vla.max_train_steps = max_train_steps
-    cfg.vla.max_train_steps = len(vlm_train_dataloader) * 30 # TODO 这里的 max_train_steps 和 epochs 需要统一
-    num_warmup_steps = min(int(cfg.vla.max_train_steps*0.1), 10000)
-    cfg.num_warmup_steps = num_warmup_steps
-    
-    lr_scheduler = get_scheduler(
-        name="cosine",
-        optimizer=optimizer,
-        num_warmup_steps=cfg.num_warmup_steps,
-        num_training_steps=cfg.vla.max_train_steps
-    )
-
-    # Prepare everything with Accelerator, setup
-    vla, optimizer, vlm_train_dataloader = accelerator.prepare( # @JinhuiYE 第三方工具 or DDP？
-        vla, optimizer, vlm_train_dataloader
-    )
-    # @Jinhui 推荐用 accelerator， 这里用DDP是因为之前的脚本是torch run
-
-    # Create Metrics =>> Handles on the fly tracking, logging to specified trackers (e.g., JSONL, Weights & Biases)
-    overwatch.info(f"Creating Metrics with Active Trackers => `{cfg.trackers}`")
-
-    # Run VLA Training # TODO move them to class tainer 
-    trainer(
+    # 创建训练器
+    # Run VLA Training
+    trainer = VLAMTrainer(
+        cfg=cfg,
         model=vla,
+        vla_train_dataloader=vla_train_dataloader,
         vlm_train_dataloader=vlm_train_dataloader,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
-        accelerator=accelerator,
-        cfg=cfg
+        accelerator=accelerator
     )
+    
+    # 执行训练前的准备
+    trainer.prepare_training()
+    # 执行训练
+    trainer.train()
 
     # And... we're done!
-    overwatch.info("... and that's all, folks!")
+    logger.info("... and that's all, folks!")
     dist.barrier()
     dist.destroy_process_group()
 
@@ -387,10 +465,11 @@ if __name__ == "__main__":
     cfg = OmegaConf.merge(cfg, cli_cfg)
 
     # if cfg.is_debug:
-    if cfg.is_debug and overwatch.is_rank_zero():
+    if cfg.is_debug and dist.is_initialized() and dist.get_rank() == 0:
         import debugpy
-        debugpy.listen(("0.0.0.0", 5678))
-        print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+        debugpy.listen(("0.0.0.0", 10092))
+        print("🔍 Rank 0 waiting for debugger attach on port 10092...")
         debugpy.wait_for_client()
 
-    train(cfg)
+    # TODO 考虑是否合并trainer？ --> 用户上一开始肯定觉得集成越多越好的
+    main(cfg)

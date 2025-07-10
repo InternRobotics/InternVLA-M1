@@ -8,12 +8,12 @@ cd /mnt/petrelfs/share/yejinhui/Projects/SimplerEnv # the SimplerEnv root dir
 
 # 接收传入的模型路径参数
 MODEL_PATH=$1
-TSET_NUM=5
+TSET_NUM=4
 
 # 可选：判断是否传入了参数
 if [ -z "$MODEL_PATH" ]; then
   echo "❌ 没传入 MODEL_PATH 作为第一个参数, 使用默认参数"
-  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0630_load_pretrained_v1s/checkpoints/steps_90000_pytorch_model.pt"
+  export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Checkpoints/0707_debug/checkpoints/steps_1000_pytorch_model.pt"
 fi
 
 policy_model=Qwenpi

@@ -29,3 +29,40 @@ def save_dataset_statistics(dataset_statistics, run_dir):
         json.dump(dataset_statistics, f_json, indent=2)
     logger.info(f"Saved dataset statistics file at path {out_path}")
 
+
+
+def build_dataloader(cfg):
+
+    if cfg.datasets.vla_data.dataset_py == "rlds_datasets":
+        from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn
+
+        vla_dataset = get_vla_dataset( # 这个写在dataload.py 内部
+        cfg.datasets.vla_data.data_root_dir,
+        cfg.datasets.vla_data.data_mix,
+        default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
+        shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
+        image_aug=cfg.datasets.vla_data.image_aug,
+        future_action_window_size=cfg.framework.action_model.future_action_window_size,
+        past_action_window_size=cfg.framework.action_model.past_action_window_size,
+        load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
+    )
+        return vla_dataset, collate_fn
+    
+    elif cfg.datasets.vla_data.dataset_py == "lmdb_datasets":
+        from llavavla.dataloader.lmdb_datasets import get_lmdb_dataset, collate_fn
+
+        vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换
+            data_root_dir=cfg.datasets.vla_data.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+            data_mix=cfg.datasets.vla_data.data_mix,
+            data_mix_info=cfg.datasets.vla_data.data_mix_info,
+            action_type=cfg.datasets.vla_data.action_type,
+            default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
+            shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
+            image_aug=cfg.datasets.vla_data.image_aug,
+            future_action_window_size=cfg.framework.action_model.future_action_window_size,
+            past_action_window_size=cfg.framework.action_model.past_action_window_size,
+            load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
+        )
+
+        return vla_dataset, collate_fn
+

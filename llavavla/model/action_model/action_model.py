@@ -68,7 +68,7 @@ class ActionModel(nn.Module):
 
         assert noise_pred.shape == noise.shape == x.shape
         # Compute L2 loss
-        loss = ((noise_pred - noise) ** 2).mean()
+        loss = ((noise_pred - noise) ** 2).mean() # TODO 是否这里导致了 batch 并不能加速？
         # Optional: loss += loss_vlb
 
         return loss

@@ -203,8 +203,8 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
-            prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object"
-            # prompt = f"{instruction}."
+            prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object" #--->
+            # prompt = f"{instruction}." --> 感觉上这个prompt
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             if solutions is not None:
@@ -212,7 +212,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
                 solution = solutions[len(messages)]
                 solution_content = [{"type": "text", "text": f": {solution}"}]
                 msg.append({"role": "assistant", "content": solution_content})
-            else: # 是否要判断是否走 infer？
+            else: # 是否要判断是否走 infer？ TODO 感觉上不能在这里， 看一下官方怎么解读的
                 # add a dummy assistant response
                 solution_content = [{"type": "text", "text": ""}]
                 msg.append({"role": "assistant", "content": solution_content})

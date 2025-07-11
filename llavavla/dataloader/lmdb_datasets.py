@@ -290,9 +290,17 @@ class LMDBDataset(Dataset):
                     dataset_name=self.dataset_name)
 
     def __iter__(self):
-        """Iterate through the dataset sequentially."""
+        """Iterate through the dataset sequentially, retrying with random indices on error."""
         for idx in range(len(self)):
-            yield self.__getitem__(idx)
+            try:
+                yield self.__getitem__(idx)
+            except Exception as e:
+                logger.warning(f"Error at index {idx}: {e}. Retrying with a random index.")
+                random_idx = random.randint(0, len(self) - 1)
+                try:
+                    yield self.__getitem__(random_idx)
+                except Exception as e:
+                    logger.error(f"Error at random index {random_idx}: {e}. Skipping.")
 
     # TODO 这个函数 需要重构， 不能和数据集耦合
     def load_robot_action(self, arm_action, gripper_action):

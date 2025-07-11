@@ -205,7 +205,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
             prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object" #--->
             # prompt = f"{instruction}." # --> 感觉上这个prompt
-            # prompt = f"Your the task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json"
+            prompt = f"Your the task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json"
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             if solutions is not None:

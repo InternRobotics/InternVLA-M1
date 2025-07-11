@@ -67,7 +67,7 @@ trainer:
     # action_model: 1.0e-04
   lr_scheduler_type: cosine_with_min_lr
   scheduler_specific_kwargs:
-    min_lr: 5.0e-07
+    min_lr: 2.0e-05
     # min_lr_rate: 0.05
   freeze_modules: ''
   loss_scale:

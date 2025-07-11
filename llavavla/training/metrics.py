@@ -413,6 +413,8 @@ def only_main_process(func):
         return func(*args, **kwargs)
     return wrapper
 
+def euclidean_distance(predicted: np.ndarray, ground_truth: np.ndarray) -> float:
+    return np.linalg.norm(predicted - ground_truth)
 
 import torch.distributed as dist
 
@@ -542,6 +544,43 @@ class TrainerUtils:
         prepared_components = accelerator.prepare(*components)
         return prepared_components
     
+# 执行评估步骤
+    def eval_model(self, eval_dataset, metric_fn=euclidean_distance) -> float:
+        """
+        Evaluate the model on the given dataset using the specified metric function.
+
+        :param eval_dataset: List of evaluation samples, each containing 'image', 'instruction', and 'action'.
+        :param metric_fn: Function to compute the distance between predicted and ground truth actions.
+        :return: Average metric score across the evaluation dataset.
+        """
+
+        total_score = 0.0 # 想办法看看证明变成batch 推理
+        num_samples = len(eval_dataset)
+        import tqdm  
+        for index in range(num_samples):
+            sample = eval_dataset[index]
+            
+            image = sample["image"]
+            instruction = sample["instruction"]
+            ground_truth_action = sample["action"]
+
+            # Predict actions using the model
+            _, normalized_actions = self.model.predict_action_withCoT(
+                image=image,
+                instruction=instruction,
+                solution=sample.get("solution", None),
+                unnorm_key=sample.get("unnorm_key", None)
+            )
+
+            # Compute the metric score
+            score = metric_fn(normalized_actions, ground_truth_action)
+            total_score += score
+
+        average_score = total_score / num_samples
+
+        return average_score
+
+
 
 import os
 

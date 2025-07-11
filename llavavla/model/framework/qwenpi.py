@@ -91,15 +91,13 @@ class QwenQFormerDiT(nn.Module):
 
         # dist.barrier
 
-        if self.config.is_debug:
-            _, num_dict = read_mode_config("/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/need_steps_40000_pytorch_model.pt")
-            self.norm_stats = num_dict
-            self.predict_action_withCoT(image=images[0], instruction=instructions[0])
+        # if self.config.is_debug:
+
+        #     self.predict_action_withCoT(image=images[0], instruction=instructions[0])
             
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
         
-
-        with torch.autocast("cuda", dtype=torch.float16):
+        with torch.autocast("cuda", dtype=torch.bfloat16): # @Jinhui TODO 这里的 dtype 是不是应该是config里面的
             # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
                 **qwen_inputs, # 兼容性和可读性的 trade off
@@ -114,21 +112,21 @@ class QwenQFormerDiT(nn.Module):
         if Intern_vlm_loss is None or torch.isnan(Intern_vlm_loss): # TODO 将不同逻辑的 forward 罗杰写成 if else 会破坏可读性
             Intern_vlm_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
 
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast("cuda", dtype=torch.float32):
             start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
             end_layer = self.config.framework.layer_qformer.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
     
-        # actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
-        # 先将 actions 转换为单个 NumPy 数组，再转换为 PyTorch 张量
-        actions = torch.tensor(np.array(actions), device=action_latent_feature.device)  # [B, chunk, 7] TODO to tensor 的逻辑可以放到 transform 里面
-        actions_future = actions[:, -(self.future_action_window_size+1):, :]
-        
-        # Repeat 'actions' 'repeated_diffusion_steps' times, resulting in [repeated_diffusion_steps*B, T, D]
-        actions_repeated = actions_future.repeat(repeated_diffusion_steps, 1, 1)
-        action_latent_feature = action_latent_feature.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, T, D_action]
-        # Action model forward and compute loss # 这里功能有点 越俎代庖 TODO 将loss 集中到 main module中统一处理
-        action_loss = self.action_model.loss(actions_repeated, action_latent_feature) # TODO loss 应该放到另一个函数
+            # actions = torch.stack([torch.tensor(a) for a in actions], dim=0).to(action_latent_feature.device)  # [B, chunk, 7] @Jinhui TODO to tensor 的逻辑可以放到 transform 里面
+            # 先将 actions 转换为单个 NumPy 数组，再转换为 PyTorch 张量
+            actions = torch.tensor(np.array(actions), device=action_latent_feature.device)  # [B, chunk, 7] TODO to tensor 的逻辑可以放到 transform 里面
+            actions_future = actions[:, -(self.future_action_window_size+1):, :]
+            
+            # Repeat 'actions' 'repeated_diffusion_steps' times, resulting in [repeated_diffusion_steps*B, T, D]
+            actions_repeated = actions_future.repeat(repeated_diffusion_steps, 1, 1)
+            action_latent_feature = action_latent_feature.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, T, D_action]
+            # Action model forward and compute loss # 这里功能有点 越俎代庖 TODO 将loss 集中到 main module中统一处理
+            action_loss = self.action_model.loss(actions_repeated, action_latent_feature) # TODO loss 应该放到另一个函数
         return action_loss, Intern_vlm_loss
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
@@ -184,78 +182,67 @@ class QwenQFormerDiT(nn.Module):
                 return_dict=True,
             ) # generation 拿不到前面token 的信息，考虑使用 forward?
 
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast("cuda", dtype=torch.float32):
             start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
             end_layer = self.config.framework.layer_qformer.qformer_end_layer if self.config else -1  # @Jinhui TODO 这里应该是config
             
             action_latent_feature = self.layer_qformer(qwenvl_outputs.hidden_states[start_layer:end_layer]) # [B, 64, D_action]
             
-        using_cfg = cfg_scale > 1.0
+            using_cfg = cfg_scale > 1.0
 
-        model_dtype = next(self.action_model.net.parameters()).dtype
-        B = action_latent_feature.shape[0]
+            model_dtype = next(self.action_model.net.parameters()).dtype
+            B = action_latent_feature.shape[0]
 
-        # Sample random noise
-        noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=action_latent_feature.device).to(model_dtype)  #[B, T, D]
+            # Sample random noise
+            noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=action_latent_feature.device).to(model_dtype)  #[B, T, D]
 
-        # Setup classifier-free guidance:
-        if using_cfg:
-            noise = torch.cat([noise, noise], 0) #[2,16,7]
-            uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
-            uncondition_shape = uncondition.shape
-            uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
-            uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
-            z = torch.cat([action_latent_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
-            cfg_scale = cfg_scale
-            model_kwargs = dict(z=z, cfg_scale=cfg_scale)
-            sample_fn = self.action_model.net.forward_with_cfg
-        else:
-            model_kwargs = dict(z=action_latent_feature)
-            sample_fn = self.action_model.net.forward
-        
-        # if os.environ.get("DEBUG"):
-        #     print(z .shape)
-        # DDIM Sampling
-        if use_ddim and num_ddim_steps is not None:
-            if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
-                self.action_model.create_ddim(ddim_step=num_ddim_steps)
-            samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
-                                                                noise.shape, 
-                                                                noise, 
-                                                                clip_denoised=False,
-                                                                model_kwargs=model_kwargs,
-                                                                progress=False,
-                                                                device=action_latent_feature.device,
-                                                                eta=0.0
-                                                                )
-        else:
-            # DDPM Sampling
-            samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
+            # Setup classifier-free guidance:
+            if using_cfg:
+                noise = torch.cat([noise, noise], 0) #[2,16,7]
+                uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
+                uncondition_shape = uncondition.shape
+                uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
+                uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
+                z = torch.cat([action_latent_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
+                cfg_scale = cfg_scale
+                model_kwargs = dict(z=z, cfg_scale=cfg_scale)
+                sample_fn = self.action_model.net.forward_with_cfg
+            else:
+                model_kwargs = dict(z=action_latent_feature)
+                sample_fn = self.action_model.net.forward
+            
+            # if os.environ.get("DEBUG"):
+            #     print(z .shape)
+            # DDIM Sampling
+            if use_ddim and num_ddim_steps is not None:
+                if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
+                    self.action_model.create_ddim(ddim_step=num_ddim_steps)
+                samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
                                                                     noise.shape, 
                                                                     noise, 
                                                                     clip_denoised=False,
                                                                     model_kwargs=model_kwargs,
                                                                     progress=False,
-                                                                    device=action_latent_feature.device
+                                                                    device=action_latent_feature.device,
+                                                                    eta=0.0
                                                                     )
-        if using_cfg:
-            samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-        normalized_actions = samples[0].cpu().numpy()
-
-        # Un-normalize Actions       # TODO 感觉不应该实现在这里， 但是simpler上是这样处理的 
-        # action_norm_stats = self.get_action_stats(unnorm_key)
-        # mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
-        # action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
-        # normalized_actions = np.clip(normalized_actions, -1, 1)
-        # normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
-        # actions = np.where(
-        #     mask,
-        #     0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
-        #     normalized_actions,
-        # )
-        # actions max 1, min -0.05 # 感觉不再一个 scale
-        action_norm_stats = self.get_action_stats(unnorm_key)
-        raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
+            else:
+                # DDPM Sampling
+                samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
+                                                                        noise.shape, 
+                                                                        noise, 
+                                                                        clip_denoised=False,
+                                                                        model_kwargs=model_kwargs,
+                                                                        progress=False,
+                                                                        device=action_latent_feature.device
+                                                                        )
+            if using_cfg:
+                samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+            normalized_actions = samples[0].cpu().numpy()
+            
+            # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
+            action_norm_stats = self.get_action_stats(unnorm_key)
+            raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
         return raw_actions, normalized_actions # actions, normalized_actions #TODO 得想清楚， Un-normalize Actions  到底是谁控制的。 我觉得必须是模型， 因为减少相对变化， 扁平管理。 但是要单独写成函数
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
@@ -333,7 +320,7 @@ class QwenQFormerDiT(nn.Module):
                     new_hidden_states      # [num_layers, B, num_new_tokens, hidden_dim]
                 ], dim=2)  # Shape: [num_layers, B, total_len, hidden_dim]
         
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast("cuda", dtype=torch.float32):
             start_layer = self.config.framework.layer_qformer.qformer_start_layer
             end_layer = self.config.framework.layer_qformer.qformer_end_layer
             latent_features = []
@@ -341,59 +328,59 @@ class QwenQFormerDiT(nn.Module):
             for i in range(start_layer, end_layer):
                 latent_features.append(combined_hidden_states[i]) # 
             action_latent_feature = self.layer_qformer(latent_features) # [B, 64, D_action]
-        using_cfg = cfg_scale > 1.0
+            using_cfg = cfg_scale > 1.0
 
-        model_dtype = next(self.action_model.net.parameters()).dtype
-        B = action_latent_feature.shape[0]
+            model_dtype = next(self.action_model.net.parameters()).dtype
+            B = action_latent_feature.shape[0]
 
-        # Sample random noise
-        noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=action_latent_feature.device).to(model_dtype)  #[B, T, D]
+            # Sample random noise
+            noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=action_latent_feature.device).to(model_dtype)  #[B, T, D]
 
-        # Setup classifier-free guidance:
-        if using_cfg:
-            noise = torch.cat([noise, noise], 0) #[2,16,7]
-            uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
-            uncondition_shape = uncondition.shape
-            uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
-            uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
-            z = torch.cat([action_latent_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
-            cfg_scale = cfg_scale
-            model_kwargs = dict(z=z, cfg_scale=cfg_scale)
-            sample_fn = self.action_model.net.forward_with_cfg
-        else:
-            model_kwargs = dict(z=action_latent_feature)
-            sample_fn = self.action_model.net.forward
-        
-        # if os.environ.get("DEBUG"):
-        #     print(z .shape)
-        # DDIM Sampling
-        if use_ddim and num_ddim_steps is not None:
-            if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
-                self.action_model.create_ddim(ddim_step=num_ddim_steps)
-            samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
-                                                                noise.shape, 
-                                                                noise, 
-                                                                clip_denoised=False,
-                                                                model_kwargs=model_kwargs,
-                                                                progress=False,
-                                                                device=action_latent_feature.device,
-                                                                eta=0.0
-                                                                )
-        else:
-            # DDPM Sampling
-            samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
+            # Setup classifier-free guidance:
+            if using_cfg:
+                noise = torch.cat([noise, noise], 0) #[2,16,7]
+                uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
+                uncondition_shape = uncondition.shape
+                uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
+                uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
+                z = torch.cat([action_latent_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
+                cfg_scale = cfg_scale
+                model_kwargs = dict(z=z, cfg_scale=cfg_scale)
+                sample_fn = self.action_model.net.forward_with_cfg
+            else:
+                model_kwargs = dict(z=action_latent_feature)
+                sample_fn = self.action_model.net.forward
+            
+            # if os.environ.get("DEBUG"):
+            #     print(z .shape)
+            # DDIM Sampling
+            if use_ddim and num_ddim_steps is not None:
+                if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
+                    self.action_model.create_ddim(ddim_step=num_ddim_steps)
+                samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
                                                                     noise.shape, 
                                                                     noise, 
                                                                     clip_denoised=False,
                                                                     model_kwargs=model_kwargs,
                                                                     progress=False,
-                                                                    device=action_latent_feature.device
+                                                                    device=action_latent_feature.device,
+                                                                    eta=0.0
                                                                     )
-        if using_cfg:
-            samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-        normalized_actions = samples[0].cpu().numpy()
-        # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
-        raw_actions = self.unnormalize_actions(normalized_actions, self.norm_stats) # TODO 这里应该是一个函数， 但是现在是放在模型里面， 需要考虑是否要放到 utils 里面    
+            else:
+                # DDPM Sampling
+                samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
+                                                                        noise.shape, 
+                                                                        noise, 
+                                                                        clip_denoised=False,
+                                                                        model_kwargs=model_kwargs,
+                                                                        progress=False,
+                                                                        device=action_latent_feature.device
+                                                                        )
+            if using_cfg:
+                samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+            normalized_actions = samples[0].cpu().numpy()
+            # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
+            raw_actions = self.unnormalize_actions(normalized_actions, self.norm_stats) # TODO 这里应该是一个函数， 但是现在是放在模型里面， 需要考虑是否要放到 utils 里面    
         return raw_actions, normalized_actions # TODO Debug with stats is dim=7
     
     @staticmethod

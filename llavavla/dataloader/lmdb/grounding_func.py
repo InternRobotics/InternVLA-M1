@@ -103,7 +103,7 @@ def compute_bbox_for_uid(frame_boxes: np.ndarray, labels_list: dict, uid: int,
     返回： [xmin, ymin, xmax, ymax]
     """
     uid_to_label = {v['class']: int(k) for k, v in labels_list.items()}
-    label_id = uid_to_label[uid]
+    label_id = uid_to_label[uid] # 这里会有bug， 说明 meta 中的 labels_list 没有覆盖到 拿到的 pick uid  
     mask = frame_boxes[:,0] == label_id
     x1,y1,x2,y2 = frame_boxes[mask, 1:5][0]
     name = obj_info_mgr.uid2name(str(uid))

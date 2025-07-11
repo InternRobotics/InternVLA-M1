@@ -5,12 +5,11 @@ Lightweight PyTorch Dataset Definition for wrapping RLDS TFDS Pipeline; just def
 format to OpenVLA, IterableDataset shim.
 """
 
-
 import os, json, pickle, bisect, logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Tuple, Type, List, Optional
-
+from omegaconf import OmegaConf
 import lmdb
 from itertools import accumulate
 import cv2
@@ -19,6 +18,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset, IterableDataset
 from llavavla.dataloader.lmdb.data_utils import get_lmdb_dataset_statistics, save_dataset_statistics, NormalizationType
+
+from llavavla.dataloader.lmdb.grounding_func import *
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
@@ -225,6 +226,13 @@ class LMDBDataset(Dataset):
             scale_y = 224 / image_size[1]
             all_trace_2d_scaled = scale_trace(all_trace_2d, scale_x, scale_y)
 
+            # 2) current / target bbox
+            current_pick_bbox, pick_name = compute_bbox_for_uid(
+                curr_boxes, curr_labels, pick_uid, scale_x, scale_y)
+            
+            target_place_bbox, place_name = compute_bbox_for_uid(
+                curr_boxes, curr_labels, place_uid, scale_x, scale_y)
+
              # 3) affordance point
              # 并不是全部都有 这个？
             future_griper_change = detect_first_change_point(start_id, all_gripper_close,
@@ -238,10 +246,29 @@ class LMDBDataset(Dataset):
             future_traj = get_trajectory_plan(all_trace_2d_scaled, start_id, j,
                                                 horizon=10)
             
+            # sol = {
+            #     "future_traj": future_traj
+            # }
             sol = {
-                "future_traj": future_traj
-            }
-
+                    'pick_bbox': current_pick_bbox,
+                    'pick_label': pick_name,
+                    'place_bbox': target_place_bbox,
+                    'place_label': place_name,
+                }
+            
+            prompt = f"What is the key object to finish the task: {language_instruction}. Output the bbox to locate the object"
+            solution = f"Pick {pick_name} at {current_pick_bbox}, then place {place_name} at {target_place_bbox}."
+            # 拼接 solution 为字符串格式的 JSON， 还差有一点点gap
+            solution = f'''{{
+            "pick": {{
+                "bbox_2d": {current_pick_bbox},
+                "label": "{pick_name}"
+            }},
+            "place": {{
+                "bbox_2d": {target_place_bbox},
+                "label": "{place_name}"
+            }}
+            }}'''
 
         lmdb_env.close()
         # action chuck: window_size
@@ -251,19 +278,15 @@ class LMDBDataset(Dataset):
             gripper = gripper_action[start_id:start_id + self.window_size]
         else:
             # last action repeat
-            # action = arm_action[start_id:action_length] + np.zeros(self.window_size - (action_length - start_id))
-            # gripper = gripper_action[start_id:action_length] + np.ones(self.window_size - (action_length - start_id))
-
             action = arm_action[start_id:action_length] + np.repeat(arm_action[-1], self.window_size - (action_length - start_id), axis=0)
             gripper = gripper_action[start_id:action_length] + np.repeat(gripper_action[-1], self.window_size - (action_length - start_id), axis=0)
 
         collected_action = []
         for a, g in zip(action, gripper):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
-
         
         return dict(action=collected_action,image=[primary_data],lang=language_instruction, 
-                    solution=sol,
+                    solution=solution,
                     dataset_name=self.dataset_name)
 
     def __iter__(self):
@@ -290,7 +313,6 @@ class LMDBDataset(Dataset):
     def save_statistics(self, run_dir: Path) -> None:
         """Save dataset statistics to the specified directory."""
         save_dataset_statistics(self.dataset_statistics, run_dir)
-
 
 class EpisodicLMDBDataset(LMDBDataset):
     """Returns full episodes as list of steps instead of individual transitions (useful for visualizations)."""
@@ -488,38 +510,39 @@ if __name__ == "__main__":
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
 
 
-    import debugpy 
-    debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
-    print("Waiting for debugger to attach...")
-    debugpy.wait_for_client()  # 等待 VS Code 附加
+    # import debugpy 
+    # debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
+    # print("Waiting for debugger to attach 10092...")
+    # debugpy.wait_for_client()  # 等待 VS Code 附加
 
-    # test  get_vla_dataset
-    cfg = {
-        'data_root_dir': '/mnt/petrelfs/share/yejinhui/Datasets',
-        'obs_type': 'obs_camera',
-        'action_type': 'delta_ee_pose',
-        'window_size': 16,
-        'vla': {
-            'per_device_batch_size': 1,
-            'data_mix': 'banana_plate_4035_none-wot-wow-woh-0529',
-            'data_mix_info': 'Banana/banana_plate_4035_none-wot-wow-woh-0529_200',
-        }
-    }
+    # # test  get_vla_dataset
+
+    # Load YAML config & Convert CLI overrides to dotlist config
+    config_yaml = "llavavla/conf/qwenvla_lmdb_genmanip.yaml"
+    cfg = OmegaConf.load(config_yaml)
+
     cfg = dict_to_namespace(cfg)
 
     vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换
-        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
-        cfg.vla.data_mix,
-        cfg.vla.data_mix_info,
-        action_type=cfg.action_type,
-        default_image_resolution=(3, 224, 224),
+        data_root_dir=cfg.datasets.vla_data.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
+        data_mix=cfg.datasets.vla_data.data_mix,
+        data_mix_info=cfg.datasets.vla_data.data_mix_info,
+        action_type=cfg.datasets.vla_data.action_type,
+        default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
+        shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
+        image_aug=cfg.datasets.vla_data.image_aug,
+        future_action_window_size=cfg.framework.action_model.future_action_window_size,
+        past_action_window_size=cfg.framework.action_model.past_action_window_size,
+        load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
     )
     
     # 方法2: 使用迭代器
     dataset_iter = iter(vla_dataset)
-    while True:
+    count = 0
+    while True and count < 200 :
         try:
             batch_samples = next(dataset_iter)
+            count += 1
             print(batch_samples['action'])
         except StopIteration:
             break

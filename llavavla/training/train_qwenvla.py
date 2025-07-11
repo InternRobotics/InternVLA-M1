@@ -80,22 +80,15 @@ def build_model(cfg) -> torch.nn.Module:
     
     return model
 
+# 这里的变化需要📦封装 Dataloader
+from llavavla.dataloader import build_dataloader
 
 def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     """准备训练数据"""
     # VLA 数据集
     logger.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
-    vla_dataset = get_vla_dataset(
-        cfg.datasets.vla_data.data_root_dir,
-        cfg.datasets.vla_data.data_mix,
-        default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
-        shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
-        image_aug=cfg.datasets.vla_data.image_aug,
-        future_action_window_size=cfg.framework.action_model.future_action_window_size,
-        past_action_window_size=cfg.framework.action_model.past_action_window_size,
-        load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
-    )
-    
+    vla_dataset, collate_fn = build_dataloader( # 这个写在dataload.py 内部
+        cfg=cfg)
     # VLA 数据加载器
     vla_train_dataloader = DataLoader(
         vla_dataset,
@@ -111,8 +104,8 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     # 拒绝自动分发 # TODO 应该写到 accelerator config
     accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
-
-    return vla_train_dataloader 
+    vla_train_dataloader.dataset_statistics = vla_dataset.dataset_statistics
+    return vla_train_dataloader
 
 def setup_optimizer_and_scheduler(
     model, cfg
@@ -187,6 +180,7 @@ class VLATrainer(TrainerUtils):
         self.print_trainable_parameters(self.model)
 
         # 初始化分布式训练组件
+        # self.accelerator.gradient_accumulation_steps = self.config.trainer.gradient_accumulation_steps
         self.model, self.optimizer, self.vla_train_dataloader = self.setup_distributed_training(
             self.accelerator, # must be the first param
             self.model,
@@ -365,7 +359,7 @@ class VLATrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
                 action_loss, action_vlm_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_vlm_loss
+                total_loss = action_loss
             
             # VLA反向传播
             self.accelerator.backward(total_loss)
@@ -421,6 +415,7 @@ def main(cfg) -> None:
     vla = build_model_framework(cfg)
     # 准备数据
     vla_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
+    # vla.norm_stats = 
     # 设置优化器和调度器
     optimizer, lr_scheduler = setup_optimizer_and_scheduler(model=vla, cfg=cfg)
     

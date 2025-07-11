@@ -169,7 +169,6 @@ class VLAMTrainer(TrainerUtils):
         
     def prepare_training(self):
         
-
         # 加载预训练权重
         if (hasattr(self.config.trainer, 'pretrained_checkpoint') and self.config.trainer.pretrained_checkpoint):
             pretrained_checkpoint = self.config.trainer.pretrained_checkpoint

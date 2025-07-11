@@ -90,13 +90,15 @@ class QwenQFormerDiT(nn.Module):
             solutions = None
 
         # dist.barrier
-        qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
-        
-        if DEBUG := os.environ.get("DEBUG"):
-            _, num_dict = read_mode_config(self.config.trainer.pretrained_checkpoint)
+
+        if self.config.is_debug:
+            _, num_dict = read_mode_config("/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/checkpoints/need_steps_40000_pytorch_model.pt")
             self.norm_stats = num_dict
             self.predict_action_withCoT(image=images[0], instruction=instructions[0])
             
+        qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
+        
+
         with torch.autocast("cuda", dtype=torch.float16):
             # dist.barrier()  # 确保所有进程都加载完毕
             qwenvl_outputs = self.qwen_vl_interface( # 都是local的参数变化， 不要写到config, 但是为了保持可复现，应该有个默认的 yaml
@@ -279,7 +281,7 @@ class QwenQFormerDiT(nn.Module):
             imgs = [img.resize((224, 224)) for img in image]
         
         lang = instruction.lower() 
-        
+
         inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[imgs], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
         qwen_inputs = inferface_inputs
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
@@ -287,15 +289,16 @@ class QwenQFormerDiT(nn.Module):
         # Generate feature through vlm
         with torch.autocast("cuda", dtype=torch.bfloat16):
             # fmt: off
+            # TODO Qwen 背后会多一个 终止符号， 需要 [:, :-2] 去掉。是需要思考是否使用 v1 版本来产生 对应的token
             qwenvl_outputs = self.qwen_vl_interface.model.generate(
-                input_ids=qwen_inputs.input_ids,
-                attention_mask=qwen_inputs.attention_mask,
+                input_ids=qwen_inputs.input_ids[:, :-2],
+                attention_mask=qwen_inputs.attention_mask[:, :-2],
                 pixel_values=qwen_inputs.pixel_values, 
                 image_grid_thw =qwen_inputs.image_grid_thw, # 2* [1,16,16] --> 512 = 16*16*2, 1176 = (224/16)^2 * 3 * 2 @JinhuiYE TODO 这个需要找Qwen 的官方文档验证
                 output_hidden_states=True,
-                 max_new_tokens=256,
+                max_new_tokens=256,
                 return_dict_in_generate=True,
-            ) 
+            )
             # for check output format
             decoded_sequences = self.qwen_vl_interface.processor.tokenizer.batch_decode(
             qwenvl_outputs.sequences, 

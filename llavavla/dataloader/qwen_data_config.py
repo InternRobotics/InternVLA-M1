@@ -641,9 +641,53 @@ GENMANIP_v7_r2s_task2_eval = {
     "data_path": genmanip_r2s_task2_root,
 }
 
+
 data_dict.update({
     "GENMANIP_v7_r2s_task2_train": GENMANIP_v7_r2s_task2_train,
     "GENMANIP_v7_r2s_task2_eval": GENMANIP_v7_r2s_task2_eval,
+})
+
+# 正式版本 system2 from @kun
+# 增加这些数据集到 data_dict
+
+genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056"
+genmanip_sys2_14k_v2_image_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627"
+genmanip_sys2_14k_v2_action_plan = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_action_plan_rule+llm_1obj_action_plan_gpt4o-mini.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+genmanip_sys2_14k_v2_grounding_rule_coco = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_grounding_rule_coco_en_reftype_jsontype_.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+genmanip_sys2_14k_v2_img_caption_rule = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_img_caption_rule_img_cap_.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+genmanip_sys2_14k_v2_obj_caption_rule = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_obj_caption_rule_obj_cap_.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_attr_gpt4o-mini.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_nearby_gpt4o-mini.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic = {
+    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_senmatic_gpt4o-mini.jsonl",
+    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
+}
+data_dict.update({
+    "genmanip_sys2_14k_v2_action_plan": genmanip_sys2_14k_v2_action_plan,
+    "genmanip_sys2_14k_v2_grounding_rule_coco": genmanip_sys2_14k_v2_grounding_rule_coco,
+    "genmanip_sys2_14k_v2_img_caption_rule": genmanip_sys2_14k_v2_img_caption_rule,
+    "genmanip_sys2_14k_v2_obj_caption_rule": genmanip_sys2_14k_v2_obj_caption_rule,
+    "genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr": genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr,
+    "genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby": genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby,
+    "genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic": genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic,
 })
 if __name__ == "__main__":
     dataset_names = ["cambrian_737k"]

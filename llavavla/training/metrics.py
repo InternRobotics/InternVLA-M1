@@ -413,8 +413,23 @@ def only_main_process(func):
         return func(*args, **kwargs)
     return wrapper
 
-def euclidean_distance(predicted: np.ndarray, ground_truth: np.ndarray) -> float:
-    return np.linalg.norm(predicted - ground_truth)
+
+
+from PIL import Image
+def resize_images(images, target_size=(224, 224)):
+    """
+    递归调整嵌套列表中的所有图像大小。
+    
+    :param images: 嵌套的图像列表或单个图像。
+    :param target_size: 调整后的目标大小 (width, height)。
+    :return: 调整大小后的图像列表，保持原始嵌套结构。
+    """
+    if isinstance(images, Image.Image):  # 如果是单个 PIL 图像
+        return images.resize(target_size)
+    elif isinstance(images, list):  # 如果是列表，递归处理每个元素
+        return [resize_images(img, target_size) for img in images]
+    else:
+        raise ValueError("Unsupported image type or structure.")
 
 import torch.distributed as dist
 
@@ -543,45 +558,22 @@ class TrainerUtils:
         # 使用 accelerator.prepare 方法包装组件
         prepared_components = accelerator.prepare(*components)
         return prepared_components
-    
-# 执行评估步骤
-    def eval_model(self, eval_dataset, metric_fn=euclidean_distance) -> float:
-        """
-        Evaluate the model on the given dataset using the specified metric function.
+    @staticmethod
+    def euclidean_distance(predicted: np.ndarray, ground_truth: np.ndarray) -> float:
+        return np.linalg.norm(predicted - ground_truth)
 
-        :param eval_dataset: List of evaluation samples, each containing 'image', 'instruction', and 'action'.
-        :param metric_fn: Function to compute the distance between predicted and ground truth actions.
-        :return: Average metric score across the evaluation dataset.
-        """
-
-        total_score = 0.0 # 想办法看看证明变成batch 推理
-        num_samples = len(eval_dataset)
-        import tqdm  
-        for index in range(num_samples):
-            sample = eval_dataset[index]
-            
-            image = sample["image"]
-            instruction = sample["instruction"]
-            ground_truth_action = sample["action"]
-
-            # Predict actions using the model
-            _, normalized_actions = self.model.predict_action_withCoT(
-                image=image,
-                instruction=instruction,
-                solution=sample.get("solution", None),
-                unnorm_key=sample.get("unnorm_key", None)
-            )
-
-            # Compute the metric score
-            score = metric_fn(normalized_actions, ground_truth_action)
-            total_score += score
-
-        average_score = total_score / num_samples
-
-        return average_score
-
-
-
+    @staticmethod
+    def _reset_dataloader(dataloader, epoch_counter):
+        """安全重置dataloader迭代器"""
+        # 1. 更新epoch计数
+        epoch_counter += 1
+        
+        # 2. 设置新epoch（分布式核心）
+        if hasattr(dataloader, "sampler") and callable(getattr(dataloader.sampler, "set_epoch", None)):
+            dataloader.sampler.set_epoch(epoch_counter)
+        
+        # 3. 创建新迭代器
+        return iter(dataloader), epoch_counter
 import os
 
 def is_main_process(): # TODO 要变成一个修饰函数， 但是是否可以像 if 你要修饰？ 就是修饰每个逻辑？

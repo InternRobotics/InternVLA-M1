@@ -4,6 +4,7 @@ datasets.py
 Lightweight PyTorch Dataset Definition for wrapping RLDS TFDS Pipeline; just defines transform from RLDS default
 format to OpenVLA, IterableDataset shim.
 """
+import time
 
 import os, json, pickle, bisect, logging
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 from llavavla.dataloader.lmdb.data_utils import get_lmdb_dataset_statistics, save_dataset_statistics, NormalizationType
 
 from llavavla.dataloader.lmdb.grounding_func import *
@@ -127,15 +128,15 @@ class LMDBDataset(Dataset):
     def __len__(self) -> int:
         return self.length
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem(self, idx: int) -> Dict[str, Any]:
         """Get sequence from dataset at given index."""
         episode_id = bisect.bisect_right(self.accumulated_num_step, idx)
         if episode_id - 1 >= 0:
             start_id = idx - self.accumulated_num_step[episode_id - 1]
         else:
             start_id = idx
-            
-        episode_name = self.episode_list[episode_id]
+        # episode_id=  7855, idx = 1264927; idx: 2224297 seed 可以影响， 且可以固定; # idx:839737 分布式可以影响， len(self)=2576621； 
+        episode_name = self.episode_list[episode_id] # id=0, '2025-06-29_08_30_56_142693' 
 
         # Open LMDB environment
         lmdb_env = lmdb.open(
@@ -289,18 +290,51 @@ class LMDBDataset(Dataset):
                     solution=solution,
                     dataset_name=self.dataset_name)
 
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        """Get sequence from dataset at given index with retry logic."""
+        num_base_retries = 10
+        num_final_retries = 30
+
+        # Try other samples, in case it is a file corruption issue
+        for attempt_idx in range(num_base_retries):
+            try:
+                
+                next_index = random.randint(0, len(self) - 1)  # Select a random index
+                sample = self.__getitem(next_index)
+                return sample
+            except Exception as e:
+                logger.warning(f"[Try other #{attempt_idx}] Failed to fetch sample {next_index}. Exception: {e}")
+                pass
+
+        # Final attempt: fetch a random sample
+        try:
+            random_idx = random.randint(0, len(self) - 1)  # Select a random index
+            sample = self.__getitem(random_idx)
+            logger.warning(f"Returning random sample {random_idx} due to repeated failures for sample {idx}.")
+            return sample
+        except Exception as e:
+            logger.error(f"Final attempt failed to fetch sample {idx}. Exception: {e}")
+            raise e
+        
     def __iter__(self):
         """Iterate through the dataset sequentially, retrying with random indices on error."""
-        for idx in range(len(self)):
-            try:
-                yield self.__getitem__(idx)
-            except Exception as e:
-                logger.warning(f"Error at index {idx}: {e}. Retrying with a random index.")
-                random_idx = random.randint(0, len(self) - 1)
+        "DataLoaderShard 默认不会调用底层数据集的 __iter__ 方法，而是直接通过 __getitem__ 获取数据。"
+        
+        # indices = list(range(len(self)))  # 创建所有样本的索引列表
+        # random.shuffle(indices)  # 打乱索引顺序 
+        # # TODO check 为什么 DataLoaderShard 没有走这个路径 --> 我可以默认分布式已经处理了这个么？ --> check
+        
+        for idx in range(len(self)): # 感觉这里没有被效用？
+            attempt = 0  # 初始化尝试计数
+            while attempt < 10:  # 最多尝试 10 次
                 try:
-                    yield self.__getitem__(random_idx)
+                    yield self.__getitem__(idx)
+                    break  # 如果成功，跳出循环
                 except Exception as e:
-                    logger.error(f"Error at random index {random_idx}: {e}. Skipping.")
+                    logger.warning(f"Error at index {idx}, attempt {attempt + 1}: {e}. Retrying with a random index.")
+                    random_idx = random.randint(0, len(self) - 1)
+                    idx = random_idx
+                attempt += 1  # 增加尝试计数
 
     # TODO 这个函数 需要重构， 不能和数据集耦合
     def load_robot_action(self, arm_action, gripper_action):
@@ -518,10 +552,10 @@ if __name__ == "__main__":
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
 
 
-    # import debugpy 
-    # debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
-    # print("Waiting for debugger to attach 10092...")
-    # debugpy.wait_for_client()  # 等待 VS Code 附加
+    import debugpy 
+    debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
+    print("Waiting for debugger to attach 10092...")
+    debugpy.wait_for_client()  # 等待 VS Code 附加
 
     # # test  get_vla_dataset
 
@@ -547,10 +581,17 @@ if __name__ == "__main__":
     # 方法2: 使用迭代器
     dataset_iter = iter(vla_dataset)
     count = 0
-    while True and count < 200 :
+    while True and count < 20 :
         try:
             batch_samples = next(dataset_iter)
             count += 1
             print(batch_samples['action'])
         except StopIteration:
+            break
+
+    count = 0
+    for batch_samples in vla_dataset:
+        print(batch_samples['action'])
+        count += 1
+        if count > 20:
             break

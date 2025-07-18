@@ -277,41 +277,54 @@ def collate_fn(batch):
 
     return batch # 我们宁愿返回一个 list_of_dict for 动态的 inputs
 
+from omegaconf import OmegaConf
 if __name__ == "__main__":
     pass
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
     # test  get_vla_dataset
-    json_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_32gpus_lr_5e-5_qformer_0_6/config.json"
-    # cfg = {}  
-    import json
-    with open(json_path, "r") as f:
-        cfg = json.load(f)
-    
-    # simplespace
-    from llavavla.model.framework.qwenact import dict_to_namespace
-    cfg = dict_to_namespace(cfg)
+    import debugpy
+    debugpy.listen(("0.0.0.0", 10092))
+    print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+    debugpy.wait_for_client()
+
+    # Load YAML config & Convert CLI overrides to dotlist config
+    config_yaml = "./llavavla/conf/qwenvla_rlds_real.yaml"
+    cfg = OmegaConf.load(config_yaml)
+
     from torch.utils.data import DataLoader
     # from 
     
-    vla_dataset = get_vla_dataset( # 拒绝任何内部转换
-        cfg.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
-        cfg.vla.data_mix,
-        default_image_resolution=(3, 224, 224),
-        shuffle_buffer_size=cfg.vla.shuffle_buffer_size,
-        image_aug=cfg.image_aug,
-        future_action_window_size=cfg.future_action_window_size,
-        past_action_window_size=cfg.past_action_window_size,
-        load_all_data_for_training=cfg.load_all_data_for_training,
+    
+    vla_dataset = get_vla_dataset( # 这个写在dataload.py 内部
+        cfg.datasets.vla_data.data_root_dir,
+        cfg.datasets.vla_data.data_mix,
+        default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
+        shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
+        image_aug=cfg.datasets.vla_data.image_aug,
+        future_action_window_size=cfg.framework.action_model.future_action_window_size,
+        past_action_window_size=cfg.framework.action_model.past_action_window_size,
+        load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
     )
-
 
     run_dir = "./"
     # save_dataset_statistics(vla_dataset.dataset_statistics, run_dir)
     
+    # train_dataloader = DataLoader(
+    #     vla_dataset,
+    #     batch_size=cfg.vla.per_device_batch_size,
+    #     collate_fn=collate_fn,
+    # )
+        # VLA 数据加载器
     train_dataloader = DataLoader(
         vla_dataset,
-        batch_size=cfg.vla.per_device_batch_size,
+        batch_size=cfg.datasets.vla_data.per_device_batch_size,
         collate_fn=collate_fn,
+        # num_workers=8, # TODO uncheck feature?
     )
 
-    batch_samples = next(train_dataloader) #for debug
+    for batch in train_dataloader:
+        print(batch)
+        break
+    
+    batch_samples = next(iter(train_dataloader)) #for debug
+

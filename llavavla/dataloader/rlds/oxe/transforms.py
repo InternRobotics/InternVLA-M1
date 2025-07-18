@@ -911,4 +911,5 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     ### custom Finetuning datasets
     "custom_finetuning": identity_transform,
     "gen_manip_tiny": real_dataset_transform,
+    "kitchen_debug": real_dataset_transform,
 }

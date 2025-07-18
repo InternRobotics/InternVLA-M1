@@ -194,8 +194,11 @@ OXE_NAMED_MIXTURES: Dict[str, List[Tuple[str, float]]] = {
     ],
 
     # === Custom Finetuning Datasets ===
+    # "custom_finetuning": [
+    #     ("gen_manip_tiny", 1.0),
+    # ],
     "custom_finetuning": [
-        ("gen_manip_tiny", 1.0),
+        ("kitchen_debug", 1.0),
     ],
 }
 # fmt: on

@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Tuple
 from torch.utils.data import Dataset, DataLoader
-
+import numpy as np
 # Third-Party Libraries
 import torch
 import torch.distributed as dist
@@ -93,7 +93,8 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     vla_train_dataloader = DataLoader(
         vla_dataset,
         batch_size=cfg.datasets.vla_data.per_device_batch_size,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        # num_workers=64, # TODO uncheck feature? --> 好像读取数据这个没有生效？
     )
 
     # 保存数据集统计信息
@@ -160,7 +161,9 @@ class VLATrainer(TrainerUtils):
         
         
     def prepare_training(self):
-        
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        seed = self.config.seed + rank if hasattr(self.config, 'seed') else rank + 3047
+        set_seed(seed)
 
         # 加载预训练权重
         if (hasattr(self.config.trainer, 'pretrained_checkpoint') and self.config.trainer.pretrained_checkpoint):
@@ -284,16 +287,26 @@ class VLATrainer(TrainerUtils):
         """获取下一批数据（自动处理数据循环）"""
         try:
             batch_vla = next(self.vla_iter)
-        except StopIteration:
-            self.vla_iter = iter(self.vla_train_dataloader)
+        except StopIteration:            # 需要改变trainer 的seed --> 其实不要固定seed 就不会有这些问题 # TODO 未来要看怎么样自动处理这些事情。
+            # 先判断是否有这个 self.vla_epoch_count
+            if not hasattr(self, 'vla_epoch_count'):
+                self.vla_epoch_count = 0
+            # TODO 需要检验是否 生效
+            self.vla_iter, self.vla_epoch_count = TrainerUtils._reset_dataloader(
+                self.vla_train_dataloader, self.vla_epoch_count
+            )
             batch_vla = next(self.vla_iter)
         
         # try:
         #     batch_vlm = next(self.vlm_iter) # TODO 首尾循环应该是dataset 自己的功能， 这里是考虑到很多人的dataset 是没有这个功能的
-        # except StopIteration:
-        #     self.vlm_iter = iter(self.vlm_train_dataloader)
+        # except StopIteration: 
+        #     if not hasattr(self, 'vlm_epoch_count'):
+        #         self.vlm_epoch_count = 0
+        #     self.vlm_iter, self.vlm_epoch_count = self._reset_dataloader(
+        #         self.vlm_train_dataloader, self.vlm_epoch_count
+        #     )
         #     batch_vlm = next(self.vlm_iter)
-        
+
         return batch_vla #, batch_vlm
     
     def train(self):
@@ -323,9 +336,14 @@ class VLATrainer(TrainerUtils):
                 progress_bar.update(1)
                 self.completed_steps += 1
             
+            # 评估模型
+            step_metrics = self.eval_action_model(step_metrics)
+
             # 记录指标
             self._log_metrics(step_metrics)
             
+            
+
             # 保存检查点
             if self.completed_steps % self.config.trainer.save_interval == 0 and self.completed_steps > 0:
                 self._save_checkpoint()
@@ -339,6 +357,50 @@ class VLATrainer(TrainerUtils):
         # 训练结束处理
         self._finalize_training()
     
+        # 执行评估步骤
+    def eval_action_model(self, step_metrics:dict = None) -> float:
+        """
+        Evaluate the model on the given dataset using the specified metric function.
+
+        :param eval_dataset: List of evaluation samples, each containing 'image', 'instruction', and 'action'.
+        :param metric_fn: Function to compute the distance between predicted and ground truth actions.
+        :return: Average metric score across the evaluation dataset.
+        """
+        
+        if self.accelerator.is_main_process and self.completed_steps % self.config.trainer.eval_interval == 0:
+            
+            examples = self._get_next_batch()
+            
+            score = 0.0 # 想办法看看证明变成batch 推理
+            num_samples = len(examples)
+
+            # @Jinhui TBD TODO 
+            images = [example["image"] for example in examples]  #  TODO check 是什么
+            instructions = [example["lang"] for example in examples]  # [B, str]
+            actions = [example["action"] for example in examples] #label
+
+            # Predict actions using the model
+            predicted_solutions, normalized_actions = self.model.predict_action_withCoT( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
+                images=images,
+                instructions=instructions,
+                use_ddim=True,
+                num_ddim_steps=20)
+            
+
+
+            # 提前转换 actions 为 numpy.ndarray
+            actions = np.array(actions)  # 将 actions 转换为 numpy.ndarray
+            # B, Chunk, dim = actions.shape
+            num_pots = np.prod(actions.shape)
+            # Compute the metric score
+            score = TrainerUtils.euclidean_distance(normalized_actions, actions)
+            average_score = score / num_pots
+            step_metrics["mse_score"] = average_score
+
+        # dist.barrier()  # 确保所有进程同步 TODO 看看是否需要让其他进程等
+        return step_metrics
+
+
     def _log_training_config(self):
         """记录训练配置"""
         if self.accelerator.is_main_process:
@@ -357,9 +419,9 @@ class VLATrainer(TrainerUtils):
             self.optimizer.zero_grad()
             
             # VLA任务前向传播
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_vlm_loss = self.model.forward(batch_vla)
-                total_loss = action_loss
+                total_loss = action_loss + action_vlm_loss
             
             # VLA反向传播
             self.accelerator.backward(total_loss)
@@ -415,7 +477,7 @@ def main(cfg) -> None:
     vla = build_model_framework(cfg)
     # 准备数据
     vla_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
-    # vla.norm_stats = 
+    vla.norm_stats = vla_train_dataloader.dataset_statistics
     # 设置优化器和调度器
     optimizer, lr_scheduler = setup_optimizer_and_scheduler(model=vla, cfg=cfg)
     

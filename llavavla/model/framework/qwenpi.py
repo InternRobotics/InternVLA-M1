@@ -39,6 +39,8 @@ from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_module
 from llavavla.model.vlm.QWen2_5 import get_qwen2_5_interface
 from llavavla.model.projector.QFormer import get_layerwise_qformer
 from llavavla.model.action_model.action_model import get_action_model 
+from llavavla.training.metrics import resize_images
+
 
 class QwenQFormerDiT(nn.Module):
     def __init__(
@@ -93,7 +95,7 @@ class QwenQFormerDiT(nn.Module):
 
         # if self.config.is_debug:
 
-        #     self.predict_action_withCoT(image=images[0], instruction=instructions[0])
+        #     self.predict_action_withCoT(images=images, instructions=instructions)
             
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
         
@@ -245,11 +247,11 @@ class QwenQFormerDiT(nn.Module):
             raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
         return raw_actions, normalized_actions # actions, normalized_actions #TODO 得想清楚， Un-normalize Actions  到底是谁控制的。 我觉得必须是模型， 因为减少相对变化， 扁平管理。 但是要单独写成函数
 
-    # @torch.inference_mode() # @Jinhui DEBUG 临时取消
-    def predict_action_withCoT( # 
-        self, image: Union[Image, List[Image]],
-        instruction: str, 
-        solution: Union[Dict, List[Dict]] = None, # @Jinhui TODO 这里是为了兼容旧的格式, 可以用于出中间表征的评测？
+    @torch.inference_mode() # @Jinhui DEBUG 临时取消
+    def predict_action_withCoT( # TODO 和 predict action 是有差别了，之后要去解那边为情况# 那边暂时是for windox
+        self, images: Union[Image, List[Image]], # 变成可以 batch infer
+        instructions: List[str], 
+        solutions: Union[Dict, List[Dict]] = None, # @Jinhui TODO 这里是为了兼容旧的格式, 可以用于出中间表征的评测？
         unnorm_key: Optional[str] = None, 
         cfg_scale: float = 1.5, 
         use_ddim: bool = False,
@@ -262,14 +264,11 @@ class QwenQFormerDiT(nn.Module):
         """
 
         # @之后写入模型内部， 变成私有化方法
-        if not isinstance(image, list):
-            imgs = [image.resize((224, 224))]  # list of PIL RGB for one instruction
-        else:
-            imgs = [img.resize((224, 224)) for img in image]
+        batch_images = resize_images(images, target_size=(224, 224))  # list of PIL RGB for one instruction
         
-        lang = instruction.lower() 
-
-        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[imgs], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
+        # instructions = [instruction.lower()  for instruction in instructions] # @Jinhui TODO 这里是为了兼容旧的格式， 需要考虑是否要将lang 变成 list
+        
+        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
         qwen_inputs = inferface_inputs
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
 
@@ -291,9 +290,9 @@ class QwenQFormerDiT(nn.Module):
             qwenvl_outputs.sequences, 
             skip_special_tokens=True 
             )
-            print(decoded_sequences[0])
+            # print(decoded_sequences[0])
 
-            hidden_states = qwenvl_outputs.hidden_states  # [num_layers, batch_size, 1 + new token, hidden_dim]
+            hidden_states = qwenvl_outputs.hidden_states  # [1 + new token, num_layers, batch_size, attention token, hidden_dim]
 
             if len(hidden_states) == 1: # 表明没有新的token 残生
                 # 如果生成的 token 为 0，仅保留 prefix_hidden_states
@@ -305,14 +304,14 @@ class QwenQFormerDiT(nn.Module):
                 prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
                 prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
 
-                # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, 1, hidden_dim]
+                # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, B, 1, hidden_dim]
                 new_hidden_states = torch.stack([
-                    torch.stack(layer_hiddens, dim=0) 
+                    torch.stack(layer_hiddens, dim=0)
                     for layer_hiddens in hidden_states[1:]
-                ], dim=0)
+                ], dim=0) # 
 
                 # Step 2: Remove singleton dimension and transpose to [num_layers, B, num_new_tokens, hidden_dim]
-                new_hidden_states = new_hidden_states.squeeze(2).permute(1, 2, 0, 3)  # [num_layers, B, num_new_tokens, hidden_dim]
+                new_hidden_states = new_hidden_states.squeeze(3).permute(1, 2, 0, 3)  # [num_layers, B, num_new_tokens, hidden_dim]
 
                 # Concatenate prefix and new tokens
                 combined_hidden_states = torch.cat([
@@ -378,10 +377,12 @@ class QwenQFormerDiT(nn.Module):
                                                                         )
             if using_cfg:
                 samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-            normalized_actions = samples[0].cpu().numpy()
+            normalized_actions = samples.cpu().numpy()
             # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
-            raw_actions = self.unnormalize_actions(normalized_actions, self.norm_stats) # TODO 这里应该是一个函数， 但是现在是放在模型里面， 需要考虑是否要放到 utils 里面    
-        return raw_actions, normalized_actions # TODO Debug with stats is dim=7
+            # unnorm_key = self.config.datasets.vla_data.data_mix
+            # raw_actions = self.unnormalize_actions(normalized_actions, self.norm_stats[unnorm_key]) # TODO 这里应该是一个函数， 但是现在是放在模型里面， 不应该，这个是和具体函数绑定的   
+            # TODO unnormalize_actions 会因为数据集不一样而不一样， 这个动态不应该是 framework应该控制的？ 但是 framework 有必须要知道自己的 是什么action？
+        return decoded_sequences, normalized_actions # B, action_chunk, action_dim
     
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:

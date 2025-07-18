@@ -911,4 +911,6 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     ### custom Finetuning datasets
     "custom_finetuning": identity_transform,
     "gen_manip_tiny": real_dataset_transform,
+    "kitchen_debug": real_dataset_transform, # TODO RLDS 的数据集绑定太多了
+    
 }

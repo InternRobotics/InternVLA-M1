@@ -1,7 +1,7 @@
 # 参数要求： 写了可以不用，但是用了就一定不能错
 run_id: qwenact
 run_root_dir: results/Checkpoints
-seed: 42
+seed: 3407
 trackers: [jsonl, wandb]
 wandb_entity: jinhuiye
 wandb_project: llavavla
@@ -45,18 +45,6 @@ datasets:
     model_type: qwen2.5vl
     per_device_batch_size: 4
 
-  vla_data_bench:
-    dataset_py: lmdb_datasets
-    data_root_dir: /mnt/petrelfs/share/yejinhui/Datasets/
-    data_mix: banana_plate_4035_none-wot-wow-woh-0529
-    data_mix_info: Banana/banana_plate_4035_none-wot-wow-woh-0529
-    action_type: delta_qpos
-    default_image_resolution: [3, 224, 224]
-    shuffle_buffer_size: 250000
-    image_aug: true
-    per_device_batch_size: 16
-    load_all_data_for_training: true # 考虑如何启用 eval set
-
   vla_data:
     dataset_py: lmdb_datasets
     data_root_dir: /mnt/petrelfs/share/yejinhui/Datasets/
@@ -76,10 +64,11 @@ trainer:
   max_train_steps: 100000
   num_warmup_steps: 5000
   save_interval: 5000
+  eval_interval: 100
   learning_rate:
     base: 2.5e-05
-    # qwen_vl_interface: 1.0e-05
-    # action_model: 1.0e-04
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
   lr_scheduler_type: cosine_with_min_lr
   scheduler_specific_kwargs:
     min_lr: 2.0e-05

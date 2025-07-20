@@ -163,3 +163,8 @@ eval/*/*.png
 scripts
 bar
 eval/MMBench/台架.jpeg
+eval/MMBench/采购.jpeg
+eval/MMBench/超市.jpeg
+
+eval/MMBench/play_ground_bbox.ipynb
+eval/MMBench/spatial_understanding.ipynb

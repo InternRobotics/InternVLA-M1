@@ -296,8 +296,8 @@ class LMDBDataset(Dataset):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
 
         # @DEBUG
-        image = [primary_data, wrist_data]
-        image = [primary_data]
+        image = [primary_data, wrist_data] # TODO 需要变成cfg控制
+        # image = [primary_data]
         # TODO make here more configurable
         # solution = None
         return dict(action=collected_action,image=image,lang=language_instruction, 

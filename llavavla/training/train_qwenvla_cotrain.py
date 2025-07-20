@@ -426,13 +426,14 @@ class VLAMTrainer(TrainerUtils):
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_vlm_loss = self.model.forward(batch_vla)
                 total_loss = action_loss + action_vlm_loss #@DEBUG
+            self.accelerator.backward(total_loss)
             
             # VLM任务前向传播
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 vlm_output = self.model.qwen_vl_interface(**batch_vlm)
                 vlm_loss = vlm_output.loss * self.config.trainer.loss_scale.vlm
             
-            vis_grad_angle = 1 # @Jinhui DEBUG
+            vis_grad_angle = 0 # @Jinhui @DEBUG
             if self.accelerator.is_main_process and vis_grad_angle:
                 """执行单个训练步骤，内置 PCGrad 和梯度夹角统计"""
                 # 拿到所有 qwen_vl_interface 的参数列表
@@ -454,8 +455,8 @@ class VLAMTrainer(TrainerUtils):
                 # 3) PCGrad 投影
                 # grads_vlm = TrainerUtils.pcgrad_project(grads_action, grads_vlm)
             # VLA反向传播
-            self.accelerator.backward(total_loss)
-            # VLM反向传播 @DEBUG
+            # self.accelerator.backward(total_loss)
+            # # VLM反向传播 @DEBUG
             self.accelerator.backward(vlm_loss)
             
             pass

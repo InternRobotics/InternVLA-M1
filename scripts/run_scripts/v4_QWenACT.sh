@@ -40,32 +40,20 @@ export system2_datasets="${datasets_vlm},${datasets_grounding}"
   # --vla.freeze_modules qwen_vl_interface.model.model.visual \
 
 accelerate launch \
-  --config_file scripts/run_scripts/deepspeed_zero2_v2.yaml \
+  --config_file llavavla/conf/deepseeds/deepspeed_zero2.yaml \
   --num_processes 8 \
-  llavavla/training/train_qwenvla_cotrain.py \
+  llavavla/training/train_qwenvla.py \
   --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
-  --vla.type prism-dinosiglip-224px+oxe+diffusion \
-  --vla.base_vlm ${MODEL_PATH} \
-  --vlm_data.dataset_use ${system2_datasets} \
-  --vla.per_device_batch_size 16 \
-  --vlm_data.per_device_batch_size 4 \
-  --trainer.learning_rate.base 5e-5 \
-  --vla.qformer_start_layer 36 \
-  --vla.qformer_end_layer 37 \
-  --vlm_data.min_pixels 784 \
-  --vlm_data.max_pixels 50176 \
-  --vla.max_steps 10000 \
+  --framework.qwenvl.base_vlm ${MODEL_PATH} \
+  --datasets.vlm_data.dataset_use ${system2_datasets} \
+  --datasets.vla_data.per_device_batch_size 16 \
+  --datasets.vlm_data.per_device_batch_size 4 \
+  --trainer.max_train_steps 10000 \
+  --trainer.save_interval 1000 \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \
-  --image_aug True \
-  --wandb_project llavavla \
+  --wandb_project llavavla3 \
   --wandb_entity jinhuiye \
-  --save_interval 500 \
-  --repeated_diffusion_steps 8 \
-  --future_action_window_size 15 \
-  --action_model_type DiT-B \
-  --is_resume False \
-  # --is_debug True
 
 
 

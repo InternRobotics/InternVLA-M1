@@ -650,7 +650,7 @@ data_dict.update({
 # 正式版本 system2 from @kun
 # 增加这些数据集到 data_dict
 
-genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056"
+genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056_224"
 genmanip_sys2_14k_v2_image_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627"
 genmanip_sys2_14k_v2_action_plan = {
     "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_action_plan_rule+llm_1obj_action_plan_gpt4o-mini.jsonl",

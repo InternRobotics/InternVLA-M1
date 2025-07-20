@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 from typing import Tuple
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import numpy as np
 # Third-Party Libraries
 import torch
@@ -128,8 +128,6 @@ def setup_optimizer_and_scheduler(
         weight_decay=cfg.trainer.optimizer.weight_decay,
         eps=cfg.trainer.optimizer.eps,
     )
-
-    
     
     # 打印优化器组信息
     if dist.is_initialized() and dist.get_rank() == 0:
@@ -419,6 +417,7 @@ class VLAMTrainer(TrainerUtils):
     
     def _train_step(self, batch_vla, batch_vlm):
         """执行单个训练步骤"""
+        log_dict = {}
         # TODO: 实现梯度累积 @Yioutpi
         with self.accelerator.accumulate(self.model):
             self.optimizer.zero_grad()
@@ -426,21 +425,42 @@ class VLAMTrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_vlm_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_vlm_loss
-            
-            # VLA反向传播
-            self.accelerator.backward(total_loss)
+                total_loss = action_loss + action_vlm_loss #@DEBUG
             
             # VLM任务前向传播
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 vlm_output = self.model.qwen_vl_interface(**batch_vlm)
                 vlm_loss = vlm_output.loss * self.config.trainer.loss_scale.vlm
             
-            # VLM反向传播
+            vis_grad_angle = 1 # @Jinhui DEBUG
+            if self.accelerator.is_main_process and vis_grad_angle:
+                """执行单个训练步骤，内置 PCGrad 和梯度夹角统计"""
+                # 拿到所有 qwen_vl_interface 的参数列表
+                # interface_params = list(self.model.qwen_vl_interface.model.model.visual.patch_embed.parameters())
+                interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[-1].mlp.down_proj.parameters())
+                # interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[0].mlp.down_proj.parameters())
+                # interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[-1].self_attn.v_proj.parameters())
+                # interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[0].self_attn.v_proj.parameters())
+                
+                # 1) 先分别用 torch.autograd.grad 得到 grads_action, grads_vlm
+                grads_action = torch.autograd.grad(action_loss, interface_params, retain_graph=True)
+                # grads_vlm    = torch.autograd.grad(action_vlm_loss,    interface_params, retain_graph=True)
+                grads_vlm    = torch.autograd.grad(vlm_loss,    interface_params, retain_graph=True)
+
+                # 2) 统计夹角
+                mean_angle_deg, angle_variance = TrainerUtils.compute_grad_angle_with_stats(grads_action, grads_vlm)
+                log_dict["vl_action_grad_angle"] = mean_angle_deg
+                log_dict["angle_variance"] = angle_variance
+                # 3) PCGrad 投影
+                # grads_vlm = TrainerUtils.pcgrad_project(grads_action, grads_vlm)
+            # VLA反向传播
+            self.accelerator.backward(total_loss)
+            # VLM反向传播 @DEBUG
             self.accelerator.backward(vlm_loss)
             
             pass
-            dist.barrier()
+
+            # dist.barrier() #@DEBUG
             # 梯度裁剪
             if self.config.trainer.gradient_clipping is not None:
                 self.accelerator.clip_grad_norm_(
@@ -451,12 +471,13 @@ class VLAMTrainer(TrainerUtils):
             # 优化器步骤
             self.optimizer.step()
             self.lr_scheduler.step()
-        
-        return {
+
+            log_dict.update({
             "action_dit_loss": action_loss.item(),
             "action_vlm_loss": action_vlm_loss.item(),
             "vlm_loss": vlm_loss.item(),
-        }
+            })
+        return log_dict
     
     def _finalize_training(self):
         """训练结束处理"""
@@ -480,6 +501,7 @@ def main(cfg) -> None:
 
     # 创建输出目录并保存配置
     output_dir = setup_directories(cfg=cfg)
+    
     # 构建模型
     vla = build_model_framework(cfg)
     # 准备数据

@@ -83,9 +83,9 @@ class QwenQFormerDiT(nn.Module):
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         # @Jinhui TBD TODO 
-        images = [example["image"] for example in examples]  #  TODO check 是什么
+        images = [example["image"] for example in examples]  #  [B， PLT]
         instructions = [example["lang"] for example in examples]  # [B, str]
-        actions = [example["action"] for example in examples] #label
+        actions = [example["action"] for example in examples] #label [B， len, 7]
         if "solution" in examples[0]:  # @Jinhui TODO 这里是为了兼容旧的格式
             solutions = [example["solution"] for example in examples]  # [B, dict]
         else: #  还有if else 和模型可阅读性的 trade off
@@ -436,7 +436,7 @@ class QwenQFormerDiT(nn.Module):
         overwatch.info(f"Loading model weights from `{pretrained_checkpoint}`")
         model_keys = set(qwenQFormerACT.state_dict().keys())
         checkpoint_keys = set(model_state_dict.keys())
-
+        
         # ✅ 1. 加载匹配的权重
         for key in checkpoint_keys:
             if key in model_keys:
@@ -452,7 +452,10 @@ class QwenQFormerDiT(nn.Module):
         missing_keys = model_keys - checkpoint_keys # TODO 这里之后要考虑 nontrainable params --> 我觉得没必要省存储空间
         for key in sorted(missing_keys):
                 overwatch.warning(f"⚠️ Model expects key '{key}' but it's missing in checkpoint.")
-                
+        miss_keys = list(missing_keys) + list(checkpoint_keys - model_keys)
+
+        # **确保模型在 GPU 上**
+        qwenQFormerACT = qwenQFormerACT.to("cuda") # TODO 其实不应该是这里管理to GPU的
         return qwenQFormerACT
     
     @staticmethod

@@ -76,9 +76,11 @@ class LMDBDataset(Dataset):
         self.normalization_type = normalization_type
 
         # Load dataset info
+        # 检查 JSON 文件是否存在
+        json_file_path = os.path.join(data_dir, "data_info", self.dataset_info_name + ".json")
         logger.info(f"loading dataset at {data_dir}/{dataset_name}")
-        assert os.path.exists(f"{data_dir}/data_info/{self.dataset_info_name}.json")
-        with open(f"{data_dir}/data_info/{self.dataset_info_name}.json", 'r') as f:
+        assert os.path.exists(json_file_path)
+        with open(json_file_path, 'r') as f:
             self.episode_info_list = json.load(f)
             self.episode_list = [f[0] for f in self.episode_info_list]
             self.num_step_per_episode = [f[1] - self.window_size for f in self.episode_info_list]
@@ -210,6 +212,13 @@ class LMDBDataset(Dataset):
             primary_data = cv2.imdecode(np.frombuffer(primary_data, np.uint8), cv2.IMREAD_COLOR)
             # convert to PIL Image
             primary_data = Image.fromarray(primary_data)
+
+            # get wrist data
+            wrist_data = pickle.loads(txn.get(wrist_index[start_id]))
+            wrist_data = cv2.imdecode(np.frombuffer(wrist_data, np.uint8), cv2.IMREAD_COLOR)
+            # convert to PIL Image
+            wrist_data = Image.fromarray(wrist_data)
+            wrist_data = wrist_data.resize((224, 224))
             
             # TODO mv to func
             all_trace_2d = pickle.loads(txn.get(b'observation/obs_camera/tcp_2d_trace'))
@@ -285,8 +294,13 @@ class LMDBDataset(Dataset):
         collected_action = []
         for a, g in zip(action, gripper):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
-        
-        return dict(action=collected_action,image=[primary_data],lang=language_instruction, 
+
+        # @DEBUG
+        image = [primary_data, wrist_data]
+        image = [primary_data]
+        # TODO make here more configurable
+        # solution = None
+        return dict(action=collected_action,image=image,lang=language_instruction, 
                     solution=solution,
                     dataset_name=self.dataset_name)
 
@@ -498,6 +512,8 @@ def get_lmdb_dataset(
     episodic: bool = False,
     normalization_type: NormalizationType = NormalizationType.BOUNDS_Q99,
     save_statistics_dir: str = None,
+    obs_list: Optional[List[str]] = None,
+    is_return_CoT: bool = False,
     **kwargs: Any,
 ) -> Tuple[Dataset]:
     """Initialize LMDB Dataset and optionally save statistics."""
@@ -517,6 +533,8 @@ def get_lmdb_dataset(
         batch_transform=batch_transform,
         normalization_type=normalization_type,
         save_statistics_dir=save_statistics_dir,
+        obs_list=obs_list,
+        is_return_CoT=is_return_CoT,
     )
 
     # Optionally save statistics to run directory
@@ -563,7 +581,6 @@ if __name__ == "__main__":
     config_yaml = "llavavla/conf/qwenvla_lmdb_genmanip.yaml"
     cfg = OmegaConf.load(config_yaml)
 
-    cfg = dict_to_namespace(cfg)
 
     vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换
         data_root_dir=cfg.datasets.vla_data.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式

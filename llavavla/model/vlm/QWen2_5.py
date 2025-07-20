@@ -44,11 +44,11 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         super().__init__()
         # QWen 原生模型
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_id,  
+            model_id,
             # attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
-            torch_dtype="auto", 
+            torch_dtype="auto",
             device_map="cuda",
-        ) 
+        )
         
         processor = AutoProcessor.from_pretrained(model_id) #TODO check 
         processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
@@ -62,7 +62,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
-        image_grid_thw: Optional[torch.FloatTensor] = None, 
+        image_grid_thw: Optional[torch.FloatTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
@@ -204,8 +204,9 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
             prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
             prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object" #--->
-            # prompt = f"{instruction}." # --> 感觉上这个prompt
+            
             prompt = f"Your the task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json"
+            # prompt = f"{instruction}." # --> 感觉上这个prompt #@DEBUG
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             if solutions is not None:

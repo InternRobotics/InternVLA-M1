@@ -1,6 +1,6 @@
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
 from qwen_vl_utils import process_vision_info
-from llavavla.model.framework.qwenact import QwenQFormerDiT
+from llavavla.model.framework.qwenpi import QwenQFormerDiT
 import os, torch
 
 
@@ -9,7 +9,8 @@ debugpy.listen(("0.0.0.0", 10092))
 print("🔍 Rank 0 waiting for debugger attach on port 10092...")
 debugpy.wait_for_client()
 
-saved_model_path = "/mnt/petrelfs/share/yejinhui/Models/Checkpoints/llavavla/0622_vlm_grounding_bridge_rt_1_vlr__alr_1e-4/checkpoints/steps_10000_pytorch_model.pt"
+saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0712_vla_v4_fixvit_vlma/checkpoints/steps_30000_pytorch_model.pt"
+saved_model_path = "/mnt/petrelfs/share/efm_p/wangfangjing/Checkpoints/0630_bench_v6_simple_6in1_16k_16gpus/checkpoints/steps_20000_pytorch_model.pt"
 
 qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
@@ -83,7 +84,7 @@ messages1 = [
     {
         "role": "user",
         "content": [
-            {"type": "text", "text": "1+1 等于多少?"},
+            {"type": "text", "text": "1000+1 * 10 等于多少?"},
         ],
     }
 ]

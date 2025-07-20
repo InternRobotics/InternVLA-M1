@@ -717,20 +717,20 @@ if __name__ == "__main__":
     # 
     import debugpy
     debugpy.listen(("0.0.0.0", 10092))
-    print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+    print("🔍 Rank 0 waiting for debugger attach on port 10092...")
     debugpy.wait_for_client()
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "llavavla/conf/qwenvla_cotrain_v2.yaml"
+    config_yaml = "./results/Checkpoints/0712_bbox_fixvit_debug/config.yaml"
     cfg = OmegaConf.load(config_yaml)
-    data_args = cfg.vlm_data
+    data_args = cfg.datasets.vlm_data
     image_processor = AutoProcessor.from_pretrained(
-        cfg.vla.base_vlm,
+        cfg.framework.qwenvl.base_vlm,
         ).image_processor
 
     #  @Jinhui TODO 后期要移除 和模型绑定的逻辑，直接用qwen_processor
     tokenizer = transformers.AutoTokenizer.from_pretrained( 
-        cfg.vla.base_vlm,
+        cfg.framework.qwenvl.base_vlm,
         model_max_length=data_args.model_max_length,
         padding_side="left",
         use_fast=False,
@@ -752,7 +752,7 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=cfg.vlm_data.per_device_batch_size,
+        batch_size=cfg.datasets.vlm_data.per_device_batch_size,
         collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
     ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
     batchs = iter(train_dataloader)
@@ -760,5 +760,9 @@ if __name__ == "__main__":
     # 跳过前 99 个 batch，获取第 100 个 batch
     from itertools import islice
     batch_samples = next(islice(batchs, 99, 100))
+    count = 0
+    while count < 100:
+        batch_samples = next(batchs) #for debug
+        count +=1
     pass
 

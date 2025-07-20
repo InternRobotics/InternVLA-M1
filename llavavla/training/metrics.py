@@ -9,6 +9,8 @@ import time
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Tuple, Union
+import re
+import json
 
 import jsonlines
 import numpy as np
@@ -414,7 +416,7 @@ def only_main_process(func):
     return wrapper
 
 
-
+from torchvision.ops import box_iou
 from PIL import Image
 def resize_images(images, target_size=(224, 224)):
     """
@@ -574,6 +576,172 @@ class TrainerUtils:
         
         # 3. 创建新迭代器
         return iter(dataloader), epoch_counter
+    
+    @staticmethod
+    def compute_grad_angle_with_stats(grads_a: list[torch.Tensor], grads_v: list[torch.Tensor]) -> Tuple[float, float]:
+        """
+        计算两组梯度向量的余弦夹角（度），并统计平均夹角和方差。
+        grads_a, grads_v: 与同一参数列表 interface_params 对应的梯度 Tensor 列表
+        返回:
+            mean_angle_deg: 平均夹角（度）
+            angle_variance: 夹角方差
+        """
+        angle_degs = []
+        
+        # TODO 怎么看这个夹角才合理？
+        # 分块计算每个梯度的夹角 grads_a[0].shape = 1280, 3, 14, 14
+        # 梯度太多不好看？
+        # grads_1 = grads_a[0][0]  # 形状为 [3, 14, 14]
+        # grads_2 = grads_v[0][0]
+        # grads_a = grads_1.view(-1, 3)  # 重塑为 [196, 3]
+        # grads_v = grads_2.view(-1, 3)
+
+        # lang linear
+        # reshape 为 14*14, 3
+        # layer
+        grads_action = grads_a[0]  # 形状为 [2048, 11008]
+        grads_action = grads_action[:32, :7] # 只取前7个元素, 避免高维空间cosim 失效
+        grads_vl = grads_v[0]  # 形状为 [2048, 11008]
+        grads_vl = grads_vl[:32, :7] # 只取前32个元素, 7 维度, 避免高维空间cosim 失效
+        # PCA 在看？FVD full rank
+        for g_a, g_v in zip(grads_action, grads_vl):
+            dot = torch.sum(g_a * g_v)
+            norm_a_sq = torch.sum(g_a * g_a)
+            norm_v_sq = torch.sum(g_v * g_v)
+
+            # 避免除零
+            norm_a = torch.sqrt(norm_a_sq + 1e-16)
+            norm_v = torch.sqrt(norm_v_sq + 1e-16)
+
+            cos_sim = (dot / (norm_a * norm_v)).clamp(-1.0, 1.0)
+            angle_rad = torch.acos(cos_sim)
+            angle_deg = angle_rad * (180.0 / torch.pi)
+
+            angle_degs.append(angle_deg.item())
+
+        # 计算平均夹角和方差
+        angle_degs_tensor = torch.tensor(angle_degs)
+        mean_angle_deg = torch.mean(angle_degs_tensor).item()
+        angle_variance = torch.sqrt(torch.var(angle_degs_tensor)).item()
+        # dist.barrier() # @DEBUG
+        return mean_angle_deg, angle_variance
+
+    @staticmethod
+    def pcgrad_project(grads_a: list[torch.Tensor],
+                    grads_v: list[torch.Tensor]
+                    ) -> list[torch.Tensor]:
+        """
+        对第二组梯度 grads_v 应用 PCGrad 投影，抑制与 grads_a 间的负迁移
+        如果两组梯度的点积 < 0，则：
+            grads_v <- grads_v - (dot / ||grads_a||^2) * grads_a
+        返回新的 grads_v 列表
+        """
+        # 先算 dot 和 ||grads_a||^2
+        dot, norm_a_sq = 0.0, 0.0
+        for g_a, g_v in zip(grads_a, grads_v):
+            dot       += torch.sum(g_a * g_v)
+            norm_a_sq += torch.sum(g_a * g_a)
+
+        if dot < 0:
+            coeff = dot / (norm_a_sq + 1e-6)
+            # 投影
+            grads_v = [g_v - coeff * g_a for g_a, g_v in zip(grads_a, grads_v)]
+
+        return grads_v
+
+    @staticmethod
+    def eval_qwenpi(qwenpi, dataloader, num_batches=20):  # TODO 这个方法解耦性不够好
+        """
+        评估 QwenQFormerDiT 模型，计算 IoU 和动作距离。
+        
+        Args:
+            qwenpi: QwenQFormerDiT 模型实例。
+            dataloader: 数据加载器。
+            num_batches: 评估的批次数量。
+        
+        Returns:
+            dict: 包含 IoU 和动作距离的评价结果。
+        """
+        iou_scores = []
+        action_distances = []
+        count = 0
+
+        dataset_iter = iter(dataloader)
+        while count < num_batches:
+            try:
+                batch_samples = next(dataset_iter)
+                count += 1
+            except StopIteration:
+                break
+
+            # 提取数据
+            images = [example["image"] for example in batch_samples]
+            instructions = [example["lang"] for example in batch_samples]
+            actions = [example["action"] for example in batch_samples]
+            solutions = [example["solution"] for example in batch_samples]
+
+            # 模型预测
+            predicted_solutions, normalized_actions = qwenpi.predict_action_withCoT(
+                images=images,
+                instructions=instructions,
+                use_ddim=False,
+                num_ddim_steps=20
+            )
+
+            # 提取并转换预测结果
+            parsed_solutions = []
+            for solution in predicted_solutions:
+                parsed_solution = TrainerUtils.extract_json_from_string(solution)
+                parsed_solutions.append(parsed_solution)
+
+            # 计算 IoU
+            for pred_dict, gt_dict in zip(parsed_solutions, solutions):
+                pred_pick_bbox = torch.tensor(pred_dict["pick"]["bbox_2d"], dtype=torch.float32).unsqueeze(0)
+                gt_pick_bbox = torch.tensor(gt_dict["pick"]["bbox_2d"], dtype=torch.float32).unsqueeze(0)
+                pred_place_bbox = torch.tensor(pred_dict["place"]["bbox_2d"], dtype=torch.float32).unsqueeze(0)
+                gt_place_bbox = torch.tensor(gt_dict["place"]["bbox_2d"], dtype=torch.float32).unsqueeze(0)
+
+                pick_iou = box_iou(pred_pick_bbox, gt_pick_bbox).item()
+                place_iou = box_iou(pred_place_bbox, gt_place_bbox).item()
+
+                iou_scores.append({"pick_iou": pick_iou, "place_iou": place_iou})
+
+            # 计算动作距离
+            actions = np.array(actions)  # 转换为 numpy 数组
+            num_pots = np.prod(actions.shape)  # B*len*dim
+            action_distance = TrainerUtils.euclidean_distance(normalized_actions, actions)
+            average_action_distance = action_distance / num_pots
+            action_distances.append(average_action_distance)
+
+        # 汇总结果
+        avg_action_distance = np.mean(action_distances)
+        return {
+            "iou_scores": iou_scores,
+            "average_action_distance": avg_action_distance
+        }
+
+    @staticmethod
+    def extract_json_from_string(input_string): # TODO 这个方法解耦性不够好
+        """
+        从字符串中提取有效的 JSON 部分并转换为字典。
+        
+        Args:
+            input_string (str): 包含多余字符的字符串。
+        
+        Returns:
+            dict: 提取并解析后的字典。
+        """
+        json_match = re.search(r"{.*}", input_string, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(0)
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"JSON 解码失败: {e}")
+                return None
+        else:
+            print("未找到有效的 JSON 部分")
+            return None
 import os
 
 def is_main_process(): # TODO 要变成一个修饰函数， 但是是否可以像 if 你要修饰？ 就是修饰每个逻辑？

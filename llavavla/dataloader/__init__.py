@@ -31,7 +31,7 @@ def save_dataset_statistics(dataset_statistics, run_dir):
 
 
 
-def build_dataloader(cfg):
+def build_dataloader(cfg): # TODO now here only is get dataset, we need mv dataloader to here
 
     if cfg.datasets.vla_data.dataset_py == "rlds_datasets":
         from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn

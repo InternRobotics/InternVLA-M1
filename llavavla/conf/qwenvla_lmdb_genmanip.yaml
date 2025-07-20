@@ -70,15 +70,15 @@ trainer:
   eval_interval: 100
   learning_rate:
     base: 2.5e-05
-    # qwen_vl_interface: 1.0e-05
-    # action_model: 1.0e-04
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
   lr_scheduler_type: cosine_with_min_lr
   scheduler_specific_kwargs:
     min_lr: 2.0e-05
   freeze_modules: ''
   loss_scale:
     vla: 1.0
-    vlm: 1.0 #@DEBUG
+    vlm: 0.1 #@DEBUG
   max_grad_norm: 1.0
   warmup_ratio: 0.1
   weight_decay: 0.0

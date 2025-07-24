@@ -504,8 +504,8 @@ def read_mode_config(pretrained_checkpoint):
 
         # Get paths for `config.json`, `dataset_statistics.json` and pretrained checkpoint
         config_json, dataset_statistics_json = run_dir / "config.json", run_dir / "dataset_statistics.json"
-        assert config_json.exists(), f"Missing `config.json` for `{run_dir = }`"
-        assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir = }`"
+        assert config_json.exists(), f"Missing `config.json` for `{run_dir}`"
+        assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir}`"
 
     # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
 

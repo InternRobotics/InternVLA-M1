@@ -13,9 +13,10 @@ import numpy as np
 
 from transforms3d.euler import euler2axangle
 
-from llavavla.model.framework.qwenpi import QwenQFormerDiT
+from llavavla.model.framework.DinoQFormerACT import QwenQFormerDiT # @DEBUG 为了方便，这里先直接换掉
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
+# TODO 应该设计为可以切换 不同的 模型的统一接口： QwenQFormerDiT base\
 
 class QwenpiInference:
     def __init__(

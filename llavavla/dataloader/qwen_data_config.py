@@ -2,7 +2,7 @@ import re
 
 from pathlib import Path
 # 这里和 rlds 要放到不同文件夹， 避免互相混淆
-system2_root="/mnt/petrelfs/yejinhui/Projects/System2VLA"
+system2_root="/mnt/petrelfs/yejinhui/Projects/System2VLA" # TODO 如果这个位置需要 能够在cfg中指定应该怎么做？
 json_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/llava_format"
 image_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/visualData"
 # 新增数据集定义

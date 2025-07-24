@@ -9,6 +9,7 @@ is_debug: false
 
 
 framework:
+  framework_py: qwenpi # 是否要 framework.DinoQFormerACT 更加清晰的暗示设计理念？
   qwenvl: # TODO 后期不能交qwenvl 应该直接vlm
     base_vlm: /mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
     attn_implementation: flash_attention_2

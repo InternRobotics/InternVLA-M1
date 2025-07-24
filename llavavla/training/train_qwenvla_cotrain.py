@@ -28,7 +28,7 @@ from llavavla.dataloader import build_dataloader
 from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
 
 from llavavla.training.metrics import normalize_dotlist_args
-from llavavla.model.framework.qwenpi import build_model_framework
+from llavavla.model.framework import build_framework
 from llavavla.training.metrics import only_main_process
 from llavavla.training.metrics import TrainerUtils
 from llavavla.dataloader import save_dataset_statistics
@@ -75,13 +75,6 @@ def setup_directories(cfg) -> Path:
         
     return output_dir
 
-
-def build_model(cfg) -> torch.nn.Module:
-    """构建模型框架"""
-    logger.info(f"Loading Base VLM `{cfg.framework.qwenvl.base_vlm}` from ID/Path")
-    model = build_model_framework(cfg)
-    
-    return model
 
 
 def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
@@ -504,7 +497,7 @@ def main(cfg) -> None:
     output_dir = setup_directories(cfg=cfg)
     
     # 构建模型
-    vla = build_model_framework(cfg)
+    vla = build_framework(cfg)
     # 准备数据
     vla_train_dataloader, vlm_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
     # 设置优化器和调度器

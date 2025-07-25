@@ -19,4 +19,5 @@ av==12.3.0
 numpydantic
 deepspeed
 qwen-vl-utils
-git+https://github.com/kvablack/dlimp.git
+omegaconf
+# git+https://github.com/kvablack/dlimp.git

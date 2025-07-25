@@ -721,7 +721,7 @@ if __name__ == "__main__":
     debugpy.wait_for_client()
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "./results/Checkpoints/0712_bbox_fixvit_debug/config.yaml"
+    config_yaml = "./llavavla/conf/qwenvla_lmdb_real.yaml"
     cfg = OmegaConf.load(config_yaml)
     data_args = cfg.datasets.vlm_data
     image_processor = AutoProcessor.from_pretrained(
@@ -759,10 +759,11 @@ if __name__ == "__main__":
     batch_samples = next(batchs) #for debug
     # 跳过前 99 个 batch，获取第 100 个 batch
     from itertools import islice
-    batch_samples = next(islice(batchs, 99, 100))
+    # batch_samples = next(islice(batchs, 99, 100))
     count = 0
     while count < 100:
         batch_samples = next(batchs) #for debug
+        print(count)
         count +=1
     pass
 

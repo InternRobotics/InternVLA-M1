@@ -54,7 +54,8 @@ datasets:
     # data_root_dir: /mnt/petrelfs/share/efm_p/wangfangjing/datasets/
     # data_mix: Bench/bench_v6_simple_robotiq-sapien_althetic_ball_1in1
     # data_mix_info: Bench/bench_v6_simple_robotiq-sapien_althetic_ball_1in1
-    action_type: delta_qpos
+    action_type: delta_ee
+    solution: bbox
     default_image_resolution: [3, 224, 224]
     shuffle_buffer_size: 250000
     image_aug: true

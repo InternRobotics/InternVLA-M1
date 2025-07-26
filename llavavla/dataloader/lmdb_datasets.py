@@ -582,7 +582,7 @@ if __name__ == "__main__":
     cfg = OmegaConf.load(config_yaml)
 
 
-    vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换
+    vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换 --> 这里保持 @Jinhui 的 version
         data_root_dir=cfg.datasets.vla_data.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
         data_mix=cfg.datasets.vla_data.data_mix,
         data_mix_info=cfg.datasets.vla_data.data_mix_info,

@@ -138,7 +138,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             processor: Qwen2.5 VL processor (AutoProcessor.from_pretrained)
             instructions: Text prompt to use for each instruction
             device: Target device (default: "cuda")
-
+        # 改变                
         Returns:
             inputs: dict with input_ids, attention_mask, pixel_values, etc., ready for model.generate or model(...)
         """

@@ -163,10 +163,27 @@ def get_lmdb_dataset_statistics(
     except KeyError as e:
         raise KeyError(f"Required action statistics not found in meta_info for action_type {action_type}: {e}")
     
-    # Calculate quantiles (q01, q99) - these might not be pre-computed, so we'll use min/max as approximation
-    # In a real implementation, you might want to compute these from actual data
-    action_q01 = action_min
-    action_q99 = action_max
+    # Calculate quantiles (q01, q99) - check if they exist in meta_info, otherwise use min/max
+    try:
+        if action_type == "abs_qpos":
+            action_q01 = np.array(meta_info["abs_arm_action_q01"])
+            action_q99 = np.array(meta_info["abs_arm_action_q99"])
+        elif action_type == "delta_qpos":
+            action_q01 = np.array(meta_info["delta_arm_action_q01"])
+            action_q99 = np.array(meta_info["delta_arm_action_q99"])
+        elif action_type == "abs_ee_pose":
+            action_q01 = np.array(meta_info["abs_eepose_action_q01"])
+            action_q99 = np.array(meta_info["abs_eepose_action_q99"])
+        elif action_type == "delta_ee_pose":
+            action_q01 = np.array(meta_info["delta_eepose_action_q01"])
+            action_q99 = np.array(meta_info["delta_eepose_action_q99"])
+        else:
+            raise NotImplementedError(f"Action type {action_type} not supported")
+    except KeyError:
+        # If quantiles are not available, fall back to min/max
+        overwatch.info(f"Quantile statistics (q01/q99) not found for {action_type}, using min/max as fallback")
+        action_q01 = action_min
+        action_q99 = action_max
     
     # Count episodes and transitions
     num_trajectories = len(episode_info_list)

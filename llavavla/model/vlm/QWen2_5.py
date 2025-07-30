@@ -45,7 +45,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         # QWen 原生模型
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id,
-            # attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
+            attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
             torch_dtype="auto",
             device_map="cuda",
         )
@@ -55,7 +55,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
         self.model = model
         self.processor = processor
-
+        self.config = config
     def forward( # 后期这里应该是总结和qwen forward 对齐， 但是这里 TODO 移除这个逻辑， 直接调用qwen的逻辑
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -202,33 +202,37 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
 
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
-            prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
-            prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object" #--->
+            # prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
+            # prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object" #--->
+            CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", None)
+            if CoT_prompt:
+                prompt = CoT_prompt.replace("{instruction}", instruction)
+            else:
+                prompt = f"Your task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json" # old prompt for onging ckpt
+
             
-            prompt = f"Your the task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json"
-            # prompt = f"{instruction}." # --> 感觉上这个prompt #@DEBUG
+                # prompt = f"{instruction}." # --> 感觉上这个prompt #@DEBUG
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
-            if solutions is not None:
+            if solutions is not None: #@DEBUG TODO 检查和 generation 的处理是否完全一致，TODO 提高推理效率
                 # add solution if provided
                 solution = solutions[len(messages)]
                 solution_content = [{"type": "text", "text": f": {solution}"}]
                 msg.append({"role": "assistant", "content": solution_content})
             else: # 是否要判断是否走 infer？ TODO 感觉上不能在这里， 看一下官方怎么解读的
-                # add a dummy assistant response
-                solution_content = [{"type": "text", "text": ""}] # 这里会包含结束富豪， 但是去掉后，有没有生产符号
+                # add a dummy assistant response # 高阶操作： 去掉结束符号
+                solution_content = [{"type": "text", "text": ""}] # 这里会包含结束符号， 但是去掉后，又没有生产符号
                 msg.append({"role": "assistant", "content": solution_content})
             
             messages.append(msg)
-
-        # Prepare visul inputs = list of PIL
-        
-        images, videos = process_vision_info(messages) # 这样可以处理不同 图片的复炸情况
+    
+        images, videos = process_vision_info(messages) # 这样可以处理不同 图片的复杂情况
         # TODO v1 暂时不支持video 的处理. # 目前还不能image, video 交错， 如果实现需要而外的统一
         # copy from .../transformers/models/qwen2_5_vl/processing_qwen2_5_vl.py
         # copy from llavavla/dataloader/vlm_datasets.py, ⚠️， 为了 能够适用 批处理，做了修改
         # TODO 要修改 官方的 preprocess_qwen_2_visual 中的函数， 同时确保多模态那边不会出现bug
-        # TODO 其实可以直接用 processor， 弊端是处理了两次 tokenizer, 但是我觉得开销 不大， 值得做的个更加美观
+        # TODO 其实可以直接用 processor， 弊端是处理了两次 tokenizer, 但是我觉得开销 不大， 值得做的更加美观
+        
         image_inputs = {}
         image_grid_thw = None
         video_inputs = {}
@@ -246,13 +250,6 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
                 messages, self.processor.tokenizer, grid_thw=grid_thw_merged, visual_type="image"
             ) # 拿到 input_ids and SFT labels
 
-            # position_ids, _ = get_rope_index_25( #
-            #     self.processor.image_processor.merge_size,
-            #     text_inputs["input_ids"],
-            #     image_grid_thw, # (B,16,16)
-            #     attention_mask=text_inputs["attention_mask"],
-            # )
-            # text_inputs["position_ids"] = position_ids # TODO 验证是否影响速度， 不建议自己算，容易出错
         elif videos is not None:
             # need more alignment with official code
             RuntimeWarning("Video inputs are not yet supported in this interface. 还不确定这个框架是否支持这样的混合输出.")
@@ -413,7 +410,7 @@ def preprocess_qwen_2_visual(
     
 def get_qwen2_5_interface(model_id, config=None):
 
-    model = _QWen_VL_Interface(model_id=model_id) # 要时刻记住面向对象编程
+    model = _QWen_VL_Interface(model_id, config=config) # 要时刻记住面向对象编程
 
     return model
 

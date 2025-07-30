@@ -62,6 +62,7 @@ class LMDBDataset(Dataset):
         batch_transform: LMDBBatchTransform = None,
         normalization_type: NormalizationType = NormalizationType.BOUNDS_Q99,
         save_statistics_dir: str = None,
+        config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
         """Dataset wrapper for LMDB format data."""
@@ -74,7 +75,7 @@ class LMDBDataset(Dataset):
         self.window_size = window_size
         self.image_aug = image_aug
         self.normalization_type = normalization_type
-
+        self.config = config
         # Load dataset info
         # 检查 JSON 文件是否存在
         json_file_path = os.path.join(data_dir, "data_info", self.dataset_info_name + ".json")
@@ -130,7 +131,7 @@ class LMDBDataset(Dataset):
     def __len__(self) -> int:
         return self.length
 
-    def __getitem(self, idx: int) -> Dict[str, Any]:
+    def __getitem(self, idx: int) -> Dict[str, Any]: # TODO 这个处理太复杂了，但是之后应该是用lerobot 所以没必要想太多在这个东西上
         """Get sequence from dataset at given index."""
         episode_id = bisect.bisect_right(self.accumulated_num_step, idx)
         if episode_id - 1 >= 0:
@@ -192,11 +193,7 @@ class LMDBDataset(Dataset):
         target_position = meta_info['task_data']['goal'][0][0]['position']
         
         
-        # 一次性缩放轨迹
-        # scale_x = image_size[0] / 224
-        # scale_y = image_size[1] / 224
-        
-
+        # 一次性缩放轨迹 --> # TODO 这些逻辑就不应该在这里，应该是数据预处理阶段就需要准备好中间表征 TODO 等稳定后抽象为 预处理代码
         # Load sequence data
         sequence = []
         with lmdb_env.begin(write=False) as txn:
@@ -256,29 +253,20 @@ class LMDBDataset(Dataset):
             future_traj = get_trajectory_plan(all_trace_2d_scaled, start_id, j,
                                                 horizon=10)
             
-            # sol = {
-            #     "future_traj": future_traj
-            # }
-            sol = {
-                    'pick_bbox': current_pick_bbox,
-                    'pick_label': pick_name,
-                    'place_bbox': target_place_bbox,
-                    'place_label': place_name,
-                }
-            
-            prompt = f"What is the key object to finish the task: {language_instruction}. Output the bbox to locate the object"
+            # prompt = f"What is the key object to finish the task: {language_instruction}. Output the bbox to locate the object" # TODO 理论上 QwenVL 那边的逻辑要移动到这里， 但是问题是 infer 的时候是没有dataloader 逻辑的。 需要在想想
+            # --> config 化就就可以解决这个问题了 --> 目前为了逻辑明显， 还是先放到VL中
             solution = f"Pick {pick_name} at {current_pick_bbox}, then place {place_name} at {target_place_bbox}."
             # 拼接 solution 为字符串格式的 JSON， 还差有一点点gap
-            solution = f'''{{
-            "pick": {{
-                "bbox_2d": {current_pick_bbox},
-                "label": "{pick_name}"
-            }},
-            "place": {{
-                "bbox_2d": {target_place_bbox},
-                "label": "{place_name}"
-            }}
-            }}'''
+            # solution = f'''{{
+            # "pick": {{
+            #     "bbox_2d": {current_pick_bbox},
+            #     "label": "{pick_name}"
+            # }},
+            # "place": {{
+            #     "bbox_2d": {target_place_bbox},
+            #     "label": "{place_name}"
+            # }}
+            # }}'''
 
         lmdb_env.close()
         # action chuck: window_size
@@ -295,40 +283,51 @@ class LMDBDataset(Dataset):
         for a, g in zip(action, gripper):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
 
-        # @DEBUG
-        image = [primary_data, wrist_data] # TODO 需要变成cfg控制
-        # image = [primary_data]
-        # TODO make here more configurable
-        # solution = None
+        obs_dict = {
+            "primary_data": primary_data,
+            "wrist_data": wrist_data,
+        }
+        obs_list = self.config.datasets.vla_data.get("obs", ["primary_data"])
+        image = [obs_dict[key] for key in obs_list] # TODO 需要变成cfg控制
+
+        CoT_sentences = None
+        CoT_type = self.config.datasets.vla_data.get("CoT_answer", False)
+        if CoT_type: # 这里应该是定义为一个 get cot func
+            if CoT_type == "bbox":
+                CoT_sentences = solution
+            else:
+                # print(f"CoT type {CoT_type} not supported, returning None")
+                CoT_sentences = None
+
         return dict(action=collected_action,image=image,lang=language_instruction, 
-                    solution=solution,
+                    solution=CoT_sentences,
                     dataset_name=self.dataset_name)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Get sequence from dataset at given index with retry logic."""
-        num_base_retries = 10
-        num_final_retries = 30
+        num_base_retries = 3
+        num_random_retries = 30
 
         # Try other samples, in case it is a file corruption issue
         for attempt_idx in range(num_base_retries):
             try:
-                
                 next_index = random.randint(0, len(self) - 1)  # Select a random index
-                sample = self.__getitem(next_index)
+                sample = self.__getitem(idx)
                 return sample
             except Exception as e:
                 logger.warning(f"[Try other #{attempt_idx}] Failed to fetch sample {next_index}. Exception: {e}")
                 pass
 
         # Final attempt: fetch a random sample
-        try:
-            random_idx = random.randint(0, len(self) - 1)  # Select a random index
-            sample = self.__getitem(random_idx)
-            logger.warning(f"Returning random sample {random_idx} due to repeated failures for sample {idx}.")
-            return sample
-        except Exception as e:
-            logger.error(f"Final attempt failed to fetch sample {idx}. Exception: {e}")
-            raise e
+        for attempt_idx in range(num_random_retries):
+            try:
+                random_idx = random.randint(0, len(self) - 1)  # Select a random index
+                sample = self.__getitem(random_idx)
+                logger.warning(f"Returning random sample {random_idx} due to repeated failures for sample {idx}.")
+                return sample
+            except Exception as e:
+                logger.error(f"Final attempt failed to fetch sample {idx}. Exception: {e}")
+                raise e
         
     def __iter__(self):
         """Iterate through the dataset sequentially, retrying with random indices on error."""
@@ -521,7 +520,7 @@ def get_lmdb_dataset(
     batch_transform = LMDBBatchTransform()
     
     # Build LMDB Dataset
-    cls = LMDBDataset if not episodic else EpisodicLMDBDataset
+    cls = LMDBDataset # TODO 之后 再考虑支持 EpisodicLMDBDataset dataset if not episodic else EpisodicLMDBDataset
     dataset = cls(
         data_mix,
         data_root_dir,
@@ -533,8 +532,9 @@ def get_lmdb_dataset(
         batch_transform=batch_transform,
         normalization_type=normalization_type,
         save_statistics_dir=save_statistics_dir,
-        obs_list=obs_list,
-        is_return_CoT=is_return_CoT,
+        # obs_list=obs_list,
+        # is_return_CoT=is_return_CoT, 等稳定后再考察变成 显示参数
+        config=kwargs["config"]
     )
 
     # Optionally save statistics to run directory
@@ -569,8 +569,7 @@ if __name__ == "__main__":
     pass
     #@Jinhui TODO 全部 模块文件必须能够独立 执行测试单元
 
-
-    import debugpy 
+    import debugpy
     debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
     print("Waiting for debugger to attach 10092...")
     debugpy.wait_for_client()  # 等待 VS Code 附加
@@ -578,7 +577,7 @@ if __name__ == "__main__":
     # # test  get_vla_dataset
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "llavavla/conf/qwenvla_lmdb_genmanip.yaml"
+    config_yaml = "llavavla/conf/qwenvla_lmdb_IROC.yaml"
     cfg = OmegaConf.load(config_yaml)
 
 
@@ -593,6 +592,7 @@ if __name__ == "__main__":
         future_action_window_size=cfg.framework.action_model.future_action_window_size,
         past_action_window_size=cfg.framework.action_model.past_action_window_size,
         load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
+        config=cfg,
     )
     
     # 方法2: 使用迭代器
@@ -603,6 +603,7 @@ if __name__ == "__main__":
             batch_samples = next(dataset_iter)
             count += 1
             print(batch_samples['action'])
+            
         except StopIteration:
             break
 

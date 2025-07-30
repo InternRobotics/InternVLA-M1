@@ -5,7 +5,7 @@ Lightweight PyTorch Dataset Definition for wrapping RLDS TFDS Pipeline; just def
 format to OpenVLA, IterableDataset shim.
 """
 
-
+import re
 import os, json, pickle, bisect, logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +25,115 @@ IGNORE_INDEX = -100
 
 logger = logging.getLogger(__name__)
 
+# temp map dict:
+pick_object_map = {
+    "奶牛玩具": "cow toy",
+    "河马玩具": "hippo toy",
+    "大象玩具": "elephant toy",
+    "奥利奥": "Oreo",
+    "茄子": "eggplant",
+    "葡萄": "grape",
+    "白色运动饮料瓶子": "white sports drink bottle",
+    "橙色瓶子": "orange bottle",
+    "橙子": "orange",
+    "小绿色薯片": "small green chips",
+    "桃子": "peach",
+    "东方树叶饮料": "Dongfangshuye tea drink",
+    "菠萝": "pineapple",
+    "照相机": "camera",
+    "香蕉": "banana",
+    "牛奶": "milk",
+    "蓝白手套": "blue-white glove",
+    "黄瓜": "cucumber",
+    "胶水瓶子": "glue bottle",
+    "苹果": "apple",
+}
+
+place_objects_map = {
+    "棕色台子": "brown table",
+    "白色果篮": "white fruit basket",
+    "棕色方形果篮": "brown square fruit basket",
+    "紫色果盘": "purple fruit plate",
+    "咖啡色箱子": "brown box"
+}
+
+def get_episode_cot(episode_name, frame_index, obs= "primary_images", dir="/mnt/petrelfs/share/efm_p/yujunqiu/grounding/filtered_results"):
+
+    json_path  = os.path.join(dir, episode_name, "filtered_bboxes.json")
+    
+    # 这里数据构建到的问题太多
+    pick_name = None
+    place_name = None
+    pick_bbox = None
+    place_bbox = None
+    #load json
+    if os.path.exists(json_path):
+        with open(json_path, 'r') as f:
+            CoT_episodic = json.load(f)
+            primary_view_annotaions = CoT_episodic.get(obs, {})
+
+
+        object_list = list(primary_view_annotaions.keys())
+        for obj in object_list:
+            if obj in pick_object_map.values():
+                pick_name = obj
+            if obj in place_objects_map.values():
+                place_name = obj
+        if pick_name is not None:
+            pick_bbox = primary_view_annotaions[pick_name].get(str(frame_index), None)
+        if place_name is not None:
+            place_bbox = primary_view_annotaions[place_name].get(str(frame_index), None)
+    
+    return pick_name, pick_bbox, place_name, place_bbox # 返回的东西可能是 none
+
+def crop_bbox(bbox, crop_coords):
+    """
+    Adjust the bounding box coordinates for cropping.
+
+    :param bbox: Original bounding box [x_min, y_min, x_max, y_max].
+    :param crop_coords: Crop coordinates [crop_y_start, crop_y_end, crop_x_start, crop_x_end].
+    :return: Adjusted bounding box [x_min, y_min, x_max, y_max].
+    """
+    if bbox is None:
+        return None
+
+    crop_y_start, crop_y_end, crop_x_start, crop_x_end = crop_coords
+
+    # Adjust bbox for cropping
+    x_min, y_min, x_max, y_max = bbox
+    x_min = max(x_min - crop_x_start, 0)
+    y_min = max(y_min - crop_y_start, 0)
+    x_max = min(x_max - crop_x_start, crop_x_end - crop_x_start)
+    y_max = min(y_max - crop_y_start, crop_y_end - crop_y_start)
+
+    return [x_min, y_min, x_max, y_max]
+
+
+def resize_bbox(bbox, original_size, target_size):
+    """
+    Adjust the bounding box coordinates for resizing.
+
+    :param bbox: Bounding box adjusted for cropping [x_min, y_min, x_max, y_max].
+    :param original_size: Original size of the cropped image (height, width).
+    :param target_size: Target size for resizing (height, width).
+    :return: Adjusted bounding box [x_min, y_min, x_max, y_max].
+    """
+    if bbox is None:
+        return None
+
+    orig_h, orig_w = original_size
+    target_h, target_w = target_size
+
+    # Scale bbox for resizing
+    x_min, y_min, x_max, y_max = bbox
+    scale_x = target_w / orig_w
+    scale_y = target_h / orig_h
+    x_min = int(x_min * scale_x)
+    y_min = int(y_min * scale_y)
+    x_max = int(x_max * scale_x)
+    y_max = int(y_max * scale_y)
+
+    return [x_min, y_min, x_max, y_max]
 
 @dataclass
 class LMDBBatchTransform:
@@ -220,6 +329,12 @@ class LMDBDataset(Dataset):
 
         language_instruction = meta_info.get("language_instruction", "Complete the task")
 
+        # get pick and place obj TODO 应该在数据annotation的时候就提供
+        match = re.match(r"Move the (.+?) to the top of the (.+?)\.", language_instruction)
+        if match:
+            pick_obj = match.group(1).strip()
+            place_obj = match.group(2).strip()
+
         # Load sequence data
         sequence = []
         with lmdb_env.begin(write=False) as txn:
@@ -241,8 +356,17 @@ class LMDBDataset(Dataset):
                     # Create dummy image if no image data found
                     primary_data = np.zeros((224, 224, 3), dtype=np.uint8)
             
+            # get image grounding CoT
+            pick_name, pick_bbox, place_name, place_bbox = get_episode_cot(episode_name=episode_name, frame_index=0)
+            # @temp 因为annotation 中说数据不完善， 需要额外再处理
+            pick_name  = pick_obj
+            place_name = place_obj
+
             # Crop the image according to the red box region (adjust coordinates as needed)
             # Original size is 640x480, crop to the region of interest
+            original_size = (480, 640)
+            target_size = (224, 224)
+
             if primary_data.shape[:2] == (480, 640) and self.crop_obs_camera:  # height, width
                 # Define crop coordinates based on the red box (adjust these values as needed)
                 # Format: [y_start:y_end, x_start:x_end]
@@ -252,11 +376,44 @@ class LMDBDataset(Dataset):
                 crop_x_end = 635    # Right of red box
                 
                 primary_data = primary_data[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
-            
+
+                # Adjust bbox for cropping and resizing
+                crop_coords = [crop_y_start, crop_y_end, crop_x_start, crop_x_end]
+                
+                # Adjust bbox for cropping
+                pick_bbox = crop_bbox(pick_bbox, crop_coords)
+                place_bbox = crop_bbox(place_bbox, crop_coords)
+
+                # Adjust bbox for resizing
+                original_size = (crop_y_end - crop_y_start, crop_x_end - crop_x_start)
+
             # Convert to PIL Image
             primary_data = Image.fromarray(primary_data)
-            primary_data = primary_data.resize((224, 224))
+            primary_data = primary_data.resize(target_size)
+            pick_bbox = resize_bbox(pick_bbox, original_size, target_size)
+            place_bbox = resize_bbox(place_bbox, original_size, target_size)
+            # @TODO pick_bbox can be none
+            # @TODO 因为 bbox 缺失的情况太严重了， --> 是否只返第一 frame
 
+            # 
+            if pick_bbox is not None and place_bbox is not None: # 16%
+                think_prompt = "Please identify where to pick the object and where to place it."
+                language_instruction = f"{language_instruction} {think_prompt}"
+                solution = f"Pick {pick_name} at {pick_bbox}, then place it on {place_name} at {place_bbox}."
+            elif pick_bbox is not None: # 20%
+                think_prompt = "Please identify where to pick the object."
+                language_instruction = f"{language_instruction} {think_prompt}"
+                solution = f"Pick {pick_name} at {pick_bbox}, then place it on {place_name}."
+
+            elif place_bbox is not None: # 28%
+                think_prompt = "Please identify where to place the object."
+                language_instruction = f"{language_instruction} {think_prompt}"
+                solution = f"Pick {pick_name}, then place it on {place_name} at {place_bbox}."
+            else: # TODO 这里其实应该是有prompt 但是不用输出的模式 --> 下一个版本再做高阶操作
+                think_prompt = "Give the action directly."
+                language_instruction = f"{language_instruction} {think_prompt}"
+                solution = None # 36%
+            
             # Handle wrist camera (optional)
             try:
                 if wrist_index is not None:
@@ -333,10 +490,12 @@ class LMDBDataset(Dataset):
             collected_action.append(self.load_robot_action(a, g).astype(np.float16))
 
         # Return data with or without wrist camera
-        if has_wrist:
-            return dict(action=collected_action, image=[primary_data, wrist_data], lang=language_instruction, dataset_name=self.dataset_name)
+        if has_wrist: # @Fangjin不要定义内在转移逻辑
+            return dict(action=collected_action, image=[primary_data, wrist_data], lang=language_instruction, 
+                        solution=solution, dataset_name=self.dataset_name)
         else:
-            return dict(action=collected_action, image=[primary_data], lang=language_instruction, dataset_name=self.dataset_name)
+            return dict(action=collected_action, image=[primary_data], lang=language_instruction, 
+                        solution=solution, dataset_name=self.dataset_name)
 
     def __iter__(self):
         """Iterate through the dataset sequentially."""
@@ -420,62 +579,6 @@ class EpisodicLMDBDataset(LMDBDataset):
 
     # TODO 实现
     pass
-
-
-
-# class DummyDataset(Dataset):
-#     def __init__(
-#         self,
-#         action_tokenizer: ActionTokenizer,
-#         base_tokenizer: PreTrainedTokenizerBase,
-#         image_transform: ImageTransform,
-#         prompt_builder_fn: Type[PromptBuilder],
-#     ) -> None:
-#         self.action_tokenizer = action_tokenizer
-#         self.base_tokenizer = base_tokenizer
-#         self.image_transform = image_transform
-#         self.prompt_builder_fn = prompt_builder_fn
-
-#         # Note =>> We expect the dataset to store statistics for action de-normalization. Specifically, we store the
-#         # per-dimension 1st and 99th action quantile. The values below correspond to "no normalization" for simplicity.
-#         self.dataset_statistics = {
-#             "dummy_dataset": {
-#                 "action": {"q01": np.zeros((7,), dtype=np.float32), "q99": np.ones((7,), dtype=np.float32)}
-#             }
-#         }
-
-#     def __len__(self):
-#         # TODO =>> Replace with number of elements in your dataset!
-#         return 10000
-
-#     def __getitem__(self, idx):
-#         # TODO =>> Load image, action and instruction from disk -- we use dummy values
-#         image = Image.fromarray(np.asarray(np.random.rand(224, 224, 3) * 255.0, dtype=np.uint8))
-#         action = np.asarray(np.random.rand(7), dtype=np.float32)
-#         instruction = "do something spectacular"
-
-#         # Add instruction to VLA prompt
-#         prompt_builder = self.prompt_builder_fn("openvla")
-#         conversation = [
-#             {"from": "human", "value": f"What action should the robot take to {instruction}?"},
-#             {"from": "gpt", "value": self.action_tokenizer(action)},
-#         ]
-#         for turn in conversation:
-#             prompt_builder.add_turn(turn["from"], turn["value"])
-#         # Tokenize (w/ `base_tokenizer`)
-#         input_ids = self.base_tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids
-#         labels = list(input_ids)
-
-#         # Tensorize =>> Run Image Transform to get `pixel_values` =>> Return
-#         #   =>> IMPORTANT :: IF WE'RE USING HF .forward(..., labels=labels), SHIFTING HAPPENS _INSIDE_ MODEL!
-#         input_ids, labels = torch.tensor(input_ids), torch.tensor(labels)
-#         pixel_values = self.image_transform(image)
-
-#         # [CRITICAL] We do not want to take the loss for anything but the predicted action tokens!
-#         labels[: -(len(action) + 1)] = IGNORE_INDEX
-
-#         return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels)
-
 
 def get_dummy_dataset(dataconfig: dict):
 
@@ -564,12 +667,12 @@ if __name__ == "__main__":
 
     import debugpy 
     debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
-    print("Waiting for debugger to attach...")
+    print("Waiting for debugger to attach 10092...")
     debugpy.wait_for_client()  # 等待 VS Code 附加
 
     # test  get_vla_dataset
     from omegaconf import OmegaConf
-    config_yaml = "/mnt/petrelfs/wangfangjing/code/llavavla-dev/llavavla/conf/qwenvla_lmdb_real.yaml"
+    config_yaml = "./llavavla/conf/qwenvla_lmdb_real.yaml"
     cfg = OmegaConf.load(config_yaml)
     vla_dataset_cfg = cfg.datasets.vla_data
     vla_model_cfg = cfg.framework.action_model

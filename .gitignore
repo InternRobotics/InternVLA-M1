@@ -163,7 +163,7 @@ length_distribution.png
 eval/MMBench/*.jpg
 eval/*/*.jpg
 eval/*/*.png
-
+eval/*
 scripts
 bar
 eval/MMBench/*.jpeg
@@ -171,3 +171,4 @@ eval/MMBench/play_ground_bbox.ipynb
 eval/MMBench/spatial_understanding.ipynb
 llavavla/conf/qwenvla_lmdb_genmanip.yaml
 annotated_image.png
+data_processed

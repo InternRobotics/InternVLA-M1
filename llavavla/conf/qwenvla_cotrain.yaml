@@ -9,7 +9,7 @@ is_debug: false
 
 
 framework:
-  framework_py: DinoQFormerACT # 是否要 framework.DinoQFormerACT 更加清晰的暗示设计理念？
+  framework_py: qwenpi # #  qwenpi | DinoQFormerACT
   qwenvl: # TODO 后期不能交qwenvl 应该直接vlm
     base_vlm: /mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
     attn_implementation: flash_attention_2
@@ -57,6 +57,7 @@ datasets:
     image_aug: true
     per_device_batch_size: 16
     load_all_data_for_training: true # 考虑如何启用 eval set
+    obs: []
 
 
 trainer:
@@ -67,12 +68,11 @@ trainer:
   eval_interval: 100
   learning_rate:
     base: 5.0e-05
-    # qwen_vl_interface: 1.0e-05 # 打开了，但是你整个freeze 掉了的时候会导致优化器 null error
+    # qwen_vl_interface: 1.0e-05 # 整个freeze 掉了的时候会导致优化器 null error
     # action_model: 1.0e-04
   lr_scheduler_type: cosine_with_min_lr
   scheduler_specific_kwargs:
     min_lr: 5.0e-07
-    # min_lr_rate: 0.05
   freeze_modules: ''
   loss_scale:
     vla: 1.0

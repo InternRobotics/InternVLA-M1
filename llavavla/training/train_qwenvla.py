@@ -420,8 +420,8 @@ class VLATrainer(TrainerUtils):
             
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                action_loss, action_vlm_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_vlm_loss
+                action_loss, action_cot_loss = self.model.forward(batch_vla)
+                total_loss = action_loss #+ action_cot_loss
             
             # VLA反向传播
             self.accelerator.backward(total_loss)
@@ -447,7 +447,7 @@ class VLATrainer(TrainerUtils):
         
         return {
             "action_dit_loss": action_loss.item(),
-            "action_vlm_loss": action_vlm_loss.item(),
+            "action_cot_loss": action_cot_loss.item(),
             # "vlm_loss": vlm_loss.item(),
         }
     

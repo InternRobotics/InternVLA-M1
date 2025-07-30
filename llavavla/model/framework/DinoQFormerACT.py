@@ -27,13 +27,8 @@ overwatch = initialize_overwatch(__name__)
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 
-def dict_to_namespace(d):
-    if isinstance(d, dict):
-        return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
-    elif isinstance(d, list):
-        return [dict_to_namespace(i) for i in d]
-    else:
-        return d
+from llavavla.model.framework.share_tools import dict_to_namespace
+
 
 # get QWen2.5
 from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
@@ -103,12 +98,12 @@ class QwenQFormerDiT(nn.Module):
         # Step 1: 使用 DINO imaga processing 是什么？
         # 将 PIL 图片转换为张量并 **归一化**
         image_tensors = self.dino_encoder.prepare_dino_input(images) # 
-        
+        B = len(images)
         dino_features = self.dino_encoder(image_tensors)  # DINO 输出为 [B*num_view, token, dim]
 
-        # 提取 DINO 的特征（假设 key 为 "0"）
-        dino_encoded_features = dino_features.view(dino_features.shape[0], -1,dino_features.shape[-1])  # [B, num_view * token, dim]
-        
+        # 提取 DINO 的特征
+        dino_encoded_features = dino_features.reshape(B, -1, dino_features.shape[-1])  # [B, num_view * token, dim]
+
         dino_encoded_features = self.dino_pro(dino_encoded_features) # [B, num_view * token, hidden_size]
         # Step 2: QWenVL 输入格式
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
@@ -123,10 +118,10 @@ class QwenQFormerDiT(nn.Module):
                 )
             pass
             # dist.barrier()
-        Intern_vlm_loss = qwenvl_outputs.loss # @Jinhui TODO 这里是可以study 的地方， 是否 training lang
+        action_cot_loss = qwenvl_outputs.loss # @Jinhui TODO 这里是可以study 的地方， 是否 training lang
         
-        if Intern_vlm_loss is None or torch.isnan(Intern_vlm_loss): # TODO 将不同逻辑的 forward 罗杰写成 if else 会破坏可读性
-            Intern_vlm_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
+        if action_cot_loss is None or torch.isnan(action_cot_loss): # TODO 将不同逻辑的 forward 罗杰写成 if else 会破坏可读性
+            action_cot_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
 
         with torch.autocast("cuda", dtype=torch.float32):
             start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
@@ -152,7 +147,7 @@ class QwenQFormerDiT(nn.Module):
             action_latent_feature = action_latent_feature.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, T, D_action]
             # Action model forward and compute loss # 这里功能有点 越俎代庖 TODO 将loss 集中到 main module中统一处理
             action_loss = self.action_model.loss(actions_repeated, action_latent_feature) # TODO loss 应该放到另一个函数
-        return action_loss, Intern_vlm_loss
+        return action_loss, action_cot_loss
 
     @torch.inference_mode() # @Jinhui DEBUG 临时取消
     def predict_action( # 

@@ -109,10 +109,10 @@ class QwenQFormerDiT(nn.Module):
                 )
             pass
             # dist.barrier()
-        Intern_vlm_loss = qwenvl_outputs.loss # @Jinhui TODO 这里是可以study 的地方， 是否 training lang
+        vlm_cot_loss = qwenvl_outputs.loss # @Jinhui TODO 这里是可以study 的地方， 是否 training lang
         
-        if Intern_vlm_loss is None or torch.isnan(Intern_vlm_loss): # TODO 将不同逻辑的 forward 罗杰写成 if else 会破坏可读性
-            Intern_vlm_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
+        if vlm_cot_loss is None or torch.isnan(vlm_cot_loss): # TODO 将不同逻辑的 forward 罗杰写成 if else 会破坏可读性
+            vlm_cot_loss = torch.tensor(0.0, device=self.qwen_vl_interface.model.device)
 
         with torch.autocast("cuda", dtype=torch.float32):
             start_layer = self.config.framework.layer_qformer.qformer_start_layer if self.config else -6  # @Jinhui TODO 这里应该是config
@@ -129,7 +129,7 @@ class QwenQFormerDiT(nn.Module):
             action_latent_feature = action_latent_feature.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, T, D_action]
             # Action model forward and compute loss # 这里功能有点 越俎代庖 TODO 将loss 集中到 main module中统一处理
             action_loss = self.action_model.loss(actions_repeated, action_latent_feature) # TODO loss 应该放到另一个函数
-        return action_loss, Intern_vlm_loss
+        return action_loss, vlm_cot_loss
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
     def predict_action( # 

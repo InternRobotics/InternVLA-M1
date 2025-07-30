@@ -54,8 +54,10 @@ datasets:
     # data_root_dir: /mnt/petrelfs/share/efm_p/wangfangjing/datasets/
     # data_mix: Bench/bench_v6_simple_robotiq-sapien_althetic_ball_1in1
     # data_mix_info: Bench/bench_v6_simple_robotiq-sapien_althetic_ball_1in1
-    action_type: delta_ee
-    solution: bbox
+    action_type: delta_qpos
+    CoT_prompt: "Your task is {instruction}. To identify the pick object and the place object for your task. Locate their bounding boxes in JSON format."
+    CoT_answer: bbox
+    obs: [primary_data, wrist_data]
     default_image_resolution: [3, 224, 224]
     shuffle_buffer_size: 250000
     image_aug: true

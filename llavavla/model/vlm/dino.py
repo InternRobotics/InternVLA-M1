@@ -52,12 +52,12 @@ class DINOv2BackBone(nn.Module):
             self.num_channels = 1408
         else:
             raise NotImplementedError(f"DINOv2 backbone {backone_name} not implemented")
-        # self.dino_transform = transforms.Compose([
-        #     transforms.Resize(224),  # 调整尺寸
-        #     transforms.ToTensor(),
-        #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        # ])
-        self.dino_transform = make_classification_train_transform()
+        self.dino_transform = transforms.Compose([
+            transforms.Resize(224),  # 调整尺寸 #@DEBUG 发现动态resize会导致问题
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        # self.dino_transform = make_classification_train_transform() ##DEBUG --> 不应该做 动态的resize?
     # @torch.no_grad()
     def forward(self, tensor):
         xs = self.body.forward_features(tensor)["x_norm_patchtokens"]

@@ -577,7 +577,7 @@ if __name__ == "__main__":
     # # test  get_vla_dataset
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "llavavla/conf/qwenvla_lmdb_IROC.yaml"
+    config_yaml = "llavavla/conf/qwenvla_lmdb_3Lpretrain.yaml"
     cfg = OmegaConf.load(config_yaml)
 
 

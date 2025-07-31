@@ -357,7 +357,7 @@ class LMDBDataset(Dataset):
                     primary_data = np.zeros((224, 224, 3), dtype=np.uint8)
             
             # get image grounding CoT
-            pick_name, pick_bbox, place_name, place_bbox = get_episode_cot(episode_name=episode_name, frame_index=0)
+            pick_name, pick_bbox, place_name, place_bbox = get_episode_cot(episode_name=episode_name, frame_index=0) # @DEBUG 是按照frames 来？
             # @temp 因为annotation 中说数据不完善， 需要额外再处理
             pick_name  = pick_obj
             place_name = place_obj

@@ -16,8 +16,11 @@ pydantic==2.10.6
 pyarrow==14.0.1
 fastparquet==2024.11.0
 av==12.3.0
-numpydantic
+numpydantic==1.6.9
 deepspeed
 qwen-vl-utils
 omegaconf
+numpy==1.26.4
 # git+https://github.com/kvablack/dlimp.git
+
+# TensorFlow 2.15 需要 numpy<2.0.0  --> 后续移除 rlds 依赖后可以跳过

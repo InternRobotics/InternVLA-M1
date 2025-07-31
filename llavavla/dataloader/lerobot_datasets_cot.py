@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Sequence
+from omegaconf import OmegaConf
+
 from llavavla.dataloader.gr00t_lerobot.data_config import DATA_CONFIG_MAP
 from llavavla.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag, DATASET_NAME_TO_EMBODIMENT_TAG
 from llavavla.dataloader.gr00t_lerobot.transform import ComposedModalityTransform
@@ -7,7 +9,7 @@ from llavavla.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, LeR
 from llavavla.dataloader.gr00t_lerobot.oxe.mixtures import OXE_NAMED_MIXTURES
 
 def collate_fn(batch):
-    return batch
+    return batch # @TODO check 是方靖修改过么？
 
 
 def make_LeRobotSingleDataset(
@@ -72,26 +74,40 @@ def get_vla_dataset(
         seed=42,
     )
 
+
 if __name__ == "__main__":
-    data_root_dir = Path("/mnt/petrelfs/wangfangjing/code/llavavla/playground/Datasets/OXE_LEROBOT_DATASET")
-    data_mix = "bridge_rt_1"
+    data_root_dir = Path("/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Datasets/OXE_LEROBOT_DATASET")
+    data_mix = "bridge" # bridge_rt_1
+    # TODO 为什么参数这么少？
+    import debugpy
+    debugpy.listen(("0.0.0.0", 10092))
+    print("Waiting for client to attach 10092...")
+    debugpy.wait_for_client()
+    
+    # Load YAML config & Convert CLI overrides to dotlist config
+    config_yaml = "llavavla/conf/qwenvla_cotrain_lerobot.yaml"
+    cfg = OmegaConf.load(config_yaml)
+
+    vla_dataset_cfg = cfg.datasets.vla_data
+
+    data_root_dir = vla_dataset_cfg.data_root_dir
+    data_mix = vla_dataset_cfg.data_mix
+
     dataset = get_vla_dataset(data_root_dir, data_mix)
     
     # for i in range(len(dataset)):
     #     print(dataset[i])
 
-    import debugpy
-    debugpy.listen(("0.0.0.0", 10092))
-    debugpy.wait_for_client()
-    print("Waiting for client to attach...")
-
     from torch.utils.data import DataLoader
     train_dataloader = DataLoader(
         dataset,
-        batch_size=128,
-        num_workers=16,
+        batch_size=16,
+        num_workers=1, # For Debug
         collate_fn=collate_fn,
     )
+    
+    from tqdm import tqdm
 
-    for batch in train_dataloader:
-        print(batch)
+    for batch in tqdm(train_dataloader, desc="Processing Batches"):
+        # print(batch)
+        pass

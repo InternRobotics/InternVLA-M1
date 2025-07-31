@@ -172,3 +172,5 @@ eval/MMBench/spatial_understanding.ipynb
 llavavla/conf/qwenvla_lmdb_genmanip.yaml
 annotated_image.png
 data_processed
+llavavla/conf/qwenvla_lmdb_3Lpretrain.yaml
+extracted_frames

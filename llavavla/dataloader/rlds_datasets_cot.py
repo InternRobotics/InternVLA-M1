@@ -317,7 +317,7 @@ if __name__ == "__main__":
     debugpy.wait_for_client()
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "./llavavla/conf/qwenvla_rlds_real.yaml"
+    config_yaml = "./llavavla/conf/qwenvla_cotrain.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     from torch.utils.data import DataLoader

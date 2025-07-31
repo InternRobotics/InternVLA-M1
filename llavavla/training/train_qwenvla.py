@@ -94,18 +94,19 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
         vla_dataset,
         batch_size=cfg.datasets.vla_data.per_device_batch_size,
         collate_fn=collate_fn,
-        # num_workers=64, # TODO uncheck feature? --> 好像读取数据这个没有生效？
+        num_workers=16, # TODO uncheck feature? --> 好像读取数据这个没有生效？
     )
 
     # 保存数据集统计信息
     if accelerator.is_main_process: # TODO 后续要考虑统一判断 rank = 0
-        save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
+        # save_dataset_statistics(vla_dataset.dataset_statistics, output_dir) #@DEBUG
+        statistics_data = vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
     
 
     # 拒绝自动分发 # TODO 应该写到 accelerator config
     accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
-    vla_train_dataloader.dataset_statistics = vla_dataset.dataset_statistics
+    # vla_train_dataloader.dataset_statistics = statistics_data # eval 的时候使用 norm actions
     return vla_train_dataloader
 
 def setup_optimizer_and_scheduler(
@@ -421,7 +422,7 @@ class VLATrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_cot_loss = self.model.forward(batch_vla)
-                total_loss = action_loss #+ action_cot_loss
+                total_loss = action_loss + action_cot_loss
             
             # VLA反向传播
             self.accelerator.backward(total_loss)
@@ -477,7 +478,7 @@ def main(cfg) -> None:
     vla = build_framework(cfg)
     # 准备数据
     vla_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
-    vla.norm_stats = vla_train_dataloader.dataset_statistics
+    # vla.norm_stats = vla_train_dataloader.dataset_statistics # 这个是为了
     # 设置优化器和调度器
     optimizer, lr_scheduler = setup_optimizer_and_scheduler(model=vla, cfg=cfg)
     

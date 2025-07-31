@@ -86,3 +86,15 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
         )
         return vla_dataset, collate_fn
         # lmdb_datasets_realdata_cot
+
+    elif cfg.datasets.vla_data.dataset_py == "lerobot_datasets_cot":
+        from llavavla.dataloader.lerobot_datasets_cot import get_vla_dataset, collate_fn
+        vla_dataset_cfg = cfg.datasets.vla_data
+
+        data_root_dir = vla_dataset_cfg.data_root_dir
+        data_mix = vla_dataset_cfg.data_mix
+
+        vla_dataset = get_vla_dataset(data_root_dir, data_mix)
+
+        return vla_dataset, collate_fn
+

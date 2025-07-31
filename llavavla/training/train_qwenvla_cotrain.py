@@ -86,11 +86,12 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     vla_dataset, collate_fn = build_dataloader( # 这个写在dataload.py 内部
         cfg=cfg)
     
-    # VLA 数据加载器 # 
+    # VLA 数据加载器 #  -->  TODO 这个逻辑要写到 build_dataloader 内部
     vla_train_dataloader = DataLoader(
         vla_dataset,
         batch_size=cfg.datasets.vla_data.per_device_batch_size,
         collate_fn=collate_fn,
+        num_workers=16,
         # shuffle=True # RLSD 不能做这个事情
     )
     
@@ -100,7 +101,8 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     
     # 保存数据集统计信息
     if accelerator.is_main_process: # TODO 后续要考虑统一判断 rank = 0
-        save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
+        # save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
+        vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
     
     # 拒绝自动分发 # TODO 应该写到 accelerator config
     accelerator.dataloader_config.dispatch_batches =  False

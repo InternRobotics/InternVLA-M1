@@ -25,7 +25,7 @@ See `scripts/load_dataset.py` for examples on how to use these datasets.
 """
 
 import hashlib
-import json
+import json, os
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
@@ -47,6 +47,7 @@ from llavavla.dataloader.gr00t_lerobot.schema import (
     LeRobotStateActionMetadata,
 )
 from llavavla.dataloader.gr00t_lerobot.transform import ComposedModalityTransform
+from llavavla.dataloader.gr00t_lerobot.CoT import get_episode_cot
 
 LE_ROBOT_MODALITY_FILENAME = "meta/modality.json"
 LE_ROBOT_EPISODE_FILENAME = "meta/episodes.jsonl"
@@ -407,7 +408,7 @@ class LeRobotSingleDataset(Dataset):
 
     def _get_delta_indices(self) -> dict[str, np.ndarray]:
         """Restructure the delta indices to use modality.key as keys instead of just the modalities."""
-        delta_indices: dict[str, np.ndarray] = {}
+        delta_indices: dict[str, np.ndarray] = {} # @TODO  @check 这里的逻辑是什么？
         for config in self.modality_configs.values():
             for key in config.modality_keys:
                 delta_indices[key] = np.array(config.delta_indices)
@@ -511,6 +512,7 @@ class LeRobotSingleDataset(Dataset):
             action.append(data[action_key])
         action = np.concatenate(action, axis=1)
         # print(action.shape)
+        # @TODO 这里和 mixture 也有互拆性
         return dict(action=action, image=[image_0], language=[language])
 
     def get_step_data(self, trajectory_id: int, base_index: int) -> dict:
@@ -521,7 +523,7 @@ class LeRobotSingleDataset(Dataset):
             base_index (int): The base step index in the trajectory.
 
         Returns:
-            dict: The RAW data for the step.
+            dict: The RAW data for the step. 
 
         Example return:
             {
@@ -546,6 +548,19 @@ class LeRobotSingleDataset(Dataset):
             # Get the data corresponding to each key in the modality
             for key in self.modality_keys[modality]:
                 data[key] = self.get_data_by_modality(trajectory_id, modality, key, base_index)
+        # TODO 之后这个 CoT 选项变成 get modality_keys 中的一部分，将这个东西和 lerobot 格式约定对齐  --> 设计一下数据格式
+        # Get CoT data if it exists, @TODO 现在 groot 的数据config 和 我们的有 overlap 问题
+        if "bridge_orig" in self.dataset_name: # TODO 后续要实现到 meta.json 格式
+            grounding_root = "/mnt/petrelfs/share/efm_p/yujunqiu/grounding/oxe_processed"
+            # self.dataset_name
+            dataset_name = "bridge_orig_1.0"
+            obs_name = "video.image_0" # 这个不知道会不会因为其他地方而变化
+            obs_name = obs_name.replace("video.", "") # groot 其他地方也有hard code 逻辑
+            data_dir = os.path.join(grounding_root, dataset_name)
+            
+            solution_sentence = get_episode_cot(self, episode_name=trajectory_id, obs=obs_name, frame_index=base_index, dir=data_dir) # TODO @DEBUG base_index 的内容需要确认
+            data["CoT_answer"] = solution_sentence
+        # @temp 因为annotation 中说数据不完善， 需要额外再处理
         return data
 
     def get_trajectory_data(self, trajectory_id: int) -> pd.DataFrame:
@@ -1033,15 +1048,18 @@ class LeRobotMixtureDataset(Dataset):
         # self.sampled_steps = self.sample_epoch()
 
     def sample_step(self, index: int) -> tuple[LeRobotSingleDataset, int, int]:
-        """Sample a single step from the dataset."""
+        """Sample a single step from the dataset.
+        是从多个数据集中随机选择一个数据集，然后从该数据集中随机选择一个轨迹（trajectory），最后从轨迹中随机选择一个时间步（step）
+        """
+
         # return self.sampled_steps[index]
 
-        # Set seed
+        # Set seed --> 这种通过seed 来random select 的模式真的合理么？ --> 是否无法保证 sample 到全部？
         seed = index if self.mode != "train" else safe_hash((self.epoch, index, self.seed))
         rng = np.random.default_rng(seed)
 
         # Sample dataset
-        dataset_index = rng.choice(len(self.datasets), p=self.dataset_sampling_weights)
+        dataset_index = rng.choice(len(self.datasets), p=self.dataset_sampling_weights) #
         dataset = self.datasets[dataset_index]
 
         # Sample trajectory
@@ -1052,7 +1070,7 @@ class LeRobotMixtureDataset(Dataset):
 
         # Sample step
         base_index = rng.choice(dataset.trajectory_lengths[trajectory_index])
-        return dataset, trajectory_id, base_index
+        return dataset, trajectory_id, base_index # TODO trajectory_id 能否唯一标识到对应的 rlds ? @Check --> 不能惟一表示， 和之前的顺序不一样
 
     def __getitem__(self, index: int) -> dict:
         """Get the data for a single trajectory and start index.
@@ -1063,20 +1081,31 @@ class LeRobotMixtureDataset(Dataset):
         Returns:
             dict: The data for the trajectory and start index.
         """
-        dataset, trajectory_name, step = self.sample_step(index)
-        data = dataset.transforms(dataset.get_step_data(trajectory_name, step))
+        # @JinhuiYE @Yioutpi TODO 需要联合优化一下 这里的代码逻辑
+        dataset, trajectory_name, step = self.sample_step(index) # TODO check --> 是否无法保证 sample 到全部？--> 确实
+        raw_data = dataset.get_step_data(trajectory_name, step)
+        data = dataset.transforms(raw_data)
         image_0 = data[dataset.modality_keys["video"][0]][0]
         image_0 = Image.fromarray(image_0).resize((224, 224))
-        image_1 = data[dataset.modality_keys["video"][1]][0]
-        image_1 = Image.fromarray(image_1).resize((224, 224))
+        # image_1 = data[dataset.modality_keys["video"][1]][0]
+        # image_1 = Image.fromarray(image_1).resize((224, 224))
         language = data[dataset.modality_keys["language"][0]][0]
         action = []
         for action_key in dataset.modality_keys["action"]:
             action.append(data[action_key])
         action = np.concatenate(action, axis=1).astype(np.float16)
-        image = [image_0, image_1]
-        # image = [image_0]
-        return dict(action=action, image=image, lang=[language])
+        # image = [image_0, image_1]
+        image = [image_0] # [language] @Yioutpi 为什么这个位置是 [language]
+        
+        data_meta = {
+            "dataset_name": dataset.dataset_name,
+            "trajectory_id": trajectory_name,
+            "base_index": step,
+        }
+
+        # TODO 去融合 singe dataset 的 getitem
+        return dict(action=action, image=image, lang=language, solution=data.get("CoT_answer", None),
+                    data_meta=data_meta)
     
     def __len__(self) -> int:
         """Get the length of a single epoch in the mixture.
@@ -1336,6 +1365,8 @@ class LeRobotMixtureDataset(Dataset):
             raise ValueError(f"Unsupported format: {format}. Currently only 'json' is supported.")
         
         print(f"Merged dataset statistics saved to: {save_path}")
+
+        return statistics_data
 
     def _combine_modality_stats(self, modality_stats: dict) -> dict:
         """

@@ -36,7 +36,7 @@ OXE_NAMED_MIXTURES: Dict[str, List[Tuple[str, float]]] = {
 
         ("fractal20220817_data_0.1.0_lerobot", 1.0),                          # Google RT-1 Robot Data (Large-Scale)
     ],
-
+    
     # === RT-X Mixtures ===
     "rtx": [
         ("fractal20220817_data_0.1.0_lerobot", 0.54087122203),                # Google RT-1 Robot Data (Large-Scale)

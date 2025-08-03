@@ -558,6 +558,7 @@ class LeRobotSingleDataset(Dataset):
             obs_name = obs_name.replace("video.", "") # groot 其他地方也有hard code 逻辑
             data_dir = os.path.join(grounding_root, dataset_name)
             
+            #@DEBUG
             solution_sentence = get_episode_cot(self, episode_name=trajectory_id, obs=obs_name, frame_index=base_index, dir=data_dir) # TODO @DEBUG base_index 的内容需要确认
             data["CoT_answer"] = solution_sentence
         # @temp 因为annotation 中说数据不完善， 需要额外再处理
@@ -954,6 +955,7 @@ class LeRobotMixtureDataset(Dataset):
         metadata_config: dict = {
             "percentile_mixing_method": "min_max",
         },
+        **kwargs,
     ):
         """
         Initialize the mixture dataset.
@@ -975,7 +977,7 @@ class LeRobotMixtureDataset(Dataset):
         self.balance_trajectory_weights = balance_trajectory_weights
         self.seed = seed
         self.mode = mode
-
+        self.config = kwargs["config"] if "config" in kwargs else {}
         # Set properties for sampling
 
         # 1. Dataset lengths
@@ -1104,7 +1106,11 @@ class LeRobotMixtureDataset(Dataset):
         }
 
         # TODO 去融合 singe dataset 的 getitem
-        return dict(action=action, image=image, lang=language, solution=data.get("CoT_answer", None),
+        solution = data.get("CoT_answer", None) # TODO 后期要重新定义 dataset format
+        # @DEBUG 
+        # solution = None
+
+        return dict(action=action, image=image, lang=language, solution=solution,
                     data_meta=data_meta)
     
     def __len__(self) -> int:

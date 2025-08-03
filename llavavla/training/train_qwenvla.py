@@ -398,7 +398,7 @@ class VLATrainer(TrainerUtils):
             average_score = score / num_pots
             step_metrics["mse_score"] = average_score
 
-        # dist.barrier()  # 确保所有进程同步 TODO 看看是否需要让其他进程等
+        dist.barrier()  # 确保所有进程同步 TODO 看看是否需要让其他进程等
         return step_metrics
 
 
@@ -422,7 +422,7 @@ class VLATrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_cot_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_cot_loss
+                total_loss = action_loss #+ action_cot_loss
             
             # VLA反向传播
             self.accelerator.backward(total_loss)

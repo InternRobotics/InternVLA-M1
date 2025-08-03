@@ -136,16 +136,29 @@ class QwenpiInference:
         self._add_image_to_history(self._resize_image(image))
         image: Image.Image = Image.fromarray(image)
 
-
-        raw_actions, normalized_actions = self.vla.predict_action(image=image, 
-                                                                instruction=self.task_description,
+        # @DEUBG
+        # raw_actions, normalized_actions = self.vla.predict_action(image=image, 
+        #                                                         instruction=self.task_description,
+        #                                                         unnorm_key=self.unnorm_key,
+        #                                                         do_sample=False, 
+        #                                                         cfg_scale=self.cfg_scale,
+        #                                                         use_ddim=self.use_ddim,
+        #                                                         num_ddim_steps=self.num_ddim_steps,
+        #                                                         )
+        
+        CoT_sentences, normalized_actions = self.vla.predict_action_withCoT(images=[[image]], 
+                                                                instructions=[self.task_description],
                                                                 unnorm_key=self.unnorm_key,
                                                                 do_sample=False, 
                                                                 cfg_scale=self.cfg_scale,
                                                                 use_ddim=self.use_ddim,
                                                                 num_ddim_steps=self.num_ddim_steps,
                                                                 )
-
+        normalized_actions = normalized_actions[0]
+        action_norm_stats = self.vla.get_action_stats(self.unnorm_key)
+        raw_actions = self.vla.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
+    
+        # end of predict_with_cot
         if self.action_ensemble:
             raw_actions = self.action_ensembler.ensemble_action(raw_actions)[None]
         raw_action = {

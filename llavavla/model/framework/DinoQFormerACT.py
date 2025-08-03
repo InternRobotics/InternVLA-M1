@@ -15,7 +15,7 @@ import torch.nn as nn
 import numpy as np
 from PIL import Image
 import re
-from prismatic.overwatch import initialize_overwatch
+from prismatic.overwatch import initialize_overwatch # TODO 将要移除
 
 from llavavla.model.action_model.action_model import ActionModel
 import torch.distributed as dist
@@ -309,7 +309,7 @@ class QwenQFormerDiT(nn.Module):
 
         # Generate feature through vlm
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            # fmt: off
+            # fmt: off # TODO --> 高阶功能， 直接train 不要train结束符号
             # TODO Qwen 背后会多一个 终止符号， 需要 [:, :-2] 去掉。是需要思考是否使用 v1 版本来产生 对应的token
             qwenvl_outputs = self.qwen_vl_interface.model.generate(
                 input_ids=qwen_inputs.input_ids[:, :-2],
@@ -431,6 +431,7 @@ class QwenQFormerDiT(nn.Module):
             - "mask": 可选，布尔数组，用于标记哪些动作需要反归一化。
         :return: 反归一化后的动作数组，形状与输入 `normalized_actions` 相同。
         """
+        # TODO 这个应该是 要存成一个processor 就是 LLM 中的 tokenizer
         # 获取统计信息
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high = np.array(action_norm_stats["q99"])
@@ -514,7 +515,7 @@ class QwenQFormerDiT(nn.Module):
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
         return len(self.norm_stats[unnorm_key]["action"]["q01"])
 
-    def get_action_stats(self, unnorm_key=None):
+    def get_action_stats(self, unnorm_key=None):# 这个要来了任何和 lerobot 格式的对齐
         """Dimensionality of the policy's action space."""
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
         return self.norm_stats[unnorm_key]["action"]

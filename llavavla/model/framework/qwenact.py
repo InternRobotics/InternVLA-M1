@@ -26,13 +26,8 @@ overwatch = initialize_overwatch(__name__)
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 
-def dict_to_namespace(d):
-    if isinstance(d, dict):
-        return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
-    elif isinstance(d, list):
-        return [dict_to_namespace(i) for i in d]
-    else:
-        return d
+from llavavla.model.framework.share_tools import dict_to_namespace
+
 
 # get QWen2.5
 from llavavla.model.vlm import _QWen_VL_Interface #不应该强依赖于这个，应该是一个接口类，而不是一个具体的类, TODO 不要实现 hard 接口类， 使用 **kwargs

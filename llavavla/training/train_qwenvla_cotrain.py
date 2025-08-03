@@ -91,7 +91,7 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
         vla_dataset,
         batch_size=cfg.datasets.vla_data.per_device_batch_size,
         collate_fn=collate_fn,
-        num_workers=16,
+        num_workers=8,
         # shuffle=True # RLSD 不能做这个事情
     )
     
@@ -419,8 +419,8 @@ class VLAMTrainer(TrainerUtils):
             
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                action_loss, action_vlm_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_vlm_loss #@DEBUG
+                action_loss, action_cot_loss = self.model.forward(batch_vla)
+                total_loss = action_loss #+ action_cot_loss #@DEBUG
             self.accelerator.backward(total_loss)
             
             # VLM任务前向传播
@@ -470,7 +470,7 @@ class VLAMTrainer(TrainerUtils):
 
             log_dict.update({
             "action_dit_loss": action_loss.item(),
-            "action_vlm_loss": action_vlm_loss.item(),
+            "action_vlm_loss": action_cot_loss.item(),
             "vlm_loss": vlm_loss.item(),
             })
         return log_dict

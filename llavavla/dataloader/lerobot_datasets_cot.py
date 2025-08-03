@@ -11,6 +11,7 @@ from llavavla.dataloader.gr00t_lerobot.oxe.mixtures import OXE_NAMED_MIXTURES
 def collate_fn(batch):
     return batch # @TODO check 是方靖修改过么？
 
+# TODO dataset 逻辑需要放到这里？
 
 def make_LeRobotSingleDataset(
     data_root_dir: Path | str,
@@ -42,8 +43,8 @@ def get_vla_dataset(
     data_root_dir: Path | str,
     data_mix: str,
     mode: str = "train",
-    balance_dataset_weights: bool = True,
-    balance_trajectory_weights: bool = True,
+    balance_dataset_weights: bool = False,
+    balance_trajectory_weights: bool = False,
     seed: int = 42,
 ) -> LeRobotMixtureDataset:
     """
@@ -68,9 +69,9 @@ def get_vla_dataset(
 
     return LeRobotMixtureDataset(
         dataset_mixture,
-        mode="train",
-        balance_dataset_weights=True,
-        balance_trajectory_weights=True,
+        mode=mode,
+        balance_dataset_weights=balance_dataset_weights,
+        balance_trajectory_weights=balance_trajectory_weights,
         seed=42,
     )
 

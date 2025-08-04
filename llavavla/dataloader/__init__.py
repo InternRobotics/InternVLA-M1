@@ -1,4 +1,4 @@
-from .rlds_datasets import DummyDataset, EpisodicRLDSDataset, RLDSDataset, RLDSBatchTransform
+
 # @Jinhui TODO 不要写这样的方式， 请直接 import from datasets.py
 
 import json
@@ -94,7 +94,7 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
         data_root_dir = vla_dataset_cfg.data_root_dir
         data_mix = vla_dataset_cfg.data_mix
 
-        vla_dataset = get_vla_dataset(data_root_dir, data_mix)
+        vla_dataset = get_vla_dataset(data_root_dir, data_mix) # TODO 要将config 传输融合进去
 
         return vla_dataset, collate_fn
 

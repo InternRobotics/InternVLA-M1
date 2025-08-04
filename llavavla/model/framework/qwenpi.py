@@ -129,8 +129,9 @@ class QwenQFormerDiT(nn.Module):
 
     # @torch.inference_mode() # @Jinhui DEBUG 临时取消
     def predict_action( # 
-        self, image: Union[Image, List[Image]],
-        instruction: str, 
+        self, images: Union[Image, List[Image]], # 变成可以 batch infer
+        instructions: List[str], 
+        solutions: Union[Dict, List[Dict]] = None, # @Jinhui TODO 这里是为了兼容旧的格式, 可以用于出中间表征的评测？
         unnorm_key: Optional[str] = None, 
         cfg_scale: float = 1.5, 
         use_ddim: bool = False,
@@ -138,28 +139,16 @@ class QwenQFormerDiT(nn.Module):
         **kwargs: str
     ) -> np.ndarray:
         """
-        Core function for VLA inference; maps input image and task instruction to continuous action.
-
-        @param image: PIL Image as [height, width, 3]
-        @param instruction: Task instruction string
-        @param unnorm_key: Optional dataset name for retrieving un-normalizing statistics; if None, checks that model
-                           was trained only on a single dataset, and retrieves those statistics.
-        @param cfg_scale: Scaling factor for classifier-free guidance (CFG); if == 1.0, CFG is disabled.
-        @param use_ddim: Use DDIM sampling instead of DDPM sampling.
-        @param num_ddim_steps: Number of DDIM steps to use for sampling.
 
         @return Unnormalized (continuous) action vector --> end-effector deltas.
         """
 
         # @之后写入模型内部， 变成私有化方法
-        if not isinstance(image, list):
-            imgs = [image.resize((224, 224))]  # list of PIL RGB for one instruction
-        else:
-            imgs = [img.resize((224, 224)) for img in image]
+        batch_images = resize_images(images, target_size=(224, 224))  # list of PIL RGB for one instruction
         
-        lang = instruction.lower() 
-
-        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=[imgs], instructions = [lang]) # @Jinhui TODO add instruction to qwenvl inputs
+        # instructions = [instruction.lower()  for instruction in instructions] # @Jinhui TODO 这里是为了兼容旧的格式， 需要考虑是否要将lang 变成 list
+        
+        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
         qwen_inputs = inferface_inputs
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
 

@@ -559,8 +559,8 @@ class LeRobotSingleDataset(Dataset):
             data_dir = os.path.join(grounding_root, dataset_name)
             
             #@DEBUG
-            solution_sentence = get_episode_cot(self, episode_name=trajectory_id, obs=obs_name, frame_index=base_index, dir=data_dir) # TODO @DEBUG base_index 的内容需要确认
-            data["CoT_answer"] = solution_sentence
+            # solution_sentence = get_episode_cot(self, episode_name=trajectory_id, obs=obs_name, frame_index=base_index, dir=data_dir) # TODO @DEBUG base_index 的内容需要确认
+            # data["CoT_answer"] = solution_sentence
         # @temp 因为annotation 中说数据不完善， 需要额外再处理
         return data
 

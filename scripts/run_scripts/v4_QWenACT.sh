@@ -1,6 +1,5 @@
 
 export HF_HOME=/mnt/petrelfs/share/yejinhui/Models/huggingface_cache
-export HF_TOKEN=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
 
 export NCCL_SOCKET_IFNAME=bond0
 export NCCL_IB_HCA=mlx5_2,mlx5_3
@@ -11,15 +10,11 @@ export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_TIMEOUT=1000  # 超时时间设为 1 小时（单位：秒）
 
 cd /mnt/petrelfs/yejinhui/Projects/llavavla
-# conda activate llavavla310  # some bug here, plz activate at terminal
 
-# <model_id/local_path_to_model,e.g,"CogACT/CogACT-Base">
-MODEL_PATH=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
-data_root_dir=./playground/Datasets/OXE_openvla
+MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # must be a local path, due to simpler will run in other where
+data_root_dir=./playground/Datasets/OXE_LEROBOT_DATASET
 run_root_dir=./playground/Checkpoints
-run_id=0622_debug
-
-datasets_grounding=asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
+run_id=0722_qwenpi
 
 export WANDB_MODE=disabled
 
@@ -31,29 +26,21 @@ cp $0 ${output_dir}/
   # --pretrained_checkpoint ${MODEL_PATH} \
 # export CUDA_VISIBLE_DEVICES=4,5,6,7
 
-datasets_vlm=aokvqa_cauldron_llava_format,sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
-datasets_grounding=asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
-export system2_datasets="${datasets_vlm},${datasets_grounding}"
-# ,${datasets_grounding}
-  # --vlm_data.min_pixels 3136 \
-  # --vlm_data.max_pixels 12845056 \
-  # --vla.freeze_modules qwen_vl_interface.model.model.visual \
 
 accelerate launch \
   --config_file llavavla/conf/deepseeds/deepspeed_zero2.yaml \
   --num_processes 8 \
   llavavla/training/train_qwenvla.py \
-  --config_yaml ./llavavla/conf/qwenvla_cotrain.yaml \
+  --config_yaml ./llavavla/conf/qwenvla_cotrain_lerobot.yaml \
   --framework.qwenvl.base_vlm ${MODEL_PATH} \
-  --datasets.vlm_data.dataset_use ${system2_datasets} \
+  --data_root_dir ${data_root_dir} \
   --datasets.vla_data.per_device_batch_size 16 \
-  --datasets.vlm_data.per_device_batch_size 4 \
-  --trainer.max_train_steps 10000 \
-  --trainer.save_interval 1000 \
+  --trainer.max_train_steps 100000 \
+  --trainer.save_interval 10000 \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \
-  --wandb_project llavavla3 \
+  --wandb_project qwendino \
   --wandb_entity jinhuiye \
-
+  # --is_debug True
 
 

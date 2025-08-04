@@ -56,13 +56,11 @@ LLaVA-VLA
 '''bash
 
 cd llavavla/model/openvla
+conda create -n llavavla --python 3.10
+pip install -r requirements.txt
 pip install -e .
 <!-- 他们的 pyproject.toml 里面已经有很多包的版本很难install， 比如python 版本绑定为 3.10 -->
 <!-- 移除 presmiatic 之后将不需要 -->
-
-cd /mnt/petrelfs/yejinhui/Projects/llavavla/llavavla
-
-pip install -e .
 
 
 <!-- hard to pip install flash_attn-->
@@ -70,6 +68,18 @@ pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.
 
 
 '''
+
+### run vla only 
+
+bash /mnt/petrelfs/yejinhui/Projects/llavavla/scripts/run_scripts/qwenpi_bench200.sh # prepare OXE_LEROBOT_DATASET and QWenvl 3B to playground
+
+
+
+### eval 
+
+sample to https://github.com/microsoft/CogACT?tab=readme-ov-file#getting-started
+
+
 ## 许可证
 
 MIT License

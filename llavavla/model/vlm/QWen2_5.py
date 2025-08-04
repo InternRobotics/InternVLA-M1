@@ -5,18 +5,16 @@ import copy
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from transformers.modeling_outputs import CausalLMOutputWithPast
-# from prismatic.models.vlms.base_vlm import VLM
-from typing import Dict, Optional, Sequence, List, Tuple
+from typing import Dict, Optional, List
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BatchFeature
 
-from prismatic.overwatch import initialize_overwatch
 from qwen_vl_utils import process_vision_info
 
-from llavavla.dataloader.rope2d import get_rope_index_25
 
-# Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
+from accelerate.logging import get_logger
+logger = get_logger(__name__)
+
 IGNORE_INDEX = -100
 IMAGE_TOKEN_INDEX = 151655
 VIDEO_TOKEN_INDEX = 151656

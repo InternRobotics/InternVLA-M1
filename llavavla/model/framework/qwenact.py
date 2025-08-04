@@ -9,19 +9,20 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from types import SimpleNamespace
+
 import torch, json
 import torch.nn as nn
 import numpy as np
 from PIL import Image
-import re
-from prismatic.overwatch import initialize_overwatch
+
+
 
 from llavavla.model.action_model.action_model import ActionModel
 import torch.distributed as dist
 # Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
 
+from accelerate.logging import get_logger
+logger = get_logger(__name__)
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
@@ -392,16 +393,16 @@ class QwenQFormerDiT(nn.Module):
             if key in model_keys:
                 try:
                     qwenQFormerACT.state_dict()[key].copy_(model_state_dict[key])
-                    # overwatch.info(f"✅ Loaded: {key}")
+                    # logger.info(f"✅ Loaded: {key}")
                 except Exception as e:
-                    overwatch.warning(f"⚠️ Failed to copy weight for key '{key}': {e}")
+                    logger.warning(f"⚠️ Failed to copy weight for key '{key}': {e}")
             else:
-                overwatch.warning(f"⚠️ Checkpoint has unknown key '{key}' (not in model). Ignoring.")
+                logger.warning(f"⚠️ Checkpoint has unknown key '{key}' (not in model). Ignoring.")
 
         # ✅ 2. 反向检查：模型中有但 checkpoint 中缺失的
         missing_keys = model_keys - checkpoint_keys # TODO 这里之后要考虑 nontrainable params --> 我觉得没必要省存储空间
         for key in sorted(missing_keys):
-                overwatch.warning(f"⚠️ Model expects key '{key}' but it's missing in checkpoint.")
+                logger.warning(f"⚠️ Model expects key '{key}' but it's missing in checkpoint.")
                 
         return qwenQFormerACT
     
@@ -449,7 +450,7 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
     # 要先判断是否有 pretrained_checkpoint
     # TODO 不应该在这里 调用这个，应该在 
     if (hasattr(model_config.vla, 'pretrained_checkpoint') and model_config.vla.pretrained_checkpoint):
-        # overwatch.info(f"Loading pretrained backbones from `{model_config.vla.pretrained_checkpoint}`")
+
         model.load_pretrained_backbones(model_config)
     
         
@@ -458,7 +459,7 @@ def build_model_framework(model_config: dict = {}) -> QwenQFormerDiT:
 
 def read_mode_config(pretrained_checkpoint):
     if os.path.isfile(pretrained_checkpoint):
-        overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
+        logger.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 
         # [Validate] Checkpoint Path should look like `.../<RUN_ID>/checkpoints/<CHECKPOINT_PATH>.pt`
         assert (checkpoint_pt.suffix == ".pt")

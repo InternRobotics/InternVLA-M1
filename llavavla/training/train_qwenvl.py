@@ -32,9 +32,6 @@ from llavavla.training.metrics import only_main_process
 from llavavla.training.metrics import TrainerUtils
 from llavavla.dataloader import save_dataset_statistics
 
-# from prismatic.overwatch import initialize_overwatch # TODO 之后要移动出来， 注意 copyright， 考察和loger 的差异， 为什么要用它？ # 感觉得放弃掉，总结用logger
-# from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
-
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
 accelerator = Accelerator(deepspeed_plugin=deepspeed_plugin)

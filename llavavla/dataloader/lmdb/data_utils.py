@@ -12,11 +12,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+# import log
 
-from prismatic.overwatch import initialize_overwatch
 
-# Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
+from accelerate.logging import get_logger
+logger = get_logger(__name__)
 
 
 def tree_map(fn: Callable, tree: Dict) -> Dict:
@@ -67,7 +67,7 @@ def save_dataset_statistics(dataset_statistics, run_dir):
                         stats[scalar_key] = stats[scalar_key].item()
         
         json.dump(dataset_statistics, f_json, indent=2)
-    overwatch.info(f"Saved LMDB dataset statistics file at path {out_path}")
+    logger.info(f"Saved LMDB dataset statistics file at path {out_path}")
 
 
 def get_lmdb_dataset_statistics(
@@ -105,17 +105,17 @@ def get_lmdb_dataset_statistics(
     
     # Check if cache exists
     if os.path.exists(cache_path):
-        overwatch.info(f"Loading existing LMDB dataset statistics from {cache_path}")
+        logger.info(f"Loading existing LMDB dataset statistics from {cache_path}")
         with open(cache_path, "r") as f:
             return json.load(f)
     
     if os.path.exists(local_path):
-        overwatch.info(f"Loading existing LMDB dataset statistics from {local_path}")
+        logger.info(f"Loading existing LMDB dataset statistics from {local_path}")
         with open(local_path, "r") as f:
             return json.load(f)
     
     # Compute statistics if not cached
-    overwatch.info("Computing LMDB dataset statistics. This may take a bit, but should only need to happen once.")
+    logger.info("Computing LMDB dataset statistics. This may take a bit, but should only need to happen once.")
     
     # Load dataset info
     dataset_info_path = os.path.join(data_dir, "data_info", f"{dataset_info_name}.json")
@@ -179,7 +179,7 @@ def get_lmdb_dataset_statistics(
             raise NotImplementedError(f"Action type {action_type} not supported")
     except KeyError:
         # If quantiles are not available, fall back to min/max
-        overwatch.info(f"Quantile statistics (q01/q99) not found for {action_type}, using min/max as fallback")
+        logger.info(f"Quantile statistics (q01/q99) not found for {action_type}, using min/max as fallback")
         action_q01 = action_min
         action_q99 = action_max
     
@@ -210,16 +210,16 @@ def get_lmdb_dataset_statistics(
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         with open(cache_path, "w") as f:
             json.dump(statistics, f, indent=2)
-        overwatch.info(f"Saved LMDB dataset statistics to {cache_path}")
+        logger.info(f"Saved LMDB dataset statistics to {cache_path}")
     except Exception as e:
-        overwatch.warning(f"Could not write dataset statistics to {cache_path}. Error: {e}")
+        logger.warning(f"Could not write dataset statistics to {cache_path}. Error: {e}")
         try:
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             with open(local_path, "w") as f:
                 json.dump(statistics, f, indent=2)
-            overwatch.info(f"Saved LMDB dataset statistics to {local_path}")
+            logger.info(f"Saved LMDB dataset statistics to {local_path}")
         except Exception as e2:
-            overwatch.error(f"Failed to save statistics to backup location: {e2}")
+            logger.error(f"Failed to save statistics to backup location: {e2}")
     
     return statistics
 

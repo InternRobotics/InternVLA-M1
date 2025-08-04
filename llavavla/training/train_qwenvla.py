@@ -22,16 +22,10 @@ from tqdm import tqdm
 from transformers import AutoProcessor, get_scheduler
 
 # Local Modules
-from llavavla.dataloader.rlds_datasets import collate_fn, get_vla_dataset
-from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
-from llavavla.training.metrics import normalize_dotlist_args
+from llavavla.training.metrics import normalize_dotlist_args # TODO 封装成为一个特殊的 arg 类别  --> 参数使用 yaml + .sh 控制， 单例模式
 from llavavla.model.framework import build_framework
-from llavavla.training.metrics import only_main_process
 from llavavla.training.metrics import TrainerUtils
-from llavavla.dataloader import save_dataset_statistics
 
-# from prismatic.overwatch import initialize_overwatch # TODO 之后要移动出来， 注意 copyright， 考察和loger 的差异， 为什么要用它？ # 感觉得放弃掉，总结用logger
-# from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
@@ -43,6 +37,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
+from accelerate.logging import get_logger
 logger = get_logger(__name__)
 
 def load_fast_tokenizer():
@@ -478,7 +473,7 @@ def main(cfg) -> None:
     vla = build_framework(cfg)
     # 准备数据
     vla_train_dataloader = prepare_data(cfg=cfg, accelerator=accelerator, output_dir=output_dir)
-    # vla.norm_stats = vla_train_dataloader.dataset_statistics # 这个是为了
+    
     # 设置优化器和调度器
     optimizer, lr_scheduler = setup_optimizer_and_scheduler(model=vla, cfg=cfg)
     

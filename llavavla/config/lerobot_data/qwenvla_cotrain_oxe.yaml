@@ -9,18 +9,18 @@ is_debug: false
 
 
 framework:
-  framework_py: DinoQFormerACT # #  qwenpi | DinoQFormerACT
+  framework_py: qwenpi # #  qwenpi | DinoQFormerACT
   qwenvl: # TODO 后期不能交qwenvl 应该直接vlm
     base_vlm: /mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
     attn_implementation: flash_attention_2
     vl_hidden_dim: 2048 # TODO 应该是要去读取 内部的config
+  dino:
+    dino_backbone: dinov2_vitl14
   layer_qformer: 
     qformer_end_layer: 37
     qformer_start_layer: 36
     num_query_tokens: 64
     grad_scale: 0.5 # 让梯度经过这个模块的时候进行衰减，避免破坏VLM， # 似乎会影响学习
-  dino:
-    dino_backbone: dinov2_vitl14
   action_model:
     action_model_type: DiT-B
     action_hidden_dim: 768
@@ -49,22 +49,16 @@ datasets:
     per_device_batch_size: 4
 
   vla_data:
-    dataset_py: lmdb_datasets_realdata_cot
-    data_root_dir: /mnt/petrelfs/share/efm_p/wangfangjing/datasets/
-    data_mix: 3L_short_pick_place_lmdb
-    data_mix_info: 3L_short_pick_place_lmdb
-    action_type: delta_ee_pose
-    default_image_resolution: [3, 224, 224]
-    shuffle_buffer_size: 250000
-    image_aug: true   # dataloader中还没有实现
+    dataset_py: lerobot_datasets_cot
+    data_root_dir: playground/Datasets/OXE_LEROBOT_DATASET
+    data_mix: bridge # bridge_rt_1
+    action_type: delta_ee # 这个没有生效
+    CoT_prompt: "Your task is {instruction}. To identify the key objects for your task. Locate their bounding boxes in [x1,y1,x2,y2] format."
+    CoT_answer: bbox # 写成null 就说明不启用 CoT annotation --> groot 是认为数据集有稳定定义的 --> release 版本确实应该这样假设
+    default_image_resolution: [3, 224, 224] # 还没有生效
     per_device_batch_size: 16
     load_all_data_for_training: true # 考虑如何启用 eval set
-    crop_obs_camera: true
-    normalization_type: min_max
-    shuffle: true
-    obs_type: obs_camera
-    CoT_prompt: "Your task is {instruction}" # To identify the pick object (with bbox) and the place object for your task.
-    CoT_answer: bbox
+    obs: ["image_0"]
 
 
 trainer:
@@ -74,16 +68,18 @@ trainer:
   save_interval: 5000
   eval_interval: 1000
   learning_rate:
-    base: 3e-05
-    # qwen_vl_interface: 1.0e-05
+    base: 2.5e-05
+    # qwen_vl_interface: 1.0e-05 # 整个freeze 掉了的时候会导致优化器 null error
     # action_model: 1.0e-04
   lr_scheduler_type: cosine_with_min_lr
   scheduler_specific_kwargs:
-    min_lr: 2.0e-06
+    min_lr: 1.0e-06
   freeze_modules: ''
   loss_scale:
     vla: 1.0
-    vlm: 0.1 #@DEBUG
+    vlm: 0.1
+  # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
+  # reload_modules: 'action_model,layer_qformer' # 警告： 这个可能会导致 模型无法收敛
   max_grad_norm: 1.0
   warmup_ratio: 0.1
   weight_decay: 0.0
@@ -103,4 +99,3 @@ trainer:
   resume_step: null
   enable_gradient_checkpointing: true
   enable_mixed_precision_training: true
-

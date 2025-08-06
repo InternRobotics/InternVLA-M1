@@ -429,17 +429,21 @@ class QwenQFormerDiT(nn.Module):
         """
         # TODO 这个应该是 要存成一个processor 就是 LLM 中的 tokenizer
         # 获取统计信息
-        # Un-normalize Actions        
-        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["max"], dtype=bool))
-        action_high, action_low = np.array(action_norm_stats["max"]), np.array(action_norm_stats["min"])
+        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
+        action_high = np.array(action_norm_stats["q99"])
+        action_low = np.array(action_norm_stats["q01"])
+
+        # Clip normalized actions to [-1, 1]
         normalized_actions = np.clip(normalized_actions, -1, 1)
-        actions = np.zeros_like(normalized_actions)
-        actions[:, :7] = np.where(
+
+        # 特殊处理第 6 维度的动作（例如分类任务）
+        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        # 根据 mask 和统计信息进行反归一化
+        actions = np.where(
             mask,
-            0.5 * (normalized_actions[:, :7] + 1) * (action_high[:7] - action_low[:7]) + action_low[:7],
-            normalized_actions[:, :7],
+            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
+            normalized_actions
         )
-        actions[:, 6] = normalized_actions[:, 6]
 
         return actions
     @classmethod

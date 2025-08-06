@@ -278,143 +278,7 @@ class QwenQFormerDiT(nn.Module):
             raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
         return raw_actions, normalized_actions # actions, normalized_actions #TODO 得想清楚， Un-normalize Actions  到底是谁控制的。 我觉得必须是模型， 因为减少相对变化， 扁平管理。 但是要单独写成函数
 
-    @torch.inference_mode() # @Jinhui DEBUG 临时取消
-    def predict_action_withCoT( # TODO 和 predict action 是有差别了，之后要去解那边为情况# 那边暂时是for windox
-        self, images: Union[Image, List[Image]], # 变成可以 batch infer
-        instructions: List[str], 
-        solutions: Union[Dict, List[Dict]] = None, # @Jinhui TODO 这里是为了兼容旧的格式, 可以用于出中间表征的评测？
-        unnorm_key: Optional[str] = None, 
-        cfg_scale: float = 1.5, 
-        use_ddim: bool = False,
-        num_ddim_steps: int = 5,
-        **kwargs: str
-    ) -> np.ndarray:
-        """
 
-        @return Unnormalized (continuous) action vector --> end-effector deltas.
-        """
-
-        # @之后写入模型内部， 变成私有化方法
-        batch_images = resize_images(images, target_size=(224, 224))  # list of PIL RGB for one instruction
-        
-        # instructions = [instruction.lower()  for instruction in instructions] # @Jinhui TODO 这里是为了兼容旧的格式， 需要考虑是否要将lang 变成 list
-        
-        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
-        qwen_inputs = inferface_inputs
-        # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
-
-        # Generate feature through vlm
-        with torch.autocast("cuda", dtype=torch.bfloat16):
-            # fmt: off # TODO --> 高阶功能， 直接train 不要train结束符号
-            # TODO Qwen 背后会多一个 终止符号， 需要 [:, :-2] 去掉。是需要思考是否使用 v1 版本来产生 对应的token, v2 不会去尝试学习闭嘴
-            qwenvl_outputs = self.qwen_vl_interface.model.generate(
-                input_ids=qwen_inputs.input_ids[:, :],
-                attention_mask=qwen_inputs.attention_mask[:, :],
-                pixel_values=qwen_inputs.pixel_values, 
-                image_grid_thw =qwen_inputs.image_grid_thw, # 2* [1,16,16] --> 512 = 16*16*2, 1176 = (224/16)^2 * 3 * 2 @JinhuiYE TODO 这个需要找Qwen 的官方文档验证
-                output_hidden_states=True,
-                max_new_tokens=256,
-                return_dict_in_generate=True,
-            )
-            # for check output format
-            decoded_sequences = self.qwen_vl_interface.processor.tokenizer.batch_decode(
-            qwenvl_outputs.sequences, 
-            skip_special_tokens=True 
-            )
-            # print(decoded_sequences[0])
-
-            hidden_states = qwenvl_outputs.hidden_states  # [1 + new token, num_layers, batch_size, attention token, hidden_dim]
-
-            if len(hidden_states) == 1: # 表明没有新的token 残生
-                # 如果生成的 token 为 0，仅保留 prefix_hidden_states
-                prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
-                prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
-                combined_hidden_states = prefix_hidden_states  # Shape: [num_layers, B, prefix_len, hidden_dim]
-            else: # 为了逻辑清晰而使用了 if else, 
-                # 正常处理生成的 token
-                prefix_hidden_states = hidden_states[0]  # Shape: [num_layers, B, prefix_len, hidden_dim]
-                prefix_hidden_states = torch.stack(prefix_hidden_states, dim=0)  # Shape: [num_layers, B, prefix_len, hidden_dim]
-
-                # Step 1: Convert list of lists to a tensor [num_new_tokens, num_layers, B, 1, hidden_dim]
-                new_hidden_states = torch.stack([
-                    torch.stack(layer_hiddens, dim=0)
-                    for layer_hiddens in hidden_states[1:]
-                ], dim=0) # 
-
-                # Step 2: Remove singleton dimension and transpose to [num_layers, B, num_new_tokens, hidden_dim]
-                new_hidden_states = new_hidden_states.squeeze(3).permute(1, 2, 0, 3)  # [num_layers, B, num_new_tokens, hidden_dim]
-
-                # Concatenate prefix and new tokens
-                combined_hidden_states = torch.cat([
-                    prefix_hidden_states,  # [num_layers, B, prefix_len, hidden_dim]
-                    new_hidden_states      # [num_layers, B, num_new_tokens, hidden_dim]
-                ], dim=2)  # Shape: [num_layers, B, total_len, hidden_dim]
-        
-        with torch.autocast("cuda", dtype=torch.float32):
-            start_layer = self.config.framework.layer_qformer.qformer_start_layer
-            end_layer = self.config.framework.layer_qformer.qformer_end_layer
-            latent_features = []
-            # TODO 上面为可读性，牺牲了速度, 稳定后可以考虑 只转换需要用的feature
-            for i in range(start_layer, end_layer):
-                latent_features.append(combined_hidden_states[i]) # 
-            action_latent_feature = self.layer_qformer(latent_features) # [B, 64, D_action]
-            using_cfg = cfg_scale > 1.0
-
-            model_dtype = next(self.action_model.net.parameters()).dtype
-            B = action_latent_feature.shape[0]
-
-            # Sample random noise
-            noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=action_latent_feature.device).to(model_dtype)  #[B, T, D]
-
-            # Setup classifier-free guidance:
-            if using_cfg:
-                noise = torch.cat([noise, noise], 0) #[2,16,7]
-                uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
-                uncondition_shape = uncondition.shape
-                uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
-                uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
-                z = torch.cat([action_latent_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
-                cfg_scale = cfg_scale
-                model_kwargs = dict(z=z, cfg_scale=cfg_scale)
-                sample_fn = self.action_model.net.forward_with_cfg
-            else:
-                model_kwargs = dict(z=action_latent_feature)
-                sample_fn = self.action_model.net.forward
-            
-            # if os.environ.get("DEBUG"):
-            #     print(z .shape)
-            # DDIM Sampling
-            if use_ddim and num_ddim_steps is not None:
-                if self.action_model.ddim_diffusion is None: #@JinhuiYE =TODO check, shape 上没问题， 就不知道traine / infer 和内部操作是否有问题了
-                    self.action_model.create_ddim(ddim_step=num_ddim_steps)
-                samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
-                                                                    noise.shape, 
-                                                                    noise, 
-                                                                    clip_denoised=False,
-                                                                    model_kwargs=model_kwargs,
-                                                                    progress=False,
-                                                                    device=action_latent_feature.device,
-                                                                    eta=0.0
-                                                                    )
-            else:
-                # DDPM Sampling
-                samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
-                                                                        noise.shape, 
-                                                                        noise, 
-                                                                        clip_denoised=False,
-                                                                        model_kwargs=model_kwargs,
-                                                                        progress=False,
-                                                                        device=action_latent_feature.device
-                                                                        )
-            if using_cfg:
-                samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-            normalized_actions = samples.cpu().numpy()
-            # Un-normalize Actions --> 这个信息应该集成在哪里，能够能够取消动态
-            # unnorm_key = self.config.datasets.vla_data.data_mix
-            # raw_actions = self.unnormalize_actions(normalized_actions, self.norm_stats[unnorm_key]) # TODO 这里应该是一个函数， 但是现在是放在模型里面， 不应该，这个是和具体函数绑定的   
-            # TODO unnormalize_actions 会因为数据集不一样而不一样， 这个动态不应该是 framework应该控制的？ 但是 framework 有必须要知道自己的 是什么action？
-        return decoded_sequences, normalized_actions # B, action_chunk, action_dim
-    
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
         """
@@ -429,17 +293,23 @@ class QwenQFormerDiT(nn.Module):
         """
         # TODO 这个应该是 要存成一个processor 就是 LLM 中的 tokenizer
         # 获取统计信息
-        # Un-normalize Actions        
-        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["max"], dtype=bool))
-        action_high, action_low = np.array(action_norm_stats["max"]), np.array(action_norm_stats["min"])
+
+        # 这里存在问题，需要新的norm
+        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
+        action_high = np.array(action_norm_stats["q99"])
+        action_low = np.array(action_norm_stats["q01"])
+
+        # Clip normalized actions to [-1, 1]
         normalized_actions = np.clip(normalized_actions, -1, 1)
-        actions = np.zeros_like(normalized_actions)
-        actions[:, :7] = np.where(
+
+        # 特殊处理第 6 维度的动作（例如分类任务）
+        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        # 根据 mask 和统计信息进行反归一化
+        actions = np.where(
             mask,
-            0.5 * (normalized_actions[:, :7] + 1) * (action_high[:7] - action_low[:7]) + action_low[:7],
-            normalized_actions[:, :7],
+            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
+            normalized_actions
         )
-        actions[:, 6] = normalized_actions[:, 6]
 
         return actions
     @classmethod

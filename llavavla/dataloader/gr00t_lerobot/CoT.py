@@ -6,10 +6,6 @@ def get_episode_cot(self, episode_name, frame_index, obs= "image_0", dir="/mnt/p
     
     
     # 这里数据构建到的问题太多
-    # pick_name = None
-    # place_name = None
-    # pick_bbox = None
-    # place_bbox = None
     original_key = self.lerobot_modality_meta.video[obs].original_key
     #load json
     solution_sentence = None

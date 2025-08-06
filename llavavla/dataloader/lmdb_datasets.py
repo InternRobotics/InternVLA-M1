@@ -365,7 +365,7 @@ class LMDBDataset(Dataset):
         """Return dataset statistics in the same format as RLDS datasets."""
         return self.dataset_statistics
 
-    def save_statistics(self, run_dir: Path) -> None:
+    def save_dataset_statistics(self, run_dir: Path) -> None:
         """Save dataset statistics to the specified directory."""
         save_dataset_statistics(self.dataset_statistics, run_dir)
 

@@ -153,7 +153,14 @@ cache/
 data/
 playground/Models
 =4.43.2
-playground/*
+
+# temp
+playground/BuildData
+
+playground/Checkpoints
+playground/Pretrained_models
+playground/Datasets
+
 eval/SimplerEnv
 
 results

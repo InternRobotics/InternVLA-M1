@@ -330,8 +330,9 @@ class VLAMTrainer(TrainerUtils):
                 progress_bar.update(1)
                 self.completed_steps += 1
             
-            # 评估模型
-            step_metrics = self.eval_action_model(step_metrics)
+            # 评估模型'
+            if self.completed_steps % self.config.trainer.eval_interval == 0:
+                step_metrics = self.eval_action_model(step_metrics)
 
             # 记录指标
             self._log_metrics(step_metrics)
@@ -359,7 +360,7 @@ class VLAMTrainer(TrainerUtils):
         :return: Average metric score across the evaluation dataset.
         """
         
-        if self.accelerator.is_main_process and self.completed_steps % self.config.trainer.eval_interval == 0:
+        if self.accelerator.is_main_process:
             
             examples, vlm_data = self._get_next_batch()
             
@@ -389,7 +390,7 @@ class VLAMTrainer(TrainerUtils):
             average_score = score / num_pots
             step_metrics["mse_score"] = average_score
 
-        # dist.barrier()  # 确保所有进程同步 TODO 看看是否需要让其他进程等
+        dist.barrier()  # 确保所有进程同步 TODO 看看是否需要让其他进程等
         return step_metrics
 
 
@@ -414,7 +415,7 @@ class VLAMTrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_cot_loss = self.model.forward(batch_vla)
-                total_loss = action_loss #+ action_cot_loss #@DEBUG
+                total_loss = action_loss + action_cot_loss * self.config.trainer.loss_scale.vlm #@DEBUG
             self.accelerator.backward(total_loss)
             
             # VLM任务前向传播
@@ -464,7 +465,7 @@ class VLAMTrainer(TrainerUtils):
 
             log_dict.update({
             "action_dit_loss": action_loss.item(),
-            "action_vlm_loss": action_cot_loss.item(),
+            "action_cot_loss": action_cot_loss.item(),
             "vlm_loss": vlm_loss.item(),
             })
         return log_dict

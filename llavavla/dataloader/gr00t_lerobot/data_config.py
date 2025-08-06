@@ -1207,6 +1207,104 @@ class SinglePandaHandDataConfig:
 
         return ComposedModalityTransform(transforms=transforms)
 
+###########################################################################################
+
+class Libero4in1DataConfig:
+    video_keys = [
+        "observation.images.image",
+        "observation.images.wrist_image",
+    ]
+    state_keys = [
+        "observation.state",
+    ]
+    action_keys = [
+        "action",
+    ]
+
+    language_keys = ["task_index"]
+
+    observation_indices = [0]
+    action_indices = list(range(16)) # 这个是？ @Yioutpi
+
+    def modality_config(self):
+        video_modality = ModalityConfig(
+            delta_indices=self.observation_indices,
+            modality_keys=self.video_keys,
+        )
+        state_modality = ModalityConfig(
+            delta_indices=self.observation_indices,
+            modality_keys=self.state_keys,
+        )
+        action_modality = ModalityConfig(
+            delta_indices=self.action_indices,
+            modality_keys=self.action_keys,
+        )
+        language_modality = ModalityConfig(
+            delta_indices=self.observation_indices,
+            modality_keys=self.language_keys,
+        )
+        modality_configs = {
+            "video": video_modality,
+            "state": state_modality,
+            "action": action_modality,
+            "language": language_modality,
+        }
+        return modality_configs
+
+    def transform(self):
+        transforms = [ # TODO 我们不对内容做任何模型相关的 transform ， 但是这里要做 aug 相关的transform
+            # video transforms
+            # VideoToTensor(apply_to=self.video_keys),
+            # VideoCrop(apply_to=self.video_keys, scale=0.95),
+            # VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
+            # VideoColorJitter(
+            #     apply_to=self.video_keys,
+            #     brightness=0.3,
+            #     contrast=0.4,
+            #     saturation=0.5,
+            #     hue=0.08,
+            # ),
+            # VideoToNumpy(apply_to=self.video_keys),
+            # state transforms
+            # StateActionToTensor(apply_to=self.state_keys),
+            # StateActionTransform(
+            #     apply_to=self.state_keys,
+            #     normalization_modes={
+            #         "state.x": "min_max",
+            #         "state.y": "min_max",
+            #         "state.z": "min_max",
+            #         "state.rx": "min_max",
+            #         "state.ry": "min_max",
+            #         "state.rz": "min_max",
+            #         "state.rw": "min_max",
+            #         "state.gripper": "binary",
+            #     },
+            # ),
+            # action transforms
+            StateActionToTensor(apply_to=self.action_keys),
+            StateActionTransform(
+                apply_to=self.action_keys,
+                normalization_modes={
+                    "action.arm": "min_max",
+                    "action.gripper": "binary",
+                    # "action.gripper": "q99",
+                },
+            ),
+            # concat transforms
+            # ConcatTransform(
+            #     # video_concat_order=self.video_keys,
+            #     # state_concat_order=self.state_keys,
+            #     action_concat_order=self.action_keys,
+            # ),
+            # GR00TTransform( #@TODO  为什么这个不做？
+            #     state_horizon=len(self.observation_indices),
+            #     action_horizon=len(self.action_indices),
+            #     max_state_dim=64,
+            #     max_action_dim=32,
+            # ),
+        ]
+
+        return ComposedModalityTransform(transforms=transforms)
 
 ###########################################################################################
 
@@ -1340,4 +1438,13 @@ DATA_CONFIG_MAP = {
     "bench_v6_all_longrange_split2_h264": SinglePandaHandDataConfig(),
     "bench_v6_all_longrange_split3_h264": SinglePandaHandDataConfig(),
     "bench_v6_all_longrange_split4_h264": SinglePandaHandDataConfig(),
+
+    # add by @JinhuiYE
+    # libero bench config
+    "libero_10_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
+    "libero_goal_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
+    "libero_spatial_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
+    "libero_90_no_noops_lerobot": Libero4in1DataConfig(),
+    "libero_object_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
+
 }

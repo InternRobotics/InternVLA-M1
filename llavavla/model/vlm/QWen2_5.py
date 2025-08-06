@@ -18,8 +18,8 @@ logger = get_logger(__name__)
 IGNORE_INDEX = -100
 IMAGE_TOKEN_INDEX = 151655
 VIDEO_TOKEN_INDEX = 151656
-DEFAULT_IMAGE_TOKEN = "<image>\n"
-DEFAULT_VIDEO_TOKEN = "<video>\n"
+DEFAULT_IMAGE_TOKEN = "<image>"
+DEFAULT_VIDEO_TOKEN = "<video>"
 
 # add by jinhui
 
@@ -217,10 +217,10 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
                 solution = solutions[len(messages)]
                 solution_content = [{"type": "text", "text": f": {solution}"}]
                 msg.append({"role": "assistant", "content": solution_content})
-            else: # 是否要判断是否走 infer？ TODO 感觉上不能在这里， 看一下官方怎么解读的
-                # add a dummy assistant response # 高阶操作： 去掉结束符号
-                solution_content = [{"type": "text", "text": ""}] # 这里会包含结束符号， 但是去掉后，又没有生产符号
-                msg.append({"role": "assistant", "content": solution_content})
+            # else: # 是否要判断是否走 infer？ TODO 感觉上不能在这里， 看一下官方怎么解读的
+            #     # add a dummy assistant response # 高阶操作： 去掉结束符号
+            #     solution_content = [{"type": "text", "text": ""}] # 这里会包含结束符号， 但是去掉后，又没有生产符号
+            #     msg.append({"role": "assistant", "content": solution_content})
             
             messages.append(msg)
     
@@ -316,14 +316,14 @@ def preprocess_qwen_2_visual(
     system_message = "You are a helpful assistant."
     if visual_type not in ["image", "video"]:
         raise ValueError("visual_type must be either 'image' or 'video'")
-
-    tokenizer = copy.deepcopy(tokenizer)
+    
+    # tokenizer = copy.deepcopy(tokenizer)
     chat_template = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
     tokenizer.chat_template = chat_template
 
     visual_replicate_index = 0
     input_ids, targets = [], []
-
+    action_obs_mask = [] # 记录那些token 是obs 可以看到的 --> 传递给 Q-Former # TODO 看一下是否有更好的实现方式
     for i, source in enumerate(sources):
         try:
             if roles[source[0]["from"]] != roles["human"]:
@@ -343,7 +343,7 @@ def preprocess_qwen_2_visual(
                 role = conv["role"]
                 content = conv["content"]
             except:
-                role = conv["from"]
+                role = conv["from"] # 这里有两个  <image>\n\n<image>\n\n -> 移除了
                 content = conv["value"]
 
             role = roles.get(role, role)
@@ -378,6 +378,7 @@ def preprocess_qwen_2_visual(
         assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
         input_ids.append(input_id)
         targets.append(target)
+
 
     # TODO Batch padding 
     # TODO 不建议在这里执行padding

@@ -94,10 +94,8 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
 
     # 保存数据集统计信息
     if accelerator.is_main_process: # TODO 后续要考虑统一判断 rank = 0
-        # save_dataset_statistics(vla_dataset.dataset_statistics, output_dir) #@DEBUG
         statistics_data = vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
     
-
     # 拒绝自动分发 # TODO 应该写到 accelerator config
     accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
@@ -333,7 +331,8 @@ class VLATrainer(TrainerUtils):
                 self.completed_steps += 1
             
             # 评估模型
-            step_metrics = self.eval_action_model(step_metrics)
+            if self.completed_steps % self.config.trainer.eval_interval == 0:
+                step_metrics = self.eval_action_model(step_metrics)
 
             # 记录指标
             self._log_metrics(step_metrics)
@@ -344,7 +343,7 @@ class VLATrainer(TrainerUtils):
             if self.completed_steps % self.config.trainer.save_interval == 0 and self.completed_steps > 0:
                 self._save_checkpoint()
 
-                # TODO 加入eval 逻辑 @MichaelYu781
+                
             
             # 检查终止条件
             if self.completed_steps >= self.config.trainer.max_train_steps:
@@ -363,7 +362,7 @@ class VLATrainer(TrainerUtils):
         :return: Average metric score across the evaluation dataset.
         """
         
-        if self.accelerator.is_main_process and self.completed_steps % self.config.trainer.eval_interval == 0:
+        if self.accelerator.is_main_process:
             
             examples = self._get_next_batch()
             
@@ -382,8 +381,6 @@ class VLATrainer(TrainerUtils):
                 use_ddim=True,
                 num_ddim_steps=20)
             
-
-
             # 提前转换 actions 为 numpy.ndarray
             actions = np.array(actions)  # 将 actions 转换为 numpy.ndarray
             # B, Chunk, dim = actions.shape
@@ -392,7 +389,7 @@ class VLATrainer(TrainerUtils):
             score = TrainerUtils.euclidean_distance(normalized_actions, actions)
             average_score = score / num_pots
             step_metrics["mse_score"] = average_score
-
+        pass
         dist.barrier()  # 确保所有进程同步 TODO 看看是否需要让其他进程等
         return step_metrics
 
@@ -417,7 +414,7 @@ class VLATrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_cot_loss = self.model.forward(batch_vla)
-                total_loss = action_loss #+ action_cot_loss
+                total_loss = action_loss + action_cot_loss * self.config.trainer.loss_scale.vlm
             
             # VLA反向传播
             self.accelerator.backward(total_loss)

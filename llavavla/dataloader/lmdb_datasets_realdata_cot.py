@@ -405,14 +405,15 @@ class LMDBDataset(Dataset):
                 language_instruction = f"{language_instruction} {think_prompt}"
                 solution = f"Pick {pick_name} at {pick_bbox}, then place it on {place_name}."
 
-            elif place_bbox is not None: # 28%
-                think_prompt = "Please identify where to place the object."
-                language_instruction = f"{language_instruction} {think_prompt}"
-                solution = f"Pick {pick_name}, then place it on {place_name} at {place_bbox}."
+            # elif place_bbox is not None: # 28%
+            #     think_prompt = "Please identify where to place the object."
+            #     language_instruction = f"{language_instruction} {think_prompt}"
+            #     solution = f"Pick {pick_name}, then place it on {place_name} at {place_bbox}."
             else: # TODO 这里其实应该是有prompt 但是不用输出的模式 --> 下一个版本再做高阶操作
                 think_prompt = "Give the action directly."
                 language_instruction = f"{language_instruction} {think_prompt}"
                 solution = None # 36%
+            #  
             
             # Handle wrist camera (optional)
             try:
@@ -493,9 +494,9 @@ class LMDBDataset(Dataset):
         if has_wrist: # @Fangjin不要定义内在转移逻辑
             return dict(action=collected_action, image=[primary_data, wrist_data], lang=language_instruction, 
                         solution=solution, dataset_name=self.dataset_name)
-        else:
-            return dict(action=collected_action, image=[primary_data], lang=language_instruction, 
-                        solution=solution, dataset_name=self.dataset_name)
+        # else:
+        #     return dict(action=collected_action, image=[primary_data], lang=language_instruction, 
+        #                 solution=solution, dataset_name=self.dataset_name)
 
     def __iter__(self):
         """Iterate through the dataset sequentially."""
@@ -569,7 +570,7 @@ class LMDBDataset(Dataset):
         """Return dataset statistics in the same format as RLDS datasets."""
         return self.dataset_statistics
 
-    def save_statistics(self, run_dir: Path) -> None:
+    def save_dataset_statistics(self, run_dir: Path) -> None:
         """Save dataset statistics to the specified directory."""
         save_dataset_statistics(self.dataset_statistics, run_dir)
 

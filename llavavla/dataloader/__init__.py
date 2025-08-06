@@ -86,6 +86,26 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
         )
         return vla_dataset, collate_fn
         # lmdb_datasets_realdata_cot
+    elif cfg.datasets.vla_data.dataset_py == "lmdb_datasets_realdata":
+        from llavavla.dataloader.lmdb_datasets_real import get_vla_dataset, collate_fn
+
+        vla_dataset_cfg = cfg.datasets.vla_data
+        vla_model_cfg = cfg.framework.action_model
+        vla_dataset = get_vla_dataset(
+            data_root_dir=vla_dataset_cfg.data_root_dir,
+            data_mix=vla_dataset_cfg.data_mix,
+            data_mix_info=vla_dataset_cfg.data_mix_info,
+            obs_type=vla_dataset_cfg.obs_type,
+            action_type=vla_dataset_cfg.action_type,
+            window_size=vla_model_cfg.future_action_window_size + 1,
+            image_aug=vla_dataset_cfg.image_aug,
+            default_image_resolution=tuple(vla_dataset_cfg.default_image_resolution),
+            shuffle=vla_dataset_cfg.shuffle,
+            crop_obs_camera=vla_dataset_cfg.crop_obs_camera,
+            normalization_type=vla_dataset_cfg.normalization_type,
+        )
+        return vla_dataset, collate_fn
+        # lmdb_datasets_realdata_cot
 
     elif cfg.datasets.vla_data.dataset_py == "lerobot_datasets_cot":
         from llavavla.dataloader.lerobot_datasets_cot import get_vla_dataset, collate_fn

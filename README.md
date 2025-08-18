@@ -2,10 +2,6 @@
 
 ## 特性
 
-- **模块化设计**，包含 **视觉编码**、**语言处理** 和 **动作建模** 组件。
-- **同时支持 VLM 和 VLA 任务**，可灵活适配不同应用场景。
-- **开源可扩展** 遵循高内聚，低耦合，支持变体扩展。
-
 
 ## 文件结构
 
@@ -22,7 +18,7 @@ LLaVA-VLA
 │
 ├── training             # 训练相关代码
 │
-├── conf                 # 配置文件
+├── config                 # 配置文件
 │
 ├── README.md            # 项目说明文件
 ├── requirements.txt     # 依赖包列表
@@ -36,19 +32,6 @@ LLaVA-VLA
 # 愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
 
 
-## 希望的feature 和 理想的脚本
-1. Pretraining VLM
-2. Pretraining DiT
-3. align VLM with DiT (希望在 5 epcoh 内完成 alignment) # done 在1 epoch 就能完成
-
-
-## 开发规划
-1. 支持 QwenACT 的training (done)
-2. 支持同时training VLA 和 VLM (done)
-3. 支持同时 align VLA DiT and Qwen (done) 
-
-4. 支持 单独 training VLM with own vision encode (pending) #直接用QWen
-5. 支持 单独 training ACT with own vision encode (pending) # 直接用openVLA
 
 
 
@@ -56,7 +39,6 @@ LLaVA-VLA
 
 '''bash
 
-cd llavavla/model/openvla
 
 conda create -n llavavla python=3.10
 
@@ -74,18 +56,16 @@ pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.
 
 ### run vla only 
 
-bash /mnt/petrelfs/yejinhui/Projects/llavavla/scripts/run_scripts/qwenpi_bench200.sh # prepare OXE_LEROBOT_DATASET and QWenvl 3B to playground
+bash scripts/run_scripts/run_lerobot_datasets.sh # prepare OXE_LEROBOT_DATASET and QWenvl 3B to playground
 
 
 
 ### eval 
 
-sample to https://github.com/microsoft/CogACT?tab=readme-ov-file#getting-started
+same to https://github.com/microsoft/CogACT?tab=readme-ov-file#getting-started
 
 
 ## 许可证
 
 MIT License
 
-
-git remote add gitee https://gitee.pjlab.org.cn/L2/yejinhui/llavavla.git

@@ -79,11 +79,6 @@ def auto_get_trainable_modules(module, prefix='', max_depth=None):
     else:
         return child_keys
 
-    # 示例用法：假设 cogact_qwen 是一个包含 vlm 和 action_model 的模型实例
-    # condensed_keys = get_condensed_trainable_modules(cogact_qwen, max_depth=2)
-    # print(condensed_keys)
-    #     # 读取配置文件
-
 
 
 def print_freeze_status(self):

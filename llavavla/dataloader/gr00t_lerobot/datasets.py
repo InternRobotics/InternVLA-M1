@@ -47,7 +47,11 @@ from llavavla.dataloader.gr00t_lerobot.schema import (
     LeRobotStateActionMetadata,
 )
 from llavavla.dataloader.gr00t_lerobot.transform import ComposedModalityTransform
-from llavavla.dataloader.gr00t_lerobot.CoT import get_episode_cot
+
+import multiprocessing as mp
+from functools import partial
+from typing import Tuple, List
+import pickle
 
 LE_ROBOT_MODALITY_FILENAME = "meta/modality.json"
 LE_ROBOT_EPISODE_FILENAME = "meta/episodes.jsonl"
@@ -55,13 +59,15 @@ LE_ROBOT_TASKS_FILENAME = "meta/tasks.jsonl"
 LE_ROBOT_INFO_FILENAME = "meta/info.json"
 LE_ROBOT_STATS_FILENAME = "meta/stats_gr00t.json"
 LE_ROBOT_DATA_FILENAME = "data/*/*.parquet"
-
+LE_ROBOT_STEPS_FILENAME = "meta/steps.pkl"
+EPSILON = 5e-4
 
 def calculate_dataset_statistics(parquet_paths: list[Path]) -> dict:
     """Calculate the dataset statistics of all columns for a list of parquet files."""
     # Dataset statistics
     all_low_dim_data_list = []
     # Collect all the data
+    # parquet_paths = parquet_paths[:3]
     for parquet_path in tqdm(
         sorted(list(parquet_paths)),
         desc="Collecting all parquet files...",
@@ -74,6 +80,8 @@ def calculate_dataset_statistics(parquet_paths: list[Path]) -> dict:
     # Compute dataset statistics
     dataset_statistics = {}
     for le_modality in all_low_dim_data.columns:
+        if le_modality.startswith("annotation."):
+            continue
         print(f"Computing statistics for {le_modality}...")
         np_data = np.vstack(
             [np.asarray(x, dtype=np.float32) for x in all_low_dim_data[le_modality]]
@@ -102,7 +110,6 @@ class LeRobotSingleDataset(Dataset):
     """
     Base dataset class for LeRobot that supports sharding.
     """
-
     def __init__(
         self,
         dataset_path: Path | str,
@@ -111,6 +118,10 @@ class LeRobotSingleDataset(Dataset):
         video_backend: str = "decord",
         video_backend_kwargs: dict | None = None,
         transforms: ComposedModalityTransform | None = None,
+        augsteps: int = 0, # TODO gripper 变化的增加模式很奇特，不要做这样的，应该是分析 整条轨迹 然后对变化明显的地方进行aug
+        delte_pause_frame: bool = True, # 这个是要开起来的
+        num_workers: int = 1,
+        **kwargs: dict  # Additional keyword arguments for future extensibility
     ):
         """
         Initialize the dataset.
@@ -123,11 +134,17 @@ class LeRobotSingleDataset(Dataset):
             video_backend_kwargs (dict): Keyword arguments for the video backend when initializing the video reader.
             transforms (ComposedModalityTransform): The transforms to apply to the dataset.
             embodiment_tag (EmbodimentTag): Overload the embodiment tag for the dataset. e.g. define it as "new_embodiment"
+            augsteps (int): The number of gripper open/close steps to augment the dataset.
+            num_workers (int): Number of worker processes for multiprocessing. If None, uses cpu_count().
         """
         # first check if the path directory exists
         if not Path(dataset_path).exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} does not exist")
-
+        # TODO 变成一个前处理函数，而不是对这个数据有用的
+        self._is_gripper_aug = augsteps > 0
+        self.augsteps = augsteps 
+        self.delte_pause_frame = delte_pause_frame # 如果不用delta 不是G了么？ 这里应该是个处理函数，去改变数据集的，而不是动态使用函数
+        # TODO 去搞明白这里的修改后，还怎么index example?
         self.modality_configs = modality_configs
         self.video_backend = video_backend
         self.video_backend_kwargs = video_backend_kwargs if video_backend_kwargs is not None else {}
@@ -138,19 +155,11 @@ class LeRobotSingleDataset(Dataset):
         self._dataset_path = Path(dataset_path)
         self._dataset_name = self._dataset_path.name
         if isinstance(embodiment_tag, EmbodimentTag):
-            self.tag = embodiment_tag.value
+            self.tag = embodiment_tag.value # 这个很诡异
         else:
             self.tag = embodiment_tag
 
         self._metadata = self._get_metadata(EmbodimentTag(self.tag))
-        self._trajectory_ids, self._trajectory_lengths = self._get_trajectories()
-        self._all_steps = self._get_all_steps()
-        self._modality_keys = self._get_modality_keys()
-        self._delta_indices = self._get_delta_indices()
-        self.set_transforms_metadata(self.metadata)
-        self.set_epoch(0)
-
-        print(f"Initialized dataset {self.dataset_name} with {embodiment_tag}")
 
         # LeRobot-specific config
         self._lerobot_modality_meta = self._get_lerobot_modality_meta()
@@ -161,6 +170,16 @@ class LeRobotSingleDataset(Dataset):
         self._tasks = self._get_tasks()
         self.curr_traj_data = None
         self.curr_traj_id = None
+
+        self._trajectory_ids, self._trajectory_lengths = self._get_trajectories()
+        self._modality_keys = self._get_modality_keys()
+        self._delta_indices = self._get_delta_indices() # @Jinhui 这个用来干什么的？
+        self._all_steps = self._get_all_steps(num_workers=num_workers) #  用这个来定义数据集的 index -> (eps_id, base_index) 的形式
+        self.set_transforms_metadata(self.metadata)
+        self.set_epoch(0)
+
+        print(f"Initialized dataset {self.dataset_name} with {embodiment_tag}")
+
 
         # Check if the dataset is valid
         self._check_integrity()
@@ -176,7 +195,7 @@ class LeRobotSingleDataset(Dataset):
         return self._metadata
 
     @property
-    def trajectory_ids(self) -> np.ndarray:
+    def trajectory_ids(self) -> np.ndarray: # 你为什么非的这样子呢？多调一次？
         """The trajectory IDs in the dataset, stored as a 1D numpy array of strings."""
         return self._trajectory_ids
 
@@ -268,7 +287,7 @@ class LeRobotSingleDataset(Dataset):
         assert (
             modality_meta_path.exists()
         ), f"Please provide a {LE_ROBOT_MODALITY_FILENAME} file in {self.dataset_path}"
-
+        # @JinhuiYE TODO 这个文件是groot 定义了 他的 data_config 和 数据集中间的关系，它在和原始数据meta 中间增加了一层 （TODO 我感觉有点多余）--》 其实是将code 变化转移到config 但是这里并没有切干净，导致code 中还需要coding --> 但是人家加了肯定是有道理的
         # 1.1. State and action modalities
         simplified_modality_meta: dict[str, dict] = {}
         with open(modality_meta_path, "r") as f:
@@ -375,26 +394,240 @@ class LeRobotSingleDataset(Dataset):
             trajectory_lengths.append(episode["length"])
         return np.array(trajectory_ids), np.array(trajectory_lengths)
 
-    def _get_all_steps(self) -> list[tuple[int, int]]:
+    def _get_all_steps(self, num_workers: int = None) -> list[tuple[int, int]]:
         """Get the trajectory IDs and base indices for all steps in the dataset.
+        
+        Args:
+            num_workers: Number of worker processes. If None, uses cpu_count().
 
         Returns:
             list[tuple[str, int]]: A list of (trajectory_id, base_index) tuples.
-
-        Example:
-            self.trajectory_ids: [0, 1, 2]
-            self.trajectory_lengths: [3, 2, 4]
-            return: [
-                ("traj_0", 0), ("traj_0", 1), ("traj_0", 2),
-                ("traj_1", 0), ("traj_1", 1),
-                ("traj_2", 0), ("traj_2", 1), ("traj_2", 2), ("traj_2", 3)
-            ]
         """
+        # Create a hash key based on configuration to ensure cache validity
+        config_key = self._get_steps_config_key()
+        
+        # Create a unique filename based on config_key
+        if "bridge" in self.dataset_name:
+            config_key = "332420bad1ab" #
+        if "fractal" in self.dataset_name:
+            config_key = "2d5a34b904d2"
+        steps_filename = f"steps_{config_key}.pkl"
+        steps_path = self.dataset_path / "meta" / steps_filename
+        
+        # Try to load cached steps first
+        try:
+            if steps_path.exists():
+                with open(steps_path, "rb") as f:
+                    cached_data = pickle.load(f)
+                
+                # Verify the cached data matches current configuration
+                if cached_data.get("config_key") == config_key:
+                    print(f"Loading cached steps from {steps_path}")
+                    return cached_data["steps"]
+                else:
+                    print("Cached steps configuration mismatch, recomputing...")
+        except (FileNotFoundError, pickle.PickleError, KeyError) as e:
+            print(f"Failed to load cached steps: {e}")
+            print("Computing steps from scratch...")
+
+        # Compute steps using multiprocessing or single process
+        if num_workers is None:
+            num_workers = min(mp.cpu_count(), len(self.trajectory_ids))
+        
+        # If dataset is small, use single process
+        debug = 0
+        if len(self.trajectory_ids) < 10 or num_workers == 1 or debug:
+            all_steps = self._get_all_steps_single_process()
+        else:
+            all_steps = self._get_all_steps_multiprocess(num_workers)
+        
+        # Cache the computed steps with unique filename
+        try:
+            cache_data = {
+                "config_key": config_key,
+                "steps": all_steps,
+                "num_trajectories": len(self.trajectory_ids),
+                "total_steps": len(all_steps),
+                "computed_timestamp": pd.Timestamp.now().isoformat(),
+                "delte_pause_frame": self.delte_pause_frame,
+                "augsteps": self.augsteps,
+            }
+            
+            # Ensure the meta directory exists
+            steps_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(steps_path, "wb") as f:
+                pickle.dump(cache_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            print(f"Cached steps saved to {steps_path}")
+        except Exception as e:
+            print(f"Failed to cache steps: {e}")
+        
+        return all_steps # 这里不应该是这样的， 这里应该是提前算好 一个list 之后就不要随机读取了，因为我的epoch很小， 不会多次重复的
+
+    def _get_steps_config_key(self) -> str:
+        """Generate a configuration key for steps caching."""
+        config_dict = { # 一定要面向对象，不能面向参数
+            "delte_pause_frame": self.delte_pause_frame,
+            "augsteps": self.augsteps, #
+            "dataset_name": self.dataset_name,  # 添加数据集名称
+            # 可以根据需要添加更多配置项
+            # "modality_keys": sorted([str(k) for k in self._get_modality_keys().items()]),
+        }
+        # Create a hash of the configuration
+        config_str = str(sorted(config_dict.items()))
+        return hashlib.md5(config_str.encode()).hexdigest()[:12]  # 使用12位短hash避免文件名过长
+
+    def _get_all_steps_multiprocess(self, num_workers: int) -> list[tuple[int, int]]:
+        """Compute all steps using multiprocessing."""
+        # Check if language modality is configured
+        has_language_modality = 'language' in self.modality_keys and len(self.modality_keys['language']) > 0
+        language_key = self.modality_keys['language'][0] if has_language_modality else None
+        
+        # Prepare arguments for each trajectory
+        modality_keys = self._get_modality_keys()
+        trajectory_args = [
+            (trajectory_id, trajectory_length, self.dataset_path, self.data_path_pattern, 
+             self.chunk_size, self.delte_pause_frame, self._is_gripper_aug, self.augsteps, 
+             modality_keys, has_language_modality, language_key, self.tasks, self.lerobot_modality_meta,)
+            for trajectory_id, trajectory_length in zip(self.trajectory_ids, self.trajectory_lengths)
+        ]
+        for i in tqdm(range(len(trajectory_args)), desc="Preparing trajectory arguments"):
+            data = self.get_trajectory_data(trajectory_args[i][0])
+            self.curr_traj_data = data
+            language_instruction = self.get_language(trajectory_args[i][0], self.modality_keys['language'][0], 0)
+            # trajectory_args[i].append(data)
+            trajectory_args[i] = trajectory_args[i] + (data, language_instruction)
+        
+        print(f"Processing {len(self.trajectory_ids)} trajectories using {num_workers} workers...")
+        
+        try:
+            with mp.Pool(processes=num_workers) as pool:
+                results = list(tqdm(
+                    pool.imap(_process_single_trajectory_with_language_check, trajectory_args),
+                    total=len(trajectory_args),
+                    desc="Processing trajectories"
+                ))
+        
+            # Flatten results from all trajectories and count skipped trajectories
+            all_steps = []
+            skipped_trajectories = 0
+            processed_trajectories = 0
+            
+            for trajectory_result in results:
+                if trajectory_result:  # Not empty
+                    all_steps.extend(trajectory_result)
+                    processed_trajectories += 1
+                else:  # Empty result means trajectory was skipped
+                    skipped_trajectories += 1
+            
+            print(f"Multi-process summary: Processed {processed_trajectories} trajectories, skipped {skipped_trajectories} empty trajectories")
+            print(f"Total steps: {len(all_steps)} from {len(self.trajectory_ids)} trajectories")
+            return all_steps
+            
+        except Exception as e:
+            print(f"Multiprocessing failed: {e}")
+            print("Falling back to single-process mode...")
+            return self._get_all_steps_single_process()
+
+    def _get_all_steps_single_process(self) -> list[tuple[int, int]]:
+        """Original single-process implementation as fallback."""
         all_steps: list[tuple[int, int]] = []
-        for trajectory_id, trajectory_length in zip(self.trajectory_ids, self.trajectory_lengths):
-            for base_index in range(trajectory_length):
-                all_steps.append((trajectory_id, base_index))
+        skipped_trajectories = 0
+        processed_trajectories = 0
+        
+        # Check if language modality is configured
+        has_language_modality = 'language' in self.modality_keys and len(self.modality_keys['language']) > 0
+        
+        for trajectory_id, trajectory_length in tqdm(zip(self.trajectory_ids, self.trajectory_lengths), total=len(self.trajectory_ids), desc="Getting All Step"):
+            data = self.get_trajectory_data(trajectory_id)
+            trajectory_skipped = False
+            
+            # Check if trajectory has valid language instruction (if language modality is configured)
+            if has_language_modality:
+                self.curr_traj_data = data  # Set current trajectory data for get_language to work
+                try:
+                    language_instruction = self.get_language(trajectory_id, self.modality_keys['language'][0], 0)
+                    if not language_instruction or language_instruction[0] == "":
+                        print(f"Skipping trajectory {trajectory_id} due to empty language instruction")
+                        skipped_trajectories += 1
+                        trajectory_skipped = True
+                        continue
+                except Exception as e:
+                    print(f"Skipping trajectory {trajectory_id} due to language retrieval error: {e}")
+                    skipped_trajectories += 1
+                    trajectory_skipped = True
+                    continue
+            
+            if not trajectory_skipped:
+                processed_trajectories += 1
+            
+            if self.delte_pause_frame: # V1 版本只做这个修正
+                # Get position and gripper fields based on available columns
+                delta_position_values, gripper_values = self._get_position_and_gripper_values(data) # 这个很危险， 如果就是要停止呢？
+                previous_gripper = gripper_values[0]
+                for base_index in range(trajectory_length):
+                    if base_index >= len(delta_position_values) or base_index >= len(gripper_values):
+                        break
+                        
+                    # Check for translation change using the detected position fields
+                    has_translation_change = np.any(np.abs(delta_position_values[base_index]) > EPSILON)
+                    has_gripper_change = gripper_values[base_index] != (previous_gripper if base_index == 0 else gripper_values[base_index-1])
+                    
+                    if has_translation_change or has_gripper_change:
+                        all_steps.append((trajectory_id, base_index))
+            else:
+                for base_index in range(trajectory_length):
+                    all_steps.append((trajectory_id, base_index))
+                    
+            # Gripper augmentation logic - 与单进程版本保持一致
+            if self._is_gripper_aug and self.augsteps > 0: # 🙅不要做这个增加，没必要
+                change_indices = set()
+                values = []
+                action_keys = self.modality_keys.get('action', [])
+                for key in action_keys:
+                    if '.' in key:
+                        subkey = key.split('.')[1]
+                    else:
+                        subkey = key
+                    if 'gripper_close' == subkey or 'gripper' == subkey: # 也不应该是针对它来做
+                        if hasattr(self.lerobot_modality_meta, 'action'):
+                            le_state_or_action_cfg = self.lerobot_modality_meta.action
+                            if subkey in le_state_or_action_cfg:
+                                le_key = le_state_or_action_cfg[subkey].original_key or subkey
+                                if le_key in data.columns:
+                                    data_array = np.stack(data[le_key])
+                                    le_indices = np.arange(le_state_or_action_cfg[subkey].start, le_state_or_action_cfg[subkey].end)
+                                    gripper_data = data_array[:, le_indices].flatten()
+                                    values.append(gripper_data.tolist())
+
+                if values:
+                    for i in range(len(values[0]) - 2):
+                        flag = [values[j][i] == values[j][i + 1] == values[j][i + 2] for j in range(len(values))]
+                        if False in flag:
+                            change_indices.update((i, i + 1, i + 2))
+                    # 窗口增广：左右各 augsteps，且每个位置只加一次
+                    augmented_positions = set()
+                    radius = int(self.augsteps)
+                    for change_index in change_indices:
+                        start = max(change_index - radius, 0)
+                        end = min(change_index + radius, trajectory_length - 1)
+                        for w in range(start, end + 1):
+                            key_tuple = (trajectory_id, w)
+                            if key_tuple not in augmented_positions:
+                                all_steps.append(key_tuple)
+                                augmented_positions.add(key_tuple)
+                else:
+                    print(f"No action-gripper data found for trajectory {trajectory_id}. Skipping augmentation.")
+
+        # Print summary statistics
+        print(f"Single-process summary: Processed {processed_trajectories} trajectories, skipped {skipped_trajectories} empty trajectories")
+        print(f"Total steps: {len(all_steps)} from {len(self.trajectory_ids)} trajectories")
+                   
         return all_steps
+
+    def _get_position_and_gripper_values(self, data: pd.DataFrame) -> tuple[list, list]:
+        """Get position and gripper values based on available columns in the dataset."""
+        return _get_position_and_gripper_values_static(data, self.lerobot_modality_meta, self._get_modality_keys())
 
     def _get_modality_keys(self) -> dict:
         """Get the modality keys for the dataset.
@@ -491,6 +724,7 @@ class LeRobotSingleDataset(Dataset):
         """Get the description of the dataset."""
         return f"{self.dataset_name} ({len(self)} steps)"
 
+
     def __getitem__(self, index: int) -> dict:
         """Get the data for a single step in a trajectory.
 
@@ -523,7 +757,7 @@ class LeRobotSingleDataset(Dataset):
             base_index (int): The base step index in the trajectory.
 
         Returns:
-            dict: The RAW data for the step. 
+            dict: The RAW data for the step.
 
         Example return:
             {
@@ -548,20 +782,6 @@ class LeRobotSingleDataset(Dataset):
             # Get the data corresponding to each key in the modality
             for key in self.modality_keys[modality]:
                 data[key] = self.get_data_by_modality(trajectory_id, modality, key, base_index)
-        # TODO 之后这个 CoT 选项变成 get modality_keys 中的一部分，将这个东西和 lerobot 格式约定对齐  --> 设计一下数据格式
-        # Get CoT data if it exists, @TODO 现在 groot 的数据config 和 我们的有 overlap 问题
-        if "bridge_orig" in self.dataset_name: # TODO 后续要实现到 meta.json 格式
-            grounding_root = "/mnt/petrelfs/share/efm_p/yujunqiu/grounding/oxe_processed"
-            # self.dataset_name
-            dataset_name = "bridge_orig_1.0"
-            obs_name = "video.image_0" # 这个不知道会不会因为其他地方而变化
-            obs_name = obs_name.replace("video.", "") # groot 其他地方也有hard code 逻辑
-            data_dir = os.path.join(grounding_root, dataset_name)
-            
-            #@DEBUG
-            # solution_sentence = get_episode_cot(self, episode_name=trajectory_id, obs=obs_name, frame_index=base_index, dir=data_dir) # TODO @DEBUG base_index 的内容需要确认
-            # data["CoT_answer"] = solution_sentence
-        # @temp 因为annotation 中说数据不完善， 需要额外再处理
         return data
 
     def get_trajectory_data(self, trajectory_id: int) -> pd.DataFrame:
@@ -738,7 +958,7 @@ class LeRobotSingleDataset(Dataset):
         assert self.curr_traj_data is not None, f"No data found for {trajectory_id=}"
         assert le_key in self.curr_traj_data.columns, f"No {le_key} found in {trajectory_id=}"
         data_array: np.ndarray = np.stack(self.curr_traj_data[le_key])  # type: ignore
-        assert data_array.ndim == 2, f"Expected 2D array, got {data_array.shape} array"
+        assert data_array.ndim == 2, f"Expected 2D array, got key {le_key} is{data_array.shape} array"
         le_indices = np.arange(
             le_state_or_action_cfg[key].start,
             le_state_or_action_cfg[key].end,
@@ -828,6 +1048,108 @@ class LeRobotSingleDataset(Dataset):
             return self.get_language(trajectory_id, key, base_index)
         else:
             raise ValueError(f"Invalid modality: {modality}")
+
+    def save_dataset_statistics(self, save_path: Path | str, format: str = "json") -> None:
+        """
+        Save dataset statistics to specified path in the required format.
+        Only includes statistics for keys that are actually used in the dataset.
+        Gripper-related keys will be placed at the end.
+        
+        Args:
+            save_path (Path | str): Path to save the statistics file
+            format (str): Save format, currently only supports "json"
+        """
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Build the data structure to save
+        statistics_data = {}
+        
+        # Get used modality keys
+        used_action_keys, used_state_keys = get_used_modality_keys(self.modality_keys)
+        
+        # Organize statistics by tag
+        tag = self.tag
+        tag_stats = {}
+        
+        # Process action statistics (only for used keys)
+        if hasattr(self.metadata.statistics, 'action') and self.metadata.statistics.action:
+            action_stats = self.metadata.statistics.action
+            
+            # Filter to only include used action keys and reorder: non-gripper first, gripper last
+            non_gripper_keys = []
+            gripper_keys = []
+            
+            for key in action_stats.keys():
+                if key in used_action_keys:
+                    if "gripper" in key.lower():
+                        gripper_keys.append(key)
+                    else:
+                        non_gripper_keys.append(key)
+            
+            # Reorder: non-gripper first, gripper last
+            reordered_keys = non_gripper_keys + gripper_keys
+            
+            filtered_action_stats = {}
+            for key in reordered_keys:
+                filtered_action_stats[key] = action_stats[key]
+            
+            if filtered_action_stats:
+                # Combine statistics from filtered action sub-keys
+                combined_action_stats = combine_modality_stats(filtered_action_stats)
+                
+                # Add mask field based on whether it's gripper or not
+                mask = generate_action_mask_for_used_keys(
+                    self.metadata.modalities.action, filtered_action_stats.keys()
+                )
+                combined_action_stats["mask"] = mask
+                
+                tag_stats["action"] = combined_action_stats
+        
+        # Process state statistics (only for used keys)
+        if hasattr(self.metadata.statistics, 'state') and self.metadata.statistics.state:
+            state_stats = self.metadata.statistics.state
+            
+            # Filter to only include used state keys, optionally reorder gripper to end
+            non_gripper_keys = []
+            gripper_keys = []
+            
+            for key in state_stats.keys():
+                if key in used_state_keys:
+                    if "gripper" in key.lower():
+                        gripper_keys.append(key)
+                    else:
+                        non_gripper_keys.append(key)
+            
+            # Reorder: non-gripper first, gripper last
+            reordered_keys = non_gripper_keys + gripper_keys
+            
+            filtered_state_stats = {}
+            for key in reordered_keys:
+                filtered_state_stats[key] = state_stats[key]
+            
+            if filtered_state_stats:
+                combined_state_stats = combine_modality_stats(filtered_state_stats)
+                tag_stats["state"] = combined_state_stats
+        
+        # Add dataset counts
+        tag_stats["num_transitions"] = len(self)
+        tag_stats["num_trajectories"] = len(self.trajectory_ids)
+        
+        statistics_data[tag] = tag_stats
+        
+        # Save as JSON file
+        if format.lower() == "json":
+            if not str(save_path).endswith('.json'):
+                save_path = save_path.with_suffix('.json')
+            with open(save_path, 'w', encoding='utf-8') as f:
+                json.dump(statistics_data, f, indent=2, ensure_ascii=False)
+        else:
+            raise ValueError(f"Unsupported format: {format}. Currently only 'json' is supported.")
+        
+        print(f"Single dataset statistics saved to: {save_path}")
+        print(f"Used action keys (reordered): {list(used_action_keys)}")
+        print(f"Used state keys (reordered): {list(used_state_keys)}")
 
 
 class CachedLeRobotSingleDataset(LeRobotSingleDataset):
@@ -926,7 +1248,6 @@ def safe_hash(input_tuple):
     sha256.update(tuple_string)
 
     seed = int(sha256.hexdigest(), 16)
-
     return seed & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 
@@ -938,6 +1259,99 @@ class MixtureSpecElement(BaseModel):
         description="Whether to distribute the weights of the dataset across all the paths. If True, the weights will be evenly distributed across all the paths.",
     )
 
+
+# 在文件顶部添加统计相关的辅助函数
+
+def combine_modality_stats(modality_stats: dict) -> dict:
+    """
+    Combine statistics from all sub-keys under a modality.
+    
+    Args:
+        modality_stats (dict): Statistics for a modality, containing multiple sub-keys.
+                               Each sub-key contains DatasetStatisticalValues object.
+        
+    Returns:
+        dict: Combined statistics
+    """
+    combined_stats = {
+        "mean": [],
+        "std": [],
+        "max": [],
+        "min": [],
+        "q01": [],
+        "q99": []
+    }
+    
+    # Combine statistics in sub-key order
+    for subkey in modality_stats.keys():
+        subkey_stats = modality_stats[subkey]  # This is a DatasetStatisticalValues object
+        
+        # Convert DatasetStatisticalValues to dict-like access
+        for stat_name in ["mean", "std", "max", "min", "q01", "q99"]:
+            stat_value = getattr(subkey_stats, stat_name)
+            if isinstance(stat_value, (list, tuple)):
+                combined_stats[stat_name].extend(stat_value)
+            else:
+                # Handle NDArray case - convert to list
+                if hasattr(stat_value, 'tolist'):
+                    combined_stats[stat_name].extend(stat_value.tolist())
+                else:
+                    combined_stats[stat_name].append(float(stat_value))
+    
+    return combined_stats
+
+def generate_action_mask_for_used_keys(action_modalities: dict, used_action_keys_ordered) -> list[bool]:
+    """
+    Generate mask based on action modalities, but only for used keys.
+    Gripper-related are False, others are True.
+    
+    Args:
+        action_modalities (dict): Configuration information for action modalities.
+        used_action_keys_ordered: Iterable of actually used action keys in the correct order.
+        
+    Returns:
+        list[bool]: List of mask values
+    """
+    mask = []
+    
+    # Generate mask in the same order as the statistics were combined
+    for subkey in used_action_keys_ordered:
+        if subkey in action_modalities:
+            subkey_config = action_modalities[subkey]
+            
+            # Get dimension count from shape
+            if hasattr(subkey_config, 'shape') and len(subkey_config.shape) > 0:
+                dim_count = subkey_config.shape[0]
+            else:
+                dim_count = 1
+            
+            # Check if it's gripper-related
+            is_gripper = "gripper" in subkey.lower()
+            
+            # Generate mask value for each dimension
+            for _ in range(dim_count):
+                mask.append(not is_gripper)  # gripper is False, others are True
+    
+    return mask
+
+def get_used_modality_keys(modality_keys: dict) -> tuple[set, set]:
+    """Extract used action and state keys from modality configuration."""
+    used_action_keys = set()
+    used_state_keys = set()
+    
+    # Extract action keys (remove "action." prefix)
+    for action_key in modality_keys.get("action", []):
+        if action_key.startswith("action."):
+            clean_key = action_key.replace("action.", "")
+            used_action_keys.add(clean_key)
+    
+    # Extract state keys (remove "state." prefix)  
+    for state_key in modality_keys.get("state", []):
+        if state_key.startswith("state."):
+            clean_key = state_key.replace("state.", "")
+            used_state_keys.add(clean_key)
+    
+    return used_action_keys, used_state_keys
 
 class LeRobotMixtureDataset(Dataset):
     """
@@ -977,7 +1391,7 @@ class LeRobotMixtureDataset(Dataset):
         self.balance_trajectory_weights = balance_trajectory_weights
         self.seed = seed
         self.mode = mode
-        self.config = kwargs["config"] if "config" in kwargs else {}
+
         # Set properties for sampling
 
         # 1. Dataset lengths
@@ -1050,29 +1464,20 @@ class LeRobotMixtureDataset(Dataset):
         # self.sampled_steps = self.sample_epoch()
 
     def sample_step(self, index: int) -> tuple[LeRobotSingleDataset, int, int]:
-        """Sample a single step from the dataset.
-        是从多个数据集中随机选择一个数据集，然后从该数据集中随机选择一个轨迹（trajectory），最后从轨迹中随机选择一个时间步（step）
-        """
-
+        """Sample a single step from the dataset."""
         # return self.sampled_steps[index]
 
-        # Set seed --> 这种通过seed 来random select 的模式真的合理么？ --> 是否无法保证 sample 到全部？
+        # Set seed 会拖慢么？
         seed = index if self.mode != "train" else safe_hash((self.epoch, index, self.seed))
         rng = np.random.default_rng(seed)
 
         # Sample dataset
-        dataset_index = rng.choice(len(self.datasets), p=self.dataset_sampling_weights) #
+        dataset_index = rng.choice(len(self.datasets), p=self.dataset_sampling_weights)
         dataset = self.datasets[dataset_index]
 
-        # Sample trajectory
-        trajectory_index = rng.choice(
-            len(dataset.trajectory_ids), p=self.trajectory_sampling_weights[dataset_index]
-        )
-        trajectory_id = dataset.trajectory_ids[trajectory_index]
-
-        # Sample step
-        base_index = rng.choice(dataset.trajectory_lengths[trajectory_index])
-        return dataset, trajectory_id, base_index # TODO trajectory_id 能否唯一标识到对应的 rlds ? @Check --> 不能惟一表示， 和之前的顺序不一样
+        single_step_index = rng.choice(len(dataset.all_steps)) # TODO 不要random try? 而是打乱一下？
+        trajectory_id, base_index = dataset.all_steps[single_step_index]
+        return dataset, trajectory_id, base_index # TODO 要check base_index 是否对上了
 
     def __getitem__(self, index: int) -> dict:
         """Get the data for a single trajectory and start index.
@@ -1083,36 +1488,42 @@ class LeRobotMixtureDataset(Dataset):
         Returns:
             dict: The data for the trajectory and start index.
         """
-        # @JinhuiYE @Yioutpi TODO 需要联合优化一下 这里的代码逻辑
-        dataset, trajectory_name, step = self.sample_step(index) # TODO check --> 是否无法保证 sample 到全部？--> 确实
-        raw_data = dataset.get_step_data(trajectory_name, step)
-        data = dataset.transforms(raw_data)
-        image_0 = data[dataset.modality_keys["video"][0]][0]
-        image_0 = Image.fromarray(image_0).resize((224, 224))
-        # image_1 = data[dataset.modality_keys["video"][1]][0]
-        # image_1 = Image.fromarray(image_1).resize((224, 224))
-        language = data[dataset.modality_keys["language"][0]][0]
-        action = []
-        for action_key in dataset.modality_keys["action"]:
-            action.append(data[action_key])
-        action = np.concatenate(action, axis=1).astype(np.float16)
-        # image = [image_0, image_1]
-        image = [image_0] # [language] @Yioutpi 为什么这个位置是 [language]
+        max_retries = 10
+        last_exception = None
         
-        data_meta = {
-            "dataset_name": dataset.dataset_name,
-            "trajectory_id": trajectory_name,
-            "base_index": step,
-        }
+        for attempt in range(max_retries):
+            try:
+                dataset, trajectory_name, step = self.sample_step(index)
+                data = dataset.transforms(dataset.get_step_data(trajectory_name, step))
+                image_0 = data[dataset.modality_keys["video"][0]][0]
+                image_0 = Image.fromarray(image_0).resize((224, 224)) # 变成config 控制
+                # image_1 = data[dataset.modality_keys["video"][1]][0]
+                # image_1 = Image.fromarray(image_1).resize((224, 224)) # TODO 后面参数话掉
+                language = data[dataset.modality_keys["language"][0]][0]
+                action = []
+                for action_key in dataset.modality_keys["action"]:
+                    action.append(data[action_key])
+                action = np.concatenate(action, axis=1).astype(np.float16)
+                # image = [image_0, image_1] # TODO 实现参数控制 --> 和 config 对齐
+                input_obs = [image_0]
+                return dict(action=action, image=input_obs, lang=language)
+                
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    # Log the error but continue trying
+                    print(f"Attempt {attempt + 1}/{max_retries} failed for index {index}: {e}")
+                    print(f"Retrying with new sample...")
+                    # For retry, we can use a slightly different index to get a new sample
+                    # This helps avoid getting stuck on the same problematic sample
+                    index = (index + 1) % len(self)
+                else:
+                    # All retries exhausted
+                    print(f"All {max_retries} attempts failed for index {index}")
+                    print(f"Last error: {last_exception}")
+                    # Return a dummy sample or re-raise the exception
+                    raise last_exception
 
-        # TODO 去融合 singe dataset 的 getitem
-        solution = data.get("CoT_answer", None) # TODO 后期要重新定义 dataset format
-        # @DEBUG 
-        # solution = None
-
-        return dict(action=action, image=image, lang=language, solution=solution,
-                    data_meta=data_meta)
-    
     def __len__(self) -> int:
         """Get the length of a single epoch in the mixture.
 
@@ -1322,6 +1733,8 @@ class LeRobotMixtureDataset(Dataset):
     def save_dataset_statistics(self, save_path: Path | str, format: str = "json") -> None:
         """
         Save merged dataset statistics to specified path in the required format.
+        Only includes statistics for keys that are actually used in the datasets.
+        Gripper-related keys will be placed at the end.
         
         Args:
             save_path (Path | str): Path to save the statistics file
@@ -1330,8 +1743,17 @@ class LeRobotMixtureDataset(Dataset):
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Build the data structure to save, organized by specified format
+        # Build the data structure to save
         statistics_data = {}
+        
+        # Collect actually used keys from all datasets
+        all_used_action_keys = set()
+        all_used_state_keys = set()
+        
+        for dataset in self.datasets:
+            used_action_keys, used_state_keys = get_used_modality_keys(dataset.modality_keys)
+            all_used_action_keys.update(used_action_keys)
+            all_used_state_keys.update(used_state_keys)
         
         # Organize statistics by tag
         for tag, merged_metadata in self.merged_metadata.items():
@@ -1341,27 +1763,64 @@ class LeRobotMixtureDataset(Dataset):
             if hasattr(merged_metadata.statistics, 'action') and merged_metadata.statistics.action:
                 action_stats = merged_metadata.statistics.action
                 
-                # Combine statistics from all action sub-keys
-                combined_action_stats = self._combine_modality_stats(action_stats)
+                # Filter and reorder keys
+                non_gripper_keys = []
+                gripper_keys = []
                 
-                # Add mask field based on whether it's gripper or not
-                mask = self._generate_action_mask(merged_metadata.modalities.action)
-                combined_action_stats["mask"] = mask
+                for key in action_stats.keys():
+                    if key in all_used_action_keys:
+                        if "gripper" in key.lower():
+                            gripper_keys.append(key)
+                        else:
+                            non_gripper_keys.append(key)
                 
-                tag_stats["action"] = combined_action_stats
+                reordered_keys = non_gripper_keys + gripper_keys
+                
+                filtered_action_stats = {}
+                for key in reordered_keys:
+                    filtered_action_stats[key] = action_stats[key]
+                
+                if filtered_action_stats:
+                    combined_action_stats = combine_modality_stats(filtered_action_stats)
+                    
+                    mask = generate_action_mask_for_used_keys(
+                        merged_metadata.modalities.action, filtered_action_stats.keys()
+                    )
+                    combined_action_stats["mask"] = mask
+                    
+                    tag_stats["action"] = combined_action_stats
             
-            # Process state statistics (corresponding to the original proprio)
+            # Process state statistics
             if hasattr(merged_metadata.statistics, 'state') and merged_metadata.statistics.state:
                 state_stats = merged_metadata.statistics.state
-                combined_state_stats = self._combine_modality_stats(state_stats)
-                tag_stats["state"] = combined_state_stats  # Note: using "state" instead of "proprio"
+                
+                # Filter and reorder keys
+                non_gripper_keys = []
+                gripper_keys = []
+                
+                for key in state_stats.keys():
+                    if key in all_used_state_keys:
+                        if "gripper" in key.lower():
+                            gripper_keys.append(key)
+                        else:
+                            non_gripper_keys.append(key)
+                
+                reordered_keys = non_gripper_keys + gripper_keys
+                
+                filtered_state_stats = {}
+                for key in reordered_keys:
+                    filtered_state_stats[key] = state_stats[key]
+                
+                if filtered_state_stats:
+                    combined_state_stats = combine_modality_stats(filtered_state_stats)
+                    tag_stats["state"] = combined_state_stats
             
-            # Add dataset trajectory and transition counts
+            # Add dataset counts
             tag_stats.update(self._get_dataset_counts(tag))
             
             statistics_data[tag] = tag_stats
         
-        # Save as JSON file
+        # Save file
         if format.lower() == "json":
             if not str(save_path).endswith('.json'):
                 save_path = save_path.with_suffix('.json')
@@ -1371,78 +1830,16 @@ class LeRobotMixtureDataset(Dataset):
             raise ValueError(f"Unsupported format: {format}. Currently only 'json' is supported.")
         
         print(f"Merged dataset statistics saved to: {save_path}")
-
-        return statistics_data
+        print(f"Used action keys (reordered): {list(all_used_action_keys)}")
+        print(f"Used state keys (reordered): {list(all_used_state_keys)}")
 
     def _combine_modality_stats(self, modality_stats: dict) -> dict:
-        """
-        Combine statistics from all sub-keys under a modality.
-        
-        Args:
-            modality_stats (dict): Statistics for a modality, containing multiple sub-keys.
-                                   Each sub-key contains DatasetStatisticalValues object.
-            
-        Returns:
-            dict: Combined statistics
-        """
-        combined_stats = {
-            "mean": [],
-            "std": [],
-            "max": [],
-            "min": [],
-            "q01": [],
-            "q99": []
-        }
-        
-        # Combine statistics in sub-key order
-        for subkey in modality_stats.keys():
-            subkey_stats = modality_stats[subkey]  # This is a DatasetStatisticalValues object
-            
-            # Convert DatasetStatisticalValues to dict-like access
-            for stat_name in ["mean", "std", "max", "min", "q01", "q99"]:
-                stat_value = getattr(subkey_stats, stat_name)
-                if isinstance(stat_value, (list, tuple)):
-                    combined_stats[stat_name].extend(stat_value)
-                else:
-                    # Handle NDArray case - convert to list
-                    if hasattr(stat_value, 'tolist'):
-                        combined_stats[stat_name].extend(stat_value.tolist())
-                    else:
-                        combined_stats[stat_name].append(float(stat_value))
-        
-        return combined_stats
+        """向后兼容的包装器."""
+        return combine_modality_stats(modality_stats)
 
-    def _generate_action_mask(self, action_modalities: dict) -> list[bool]:
-        """
-        Generate mask based on action modalities, gripper-related are False, others are True.
-        
-        Args:
-            action_modalities (dict): Configuration information for action modalities.
-                                     Each value is a StateActionMetadata object.
-            
-        Returns:
-            list[bool]: List of mask values
-        """
-        mask = []
-        
-        # Generate mask in sub-key order
-        for subkey in action_modalities.keys():
-            subkey_config = action_modalities[subkey]  # This is a StateActionMetadata object
-            
-            # Get dimension count from shape
-            if hasattr(subkey_config, 'shape') and len(subkey_config.shape) > 0:
-                dim_count = subkey_config.shape[0]
-            else:
-                dim_count = 1
-            
-            # Check if it's gripper-related
-            is_gripper = "gripper" in subkey.lower()
-            
-            # Generate mask value for each dimension
-            for _ in range(dim_count):
-                mask.append(not is_gripper)  # gripper is False, others are True
-        
-        return mask
+    def _generate_action_mask_for_used_keys(self, action_modalities: dict, used_action_keys_ordered) -> list[bool]:
+        """向后兼容的包装器."""
+        return generate_action_mask_for_used_keys(action_modalities, used_action_keys_ordered)
 
     def _get_dataset_counts(self, tag: str) -> dict:
         """
@@ -1546,4 +1943,234 @@ class LeRobotMixtureDataset(Dataset):
                 dataset.set_transforms_metadata(self.merged_metadata[dataset.tag])
         
         print(f"Applied cached statistics for {len(self.merged_metadata)} embodiment tags.")
+
+
+def _process_single_trajectory_with_language_check(args: Tuple) -> List[Tuple[int, int]]:
+    """Process a single trajectory with language check and flexible position/gripper field detection."""
+    (trajectory_id, trajectory_length, dataset_path, data_path_pattern, 
+     chunk_size, delte_pause_frame, is_gripper_aug, augsteps, modality_keys,
+     has_language_modality, language_key, tasks, lerobot_modality_meta, data,language_instruction) = args
+    
+    all_steps = []
+    
+    try:
+        # Calculate chunk index and parquet path
+        chunk_index = trajectory_id // chunk_size
+        parquet_path = dataset_path / data_path_pattern.format(
+            episode_chunk=chunk_index, episode_index=trajectory_id
+        )
+        
+        if not parquet_path.exists():
+            print(f"Warning: Parquet file not found at {parquet_path}")
+            return []
+                
+        # Load parquet data
+        # data = pd.read_parquet(parquet_path)
+        
+        # Check language instruction if language modality is configured
+        if has_language_modality and language_key:
+            try:
+                # # 复制 get_language 方法的逻辑
+                # assert language_key.startswith("annotation."), f"Language key must start with 'annotation.', got {language_key}"
+                # subkey = language_key.replace("annotation.", "")
+                
+                # # 获取 annotation metadata (需要从 lerobot_modality_meta 中获取)
+                # annotation_meta = lerobot_modality_meta.annotation
+                # if annotation_meta is None or subkey not in annotation_meta:
+                #     return []  # No annotation metadata found
+                
+                # subkey_meta = annotation_meta[subkey]
+                # original_key = subkey_meta.original_key
+                # if original_key is None:
+                #     original_key = language_key
+                
+                # # 获取 task indices (base_index=0 对应单进程版本的逻辑)
+                # if original_key not in data.columns:
+                #     return []  # Original key not found in data
+                
+                # task_index = data[original_key].iloc[0]  # 对应 base_index=0
+                # if pd.isna(task_index) or task_index == "":
+                #     return []  # Empty task index
+                
+                # # 从 tasks DataFrame 获取实际的语言指令
+                # if not hasattr(tasks, 'loc') or task_index not in tasks.index:
+                #     return []  # Task index not found
+                
+                # language_instruction = tasks.loc[task_index]["task"]
+                # if not language_instruction or language_instruction == "":
+                #     return []  # Empty language instruction
+                if not language_instruction or language_instruction[0] == "":
+                    print(f"Skipping trajectory {trajectory_id} due to empty language instruction")
+                    return []
+                
+            except Exception as e:
+                print(f"Error processing trajectory {trajectory_id}: {e}")
+                return []  # Return empty on any language check error
+        
+        # Get position and gripper values with flexible field detection
+        delta_position_values, gripper_values = _get_position_and_gripper_values_static(data, lerobot_modality_meta, modality_keys)
+        
+        # Process pause frame deletion logic
+        if delte_pause_frame:
+            previous_gripper = gripper_values[0] if gripper_values else -1
+            for base_index in range(trajectory_length):
+                if base_index >= len(delta_position_values) or base_index >= len(gripper_values):
+                    break
+                        
+                has_translation_change = np.any(np.abs(delta_position_values[base_index]) > 5e-4)  # EPSILON
+                has_gripper_change = gripper_values[base_index] != (previous_gripper if base_index == 0 else gripper_values[base_index-1])
+                
+                if has_translation_change or has_gripper_change:
+                    all_steps.append((trajectory_id, base_index))
+        else:
+            # Add all steps
+            for base_index in range(trajectory_length):
+                all_steps.append((trajectory_id, base_index))
+                    
+        # Gripper augmentation logic - 与单进程版本保持一致
+        if is_gripper_aug and augsteps > 0:
+            change_indices = set()
+            values = []
+            
+            # 获取action keys
+            action_keys = modality_keys.get('action', [])
+            for key in action_keys:
+                if '.' in key:
+                    subkey = key.split('.')[1]
+                else:
+                    subkey = key
+                    
+                if 'gripper_close' == subkey or 'gripper' == subkey:
+                    # 使用lerobot_modality_meta获取gripper数据
+                    if hasattr(lerobot_modality_meta, 'action'):
+                        le_state_or_action_cfg = lerobot_modality_meta.action
+                        if subkey in le_state_or_action_cfg:
+                            le_key = le_state_or_action_cfg[subkey].original_key or subkey
+                            if le_key in data.columns:
+                                data_array = np.stack(data[le_key])
+                                le_indices = np.arange(le_state_or_action_cfg[subkey].start, le_state_or_action_cfg[subkey].end)
+                                gripper_data = data_array[:, le_indices].flatten()
+                                values.append(gripper_data.tolist())
+            
+            if values:
+                for i in range(len(values[0]) - 2):
+                    flag = [values[j][i] == values[j][i + 1] == values[j][i + 2] for j in range(len(values))]
+                    if False in flag:
+                        change_indices.update((i, i + 1, i + 2))
+                for change_index in change_indices:
+                    for i in range(augsteps):
+                        all_steps.append((trajectory_id, max(change_index - 15, 0)))
+            else:
+                # 与单进程版本保持一致的消息
+                print(f"No action-gripper data found for trajectory {trajectory_id}. Skipping augmentation.")
+                        
+    except Exception as e:
+        print(f"Error processing trajectory {trajectory_id}: {e}")
+        return []
+
+    if all_steps == []:
+        print(f"Warning: No steps found for trajectory {trajectory_id}")
+
+    return all_steps
+
+def _get_position_and_gripper_values_static(data: pd.DataFrame, lerobot_modality_meta, modality_keys: dict) -> tuple[list, list]:
+    """Static version of position and gripper value extraction for multiprocessing.
+    Uses modality metadata to find the correct column names.
+    """
+    # Get action keys from modality_keys
+    action_keys = modality_keys.get('action', [])
+    
+    # Extract position data
+    delta_position_values = None
+    position_candidates = ['delta_eef_position']
+    coordinate_candidates = ['x', 'y', 'z']
+    
+    # First try combined position fields
+    for pos_key in position_candidates:
+        full_key = f"action.{pos_key}"
+        if full_key in action_keys:
+            try:
+                # Get the lerobot key for this modality
+                le_action_cfg = lerobot_modality_meta.action
+                subkey = pos_key
+                if subkey in le_action_cfg:
+                    le_key = le_action_cfg[subkey].original_key or subkey
+                    if le_key in data.columns:
+                        data_array = np.stack(data[le_key])
+                        le_indices = np.arange(le_action_cfg[subkey].start, le_action_cfg[subkey].end)
+                        filtered_data = data_array[:, le_indices]
+                        delta_position_values = filtered_data.tolist()
+                        break
+            except Exception:
+                continue
+    
+    # If combined fields not found, try individual x,y,z coordinates
+    if delta_position_values is None:
+        x_data, y_data, z_data = None, None, None
+        for coord in coordinate_candidates:
+            full_key = f"action.{coord}"
+            if full_key in action_keys:
+                try:
+                    le_action_cfg = lerobot_modality_meta.action
+                    if coord in le_action_cfg:
+                        le_key = le_action_cfg[coord].original_key or coord
+                        if le_key in data.columns:
+                            data_array = np.stack(data[le_key])
+                            le_indices = np.arange(le_action_cfg[coord].start, le_action_cfg[coord].end)
+                            coord_data = data_array[:, le_indices].flatten()
+                            if coord == 'x':
+                                x_data = coord_data
+                            elif coord == 'y':
+                                y_data = coord_data
+                            elif coord == 'z':
+                                z_data = coord_data
+                except Exception:
+                    continue
+        
+        if x_data is not None and y_data is not None and z_data is not None:
+            delta_position_values = np.column_stack((x_data, y_data, z_data)).tolist()
+    
+    if delta_position_values is None:
+        # Fallback to the old hardcoded approach if metadata approach fails
+        if 'action.delta_eef_position' in data.columns:
+            delta_position_values = data['action.delta_eef_position'].to_numpy().tolist()
+        elif all(col in data.columns for col in ['action.x', 'action.y', 'action.z']):
+            x_vals = data['action.x'].to_numpy()
+            y_vals = data['action.y'].to_numpy() 
+            z_vals = data['action.z'].to_numpy()
+            delta_position_values = np.column_stack((x_vals, y_vals, z_vals)).tolist()
+        else:
+            raise ValueError(f"No suitable position columns found. Available columns: {data.columns.tolist()}")
+    
+    # Extract gripper data
+    gripper_values = None
+    gripper_candidates = ['gripper_close', 'gripper']
+    
+    for grip_key in gripper_candidates:
+        full_key = f"action.{grip_key}"
+        if full_key in action_keys:
+            try:
+                le_action_cfg = lerobot_modality_meta.action
+                if grip_key in le_action_cfg:
+                    le_key = le_action_cfg[grip_key].original_key or grip_key
+                    if le_key in data.columns:
+                        data_array = np.stack(data[le_key])
+                        le_indices = np.arange(le_action_cfg[grip_key].start, le_action_cfg[grip_key].end)
+                        gripper_data = data_array[:, le_indices].flatten()
+                        gripper_values = gripper_data.tolist()
+                        break
+            except Exception:
+                continue
+    
+    if gripper_values is None:
+        # Fallback to the old hardcoded approach if metadata approach fails
+        if 'action.gripper_close' in data.columns:
+            gripper_values = data['action.gripper_close'].to_numpy().tolist()
+        elif 'action.gripper' in data.columns:
+            gripper_values = data['action.gripper'].to_numpy().tolist()
+        else:
+            raise ValueError(f"No suitable gripper columns found. Available columns: {data.columns.tolist()}")
+    
+    return delta_position_values, gripper_values
+
 

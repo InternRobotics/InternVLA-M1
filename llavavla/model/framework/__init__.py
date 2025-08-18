@@ -4,7 +4,7 @@
 def build_framework(cfg):
 
     if cfg.framework.framework_py == "DinoQFormerACT":
-        from llavavla.model.framework.DinoQFormerACT import build_model_framework
+        from llavavla.model.framework.InternVLA import build_model_framework
 
         return build_model_framework(cfg)
 
@@ -14,7 +14,7 @@ def build_framework(cfg):
         return build_model_framework(cfg)
     
     elif cfg.framework.framework_py == "qwenpi":
-        from llavavla.model.framework.qwendino_plus import build_model_framework
+        from llavavla.model.framework.qwenpi import build_model_framework
 
         return build_model_framework(cfg)
 

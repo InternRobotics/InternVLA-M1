@@ -24,10 +24,9 @@ from transformers import AutoProcessor, get_scheduler
 # Local Modules
 # 这里的变化需要📦封装 Dataloader
 from llavavla.dataloader import build_dataloader
-from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
-from llavavla.training.metrics import normalize_dotlist_args
+from llavavla.training.trainer_utils.metrics import normalize_dotlist_args
 from llavavla.model.framework import build_framework
-from llavavla.training.metrics import TrainerUtils
+from llavavla.training.trainer_utils.metrics import TrainerUtils
 
 
 
@@ -49,6 +48,7 @@ def load_fast_tokenizer():
     return fast_tokenizer
 
 
+# TODO 用config 去控制是否cotrain vlm data
 
 def setup_directories(cfg) -> Path:
     """创建输出目录并保存配置"""
@@ -73,36 +73,26 @@ def setup_directories(cfg) -> Path:
 
 def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     """准备训练数据"""
-    # TODO @JinhuiYE 可以变得更加通用， 不如使用 dict 来传递参数
-    # TODO 逻辑应该封住到 llavavla.dataloader 里面
-    # VLA 数据集
+    # TODO @JinhuiYE 可以变得更加通用， 不如使用 dict 来传递参数  # TODO 还在暂时不能合并cotrain的这个模式
     logger.info(f"Creating VLA Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
-    vla_dataset, collate_fn = build_dataloader( # 这个写在dataload.py 内部
-        cfg=cfg)
+    vla_train_dataloader = build_dataloader( # 这个写在dataload.py 内部,
+        cfg=cfg,
+        dataset_py=cfg.datasets.vla_data.dataset_py)
     
-    # VLA 数据加载器 #  -->  TODO 这个逻辑要写到 build_dataloader 内部
-    vla_train_dataloader = DataLoader(
-        vla_dataset,
-        batch_size=cfg.datasets.vla_data.per_device_batch_size,
-        collate_fn=collate_fn,
-        num_workers=8,
-        # shuffle=True # RLSD 不能做这个事情
+    vlm_train_dataloader = build_dataloader(
+        cfg=cfg,
+        dataset_py=cfg.datasets.vlm_data.dataset_py
     )
-    
-    # VLM 数据加载器
-    vlm_data_module = make_vlm_dataloader(cfg)
-    vlm_train_dataloader = vlm_data_module["train_dataloader"]
-    
-    # 保存数据集统计信息
-    if accelerator.is_main_process: # TODO 后续要考虑统一判断 rank = 0
-        # save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
-        vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
-    
-    # 拒绝自动分发 # TODO 应该写到 accelerator config
+
+    # 拒绝自动分发 # TODO 应该写到 accelerator config --> 这个deepseed 版本还不支持
     accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
 
     return vla_train_dataloader, vlm_train_dataloader
+    # return in dict # TODO 
+
+
+
 
 def setup_optimizer_and_scheduler(
     model, cfg
@@ -373,7 +363,7 @@ class VLAMTrainer(TrainerUtils):
             actions = [example["action"] for example in examples] #label
 
             # Predict actions using the model
-            predicted_solutions, normalized_actions = self.model.predict_action_withCoT( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
+            predicted_solutions, normalized_actions = self.model.predict_action( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
                 images=images,
                 instructions=instructions,
                 use_ddim=True,
@@ -429,10 +419,7 @@ class VLAMTrainer(TrainerUtils):
                 # 拿到所有 qwen_vl_interface 的参数列表
                 # interface_params = list(self.model.qwen_vl_interface.model.model.visual.patch_embed.parameters())
                 interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[-1].mlp.down_proj.parameters())
-                # interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[0].mlp.down_proj.parameters())
-                # interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[-1].self_attn.v_proj.parameters())
-                # interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[0].self_attn.v_proj.parameters())
-                
+
                 # 1) 先分别用 torch.autograd.grad 得到 grads_action, grads_vlm
                 grads_action = torch.autograd.grad(action_loss, interface_params, retain_graph=True)
                 # grads_vlm    = torch.autograd.grad(action_vlm_loss,    interface_params, retain_graph=True)
@@ -486,7 +473,7 @@ class VLAMTrainer(TrainerUtils):
         
         self.accelerator.wait_for_everyone()
 
-from llavavla.training.metrics import build_param_lr_groups
+from llavavla.training.trainer_utils.metrics import build_param_lr_groups
 def main(cfg) -> None:
     logger.info("VLA Training :: Warming Up")
 

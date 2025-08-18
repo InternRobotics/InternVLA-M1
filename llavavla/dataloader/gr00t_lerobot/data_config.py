@@ -1209,19 +1209,33 @@ class SinglePandaHandDataConfig:
 
 ###########################################################################################
 
-class Libero4in1DataConfig:
-    video_keys = [
-        "observation.images.image",
-        "observation.images.wrist_image",
+class Libero4in1DataConfig: #@Yioutpi @JinhuiYE TODO 感觉上这里的配置和 datameta 中纯在重复的问题 --> 如果是，建议只保存数据内部一份， 然后config 去使用
+    video_keys = [ # 这个对齐的是 info.json? --> 不应该是和 modality 对齐么？ 想法是 raw data 是大于 modality 当前使用的 --> TODO 还是感觉可以不用 modality
+        "video.primary_image",
+        "video.wrist_image",
     ]
+    
     state_keys = [
-        "observation.state",
+        "state.x",
+        "state.y",
+        "state.z",
+        "state.roll",
+        "state.pitch",
+        "state.yaw",
+        "state.pad",
+        "state.gripper",
     ]
     action_keys = [
-        "action",
+        "action.x",
+        "action.y",
+        "action.z",
+        "action.roll",
+        "action.pitch",
+        "action.yaw",
+        "action.gripper",
     ]
-
-    language_keys = ["task_index"]
+    
+    language_keys = ["annotation.human.action.task_description"]
 
     observation_indices = [0]
     action_indices = list(range(16)) # 这个是？ @Yioutpi
@@ -1283,13 +1297,17 @@ class Libero4in1DataConfig:
             # action transforms
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
-                apply_to=self.action_keys,
-                normalization_modes={
-                    "action.arm": "min_max",
-                    "action.gripper": "binary",
-                    # "action.gripper": "q99",
-                },
-            ),
+            apply_to=self.action_keys,
+            normalization_modes={
+                "action.x": "q99",
+                "action.y": "q99",
+                "action.z": "q99",
+                "action.roll": "q99",
+                "action.pitch": "q99",
+                "action.yaw": "q99",
+                # "action.gripper": "q99",
+            },
+        ),
             # concat transforms
             # ConcatTransform(
             #     # video_concat_order=self.video_keys,

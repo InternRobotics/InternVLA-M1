@@ -5,6 +5,12 @@ import json
 import os
 from accelerate.logging import get_logger
 import numpy as np
+from torch.utils.data import DataLoader
+import numpy as np
+import torch.distributed as dist
+from pathlib import Path
+from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
+
 logger = get_logger(__name__)
 
 # TODO 工具类，注意后续的 重构, 应该写到dataloader class 内部
@@ -31,90 +37,35 @@ def save_dataset_statistics(dataset_statistics, run_dir):
 
 
 
-def build_dataloader(cfg): # TODO now here only is get dataset, we need mv dataloader to here
+def build_dataloader(cfg, dataset_py="lerobot_datasets"): # TODO now here only is get dataset, we need mv dataloader to here
 
-    if cfg.datasets.vla_data.dataset_py == "rlds_datasets":
-        from llavavla.dataloader.rlds_datasets import get_vla_dataset, collate_fn
-
-        vla_dataset = get_vla_dataset( # 这个写在dataload.py 内部
-        cfg.datasets.vla_data.data_root_dir,
-        cfg.datasets.vla_data.data_mix,
-        default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
-        shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
-        image_aug=cfg.datasets.vla_data.image_aug,
-        future_action_window_size=cfg.framework.action_model.future_action_window_size,
-        past_action_window_size=cfg.framework.action_model.past_action_window_size,
-        load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
-    )
-        return vla_dataset, collate_fn
-    
-    elif cfg.datasets.vla_data.dataset_py == "lmdb_datasets":
-        from llavavla.dataloader.lmdb_datasets import get_lmdb_dataset, collate_fn
-
-        vla_dataset = get_lmdb_dataset( # 拒绝任何内部转换
-            data_root_dir=cfg.datasets.vla_data.data_root_dir, # 太多参数了， 应该config 穿越过去， 或者是 ** 的方式
-            data_mix=cfg.datasets.vla_data.data_mix,
-            data_mix_info=cfg.datasets.vla_data.data_mix_info,
-            action_type=cfg.datasets.vla_data.action_type,
-            default_image_resolution=tuple(cfg.datasets.vla_data.default_image_resolution),
-            shuffle_buffer_size=cfg.datasets.vla_data.shuffle_buffer_size,
-            image_aug=cfg.datasets.vla_data.image_aug,
-            future_action_window_size=cfg.framework.action_model.future_action_window_size,
-            past_action_window_size=cfg.framework.action_model.past_action_window_size,
-            load_all_data_for_training=cfg.datasets.vla_data.load_all_data_for_training,
-            config=cfg
-        )
-        return vla_dataset, collate_fn
-        
-    elif cfg.datasets.vla_data.dataset_py == "lmdb_datasets_realdata_cot":
-        from llavavla.dataloader.lmdb_datasets_realdata_cot import get_vla_dataset, collate_fn
-
-        vla_dataset_cfg = cfg.datasets.vla_data
-        vla_model_cfg = cfg.framework.action_model
-        vla_dataset = get_vla_dataset(
-            data_root_dir=vla_dataset_cfg.data_root_dir,
-            data_mix=vla_dataset_cfg.data_mix,
-            data_mix_info=vla_dataset_cfg.data_mix_info,
-            obs_type=vla_dataset_cfg.obs_type,
-            action_type=vla_dataset_cfg.action_type,
-            window_size=vla_model_cfg.future_action_window_size + 1,
-            image_aug=vla_dataset_cfg.image_aug,
-            default_image_resolution=tuple(vla_dataset_cfg.default_image_resolution),
-            shuffle=vla_dataset_cfg.shuffle,
-            crop_obs_camera=vla_dataset_cfg.crop_obs_camera,
-            normalization_type=vla_dataset_cfg.normalization_type,
-        )
-        return vla_dataset, collate_fn
-        # lmdb_datasets_realdata_cot
-    elif cfg.datasets.vla_data.dataset_py == "lmdb_datasets_realdata":
-        from llavavla.dataloader.lmdb_datasets_real import get_vla_dataset, collate_fn
-
-        vla_dataset_cfg = cfg.datasets.vla_data
-        vla_model_cfg = cfg.framework.action_model
-        vla_dataset = get_vla_dataset(
-            data_root_dir=vla_dataset_cfg.data_root_dir,
-            data_mix=vla_dataset_cfg.data_mix,
-            data_mix_info=vla_dataset_cfg.data_mix_info,
-            obs_type=vla_dataset_cfg.obs_type,
-            action_type=vla_dataset_cfg.action_type,
-            window_size=vla_model_cfg.future_action_window_size + 1,
-            image_aug=vla_dataset_cfg.image_aug,
-            default_image_resolution=tuple(vla_dataset_cfg.default_image_resolution),
-            shuffle=vla_dataset_cfg.shuffle,
-            crop_obs_camera=vla_dataset_cfg.crop_obs_camera,
-            normalization_type=vla_dataset_cfg.normalization_type,
-        )
-        return vla_dataset, collate_fn
-        # lmdb_datasets_realdata_cot
-
-    elif cfg.datasets.vla_data.dataset_py == "lerobot_datasets_cot":
-        from llavavla.dataloader.lerobot_datasets_cot import get_vla_dataset, collate_fn
+    if dataset_py == "lerobot_datasets":
+        from llavavla.dataloader.lerobot_datasets import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
 
         data_root_dir = vla_dataset_cfg.data_root_dir
         data_mix = vla_dataset_cfg.data_mix
 
         vla_dataset = get_vla_dataset(data_root_dir, data_mix) # TODO 要将config 传输融合进去
-
-        return vla_dataset, collate_fn
+        # VLA 数据加载器 #  -->  TODO 这个逻辑要写到 build_dataloader 内部
+        vla_train_dataloader = DataLoader(
+            vla_dataset,
+            batch_size=cfg.datasets.vla_data.per_device_batch_size,
+            collate_fn=collate_fn,
+            num_workers=8,
+            # shuffle=True # RLSD 不能做这个事情, leberot 也不需要， 但是在考虑中
+        )        
+        if dist.get_rank() == 0: # TODO 后续要考虑统一判断 rank = 0
+            # save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
+            output_dir = Path(cfg.output_dir)
+            vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
+        return vla_train_dataloader
+    
+    elif dataset_py == "vlm_datasets":
+            # VLM 数据加载器
+        vlm_data_module = make_vlm_dataloader(cfg)
+        vlm_train_dataloader = vlm_data_module["train_dataloader"]
+        
+        return vlm_train_dataloader
+        
 

@@ -1,7 +1,14 @@
+import os
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
+
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
+
+
+
 from qwen_vl_utils import process_vision_info
 from llavavla.model.framework.qwenpi import QwenQFormerDiT
-from llavavla.model.framework.DinoQFormerACT import QwenQFormerDiT
+from llavavla.model.framework.InternVLA import QwenQFormerDiT
 import os, torch
 
 
@@ -11,7 +18,7 @@ print("🔍 Rank 0 waiting for debugger attach on port 10092...")
 debugpy.wait_for_client()
 
 saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0712_vla_v4_fixvit_vlma/checkpoints/steps_30000_pytorch_model.pt"
-saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0726_v6_vla_dinol_32_cotrain_freezedino/checkpoints/steps_40000_pytorch_model.pt"
+saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0729_v6_vla_dino_3l_cotrain/checkpoints/steps_100000_pytorch_model.pt"
 
 qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path

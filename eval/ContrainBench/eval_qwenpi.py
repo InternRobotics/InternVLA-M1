@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision.ops import box_iou
 from llavavla.model.framework.qwenpi import QwenQFormerDiT
-from llavavla.training.metrics import TrainerUtils
+from llavavla.training.trainer_utils.metrics import TrainerUtils
 from llavavla.dataloader import build_dataloader
 import debugpy
 
@@ -132,7 +132,7 @@ class QWenPiModelEvaluator: # TODO 它不应该是某个模型的测试， 他�
             solutions = [example["solution"] for example in batch]
             
             # 模型预测
-            predicted_solutions, normalized_actions = self.model.predict_action_withCoT(
+            predicted_solutions, normalized_actions = self.model.predict_action(
                 images=images,
                 instructions=instructions,
                 use_ddim=False,

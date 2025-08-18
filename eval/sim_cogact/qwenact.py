@@ -13,7 +13,7 @@ import numpy as np
 
 from transforms3d.euler import euler2axangle
 
-from llavavla.model.framework.InternVLA import QwenQFormerDiT # @DEBUG 为了方便，这里先直接换掉
+from llavavla.model.framework.qwenact import QwenQFormerDiT # @DEBUG 为了方便，这里先直接换掉
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
 # TODO 应该设计为可以切换 不同的 模型的统一接口： QwenQFormerDiT base\
@@ -65,11 +65,10 @@ class QwenpiInference:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-        if os.getenv("DEBUG", "False").lower() == "true":
-            import debugpy
-            debugpy.listen(("0.0.0.0", 5678))
-            print("🔍 Rank 0 waiting for debugger attach on port 5678...")
-            debugpy.wait_for_client()
+        # import debugpy
+        # debugpy.listen(("0.0.0.0", 5878))
+        # print("🔍 Rank 0 waiting for debugger attach on port 5678...")
+        # debugpy.wait_for_client()
         self.vla = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
         )
@@ -138,8 +137,8 @@ class QwenpiInference:
         image: Image.Image = Image.fromarray(image)
 
         # @DEUBG
-        raw_actions, normalized_actions = self.vla.predict_action(images=[[image]], 
-                                                                instructions=[self.task_description],
+        raw_actions, normalized_actions = self.vla.predict_action(image=image, 
+                                                                instruction=self.task_description,
                                                                 unnorm_key=self.unnorm_key,
                                                                 do_sample=False, 
                                                                 cfg_scale=self.cfg_scale,
@@ -147,19 +146,7 @@ class QwenpiInference:
                                                                 num_ddim_steps=self.num_ddim_steps,
                                                                 )
         
-        # CoT_sentences, normalized_actions = self.vla.predict_action_withCoT(images=[[image]], 
-        #                                                         instructions=[self.task_description],
-        #                                                         unnorm_key=self.unnorm_key,
-        #                                                         do_sample=False, 
-        #                                                         cfg_scale=self.cfg_scale,
-        #                                                         use_ddim=self.use_ddim,
-        #                                                         num_ddim_steps=self.num_ddim_steps,
-        #                                                         )
-        normalized_actions = normalized_actions[0]
-        action_norm_stats = self.vla.get_action_stats(self.unnorm_key)
-        raw_actions = self.vla.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats) 
-    
-        # end of predict_with_cot
+
         if self.action_ensemble:
             raw_actions = self.action_ensembler.ensemble_action(raw_actions)[None]
         raw_action = {

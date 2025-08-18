@@ -127,7 +127,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs_v1(self, images, instructions, **kwargs):
+    def build_qwenvl_inputs_v1(self, images, instructions, **kwargs): # 这个能够加速推理，但是会有几个字符差异，对libero 这种强overfit 的bench 影响很大
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -175,9 +175,6 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         return inputs.to(self.model.device)
     
     def build_qwenvl_inputs(self, images, instructions, solutions=None):
-        # TODO 其实也可以放到dataloader 内部， 但是导致的是 dataloader 需要依赖 model processor
-        # TODO 相比 v2 速度慢了一倍， 去看看什么原因 --> 好像并没有慢
-        # TODO 后期可以可以在这里写成多线程并行吧 --> 不需要了
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -200,27 +197,18 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
 
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
-            # prompt = f"What is the key object to finish the task: {instruction}. Output the bbox to locate the object"
-            # prompt = f"What is the key object to finish the task: {instruction}. Output the future trajectory of the object" #--->
             CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", None)
             if CoT_prompt:
                 prompt = CoT_prompt.replace("{instruction}", instruction)
             else:
                 prompt = f"Your task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json" # old prompt for onging ckpt
 
-            
-                # prompt = f"{instruction}." # --> 感觉上这个prompt #@DEBUG
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
-            if solutions is not None: #@DEBUG TODO 检查和 generation 的处理是否完全一致，TODO 提高推理效率
-                # add solution if provided
+            if solutions is not None:
                 solution = solutions[len(messages)]
                 solution_content = [{"type": "text", "text": f": {solution}"}]
                 msg.append({"role": "assistant", "content": solution_content})
-            # else: # 是否要判断是否走 infer？ TODO 感觉上不能在这里， 看一下官方怎么解读的
-            #     # add a dummy assistant response # 高阶操作： 去掉结束符号
-            #     solution_content = [{"type": "text", "text": ""}] # 这里会包含结束符号， 但是去掉后，又没有生产符号
-            #     msg.append({"role": "assistant", "content": solution_content})
             
             messages.append(msg)
     
@@ -343,7 +331,7 @@ def preprocess_qwen_2_visual(
                 role = conv["role"]
                 content = conv["content"]
             except:
-                role = conv["from"] # 这里有两个  <image>\n\n<image>\n\n -> 移除了
+                role = conv["from"]
                 content = conv["value"]
 
             role = roles.get(role, role)
@@ -377,7 +365,7 @@ def preprocess_qwen_2_visual(
 
         assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
         input_ids.append(input_id)
-        targets.append(target)
+        targets.append(target) # TODO 看一下是如何处理结束符号的 @JinhuiYE
 
 
     # TODO Batch padding 

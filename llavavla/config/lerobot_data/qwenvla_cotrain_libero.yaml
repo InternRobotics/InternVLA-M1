@@ -49,9 +49,9 @@ datasets:
     per_device_batch_size: 4
 
   vla_data:
-    dataset_py: lerobot_datasets_cot
+    dataset_py: lerobot_libero
     data_root_dir: playground/Datasets/LEROBOT_LIBERO_DATA
-    data_mix: lebero_all # bridge_rt_1
+    data_mix: libero_all # libero_goal
     action_type: delta_qpos # 这个没有生效
     CoT_prompt: "Your task is {instruction}. To identify the key objects for your task. Locate their bounding boxes in [x1,y1,x2,y2] format."
     CoT_answer: bbox # 写成null 就说明不启用 CoT annotation --> groot 是认为数据集有稳定定义的 --> release 版本确实应该这样假设

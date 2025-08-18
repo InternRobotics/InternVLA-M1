@@ -1,10 +1,13 @@
-dataset_use: sharegpt4v_coco,sharegpt4v_knowledge,sharegpt4v_llava,sharegpt4v_sam
-eval_dataset: sharegpt4v_knowledge
-video_max_frames: 8
-video_min_frames: 4
-data_flatten: false
-base_interval: 2
-max_pixels: 12845056
-min_pixels: 3136
-video_max_frame_pixels: 25088
-video_min_frame_pixels: 3136
+datasets: # more data_path in 
+  vlm_data:
+    dataformat: llava_json
+    dataset_use: asv2_conversation_en,asv2_detailed_description_en,asv2_region_captioning_en,coco_internvl_longcap_en,coco_karpathy_train_567_en,coco_negative_gpt4o_en,coco_poetry_zh,coco_rem_en_zh,cocorem_exist_yorn_en,cocotextv2_en,cocotextv2_gpt4o_en,okvqa_en,refcoco_grounding_aug_en,refcoco_grounding_en,tallyqa_coco_en,toloka_grounding_aug_en,vqav2_en,vsr_en
+    eval_dataset: aokvqa_cauldron_llava_format
+    data_flatten: false
+    base_interval: 2
+    max_pixels: 50176
+    min_pixels: 784
+    fix_image_size: [224, 224]
+    model_max_length: 1024 # 似乎这里必须是4096， 有些相互关联的内容并没有处理到
+    model_type: qwen2.5vl
+    per_device_batch_size: 4 

@@ -8,7 +8,7 @@ import time
 import math
 import itertools
 import ast
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Optional, Sequence, List, Tuple
 from io import BytesIO
 import base64
@@ -21,8 +21,8 @@ from PIL import Image
 from decord import VideoReader
 import transformers
 from omegaconf import OmegaConf
-from llavavla.dataloader.qwen_data_config import data_list
-from llavavla.dataloader.rope2d import get_rope_index_25, get_rope_index_2
+from llavavla.dataloader.qwenvl_llavajson.qwen_data_config import data_list
+from llavavla.dataloader.qwenvl_llavajson.rope2d import get_rope_index_25, get_rope_index_2
 
 IGNORE_INDEX = -100
 IMAGE_TOKEN_INDEX = 151655
@@ -706,7 +706,7 @@ def make_vlm_dataloader(cfg):
     return {
         "train_dataloader": train_dataloader,
         }
-    # "eval_dataloader": eval_dataloader,
+
 
 from transformers import AutoTokenizer, AutoProcessor
 

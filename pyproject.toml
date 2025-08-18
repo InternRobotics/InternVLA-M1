@@ -3,16 +3,16 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "starvla"
+name = "internvla"
 authors = [
     {name = "Jinhui Ye", email="jinhuiyes@gmail.com"},
-    {name = "Fangjing Wang", email=""},
+    {name = "Fangjing Wang", email="fangjing_wang@outlook.com"},
 
 ]
 description = "StarVLA: A simple and flexible and strong framework for explore vision language action models"
 version = "0.0.1"
 readme = "README.md"
-requires-python = "==3.10"
+requires-python = "==3.10.*"
 keywords = ["vision-language-actions models", " robotic manipulation", "multimodal pretraining", "robot learning", "generative models"]
 license = {file = "LICENSE"}
 classifiers = [

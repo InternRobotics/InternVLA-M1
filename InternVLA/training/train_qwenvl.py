@@ -23,14 +23,14 @@ from transformers import AutoProcessor, get_scheduler
 
 # Local Modules
 # 这里的变化需要📦封装
-from llavavla.dataloader.rlds_datasets import collate_fn, get_vla_dataset
-from llavavla.dataloader.qwenvl_llavajson.vlm_datasets import make_vlm_dataloader
+from InternVLA.dataloader.rlds_datasets import collate_fn, get_vla_dataset
+from InternVLA.dataloader.qwenvl_llavajson.vlm_datasets import make_vlm_dataloader
 
-from llavavla.training.trainer_utils.metrics import normalize_dotlist_args
-from llavavla.model.framework import build_framework
-from llavavla.training.trainer_utils.metrics import only_main_process
-from llavavla.training.trainer_utils.metrics import TrainerUtils
-from llavavla.dataloader import save_dataset_statistics
+from InternVLA.training.trainer_utils.metrics import normalize_dotlist_args
+from InternVLA.model.framework import build_framework
+from InternVLA.training.trainer_utils.metrics import only_main_process
+from InternVLA.training.trainer_utils.metrics import TrainerUtils
+from InternVLA.dataloader import save_dataset_statistics
 
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
@@ -414,7 +414,7 @@ class VLAMTrainer(TrainerUtils):
         
         self.accelerator.wait_for_everyone()
 
-from llavavla.training.trainer_utils.metrics import build_param_lr_groups
+from InternVLA.training.trainer_utils.metrics import build_param_lr_groups
 def main(cfg) -> None:
     logger.info("VLA Training :: Warming Up")
 

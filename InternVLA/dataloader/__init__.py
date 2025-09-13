@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import torch.distributed as dist
 from pathlib import Path
-from llavavla.dataloader.vlm_datasets import make_vlm_dataloader
+from InternVLA.dataloader.vlm_datasets import make_vlm_dataloader
 
 logger = get_logger(__name__)
 
@@ -43,7 +43,7 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
     dataset_py = cfg.datasets.vla_data.dataset_py
     dist.barrier()
     if dataset_py == "lerobot_datasets_oxe":
-        from llavavla.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
+        from InternVLA.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
 
         data_root_dir = vla_dataset_cfg.data_root_dir
@@ -64,7 +64,7 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
             vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
         return vla_train_dataloader
     elif dataset_py == "lerobot_datasets_libero":
-        from llavavla.dataloader.lerobot_datasets_libero import get_vla_dataset, collate_fn
+        from InternVLA.dataloader.lerobot_datasets_libero import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
 
         vla_dataset = get_vla_dataset(vla_dataset_cfg) # TODO 要将config 传输融合进去

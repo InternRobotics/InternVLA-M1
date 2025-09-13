@@ -1,6 +1,6 @@
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
 from qwen_vl_utils import process_vision_info
-from llavavla.model.framework.qwenpi import QwenQFormerDiT
+from InternVLA.model.framework.qwenpi import QwenQFormerDiT
 import os, torch
 
 
@@ -31,7 +31,7 @@ def extract_json_from_string(input_string):
         print("未找到有效的 JSON 部分")
         return None
 
-from llavavla.training.metrics import TrainerUtils
+from InternVLA.training.metrics import TrainerUtils
 from torchvision.ops import box_iou
 import numpy as np
 
@@ -104,8 +104,8 @@ processor = qwenpi.qwen_vl_interface.processor
 
 cfg = qwenpi.config
 
-from llavavla.dataloader import build_dataloader
-from llavavla.training.metrics import TrainerUtils
+from InternVLA.dataloader import build_dataloader
+from InternVLA.training.metrics import TrainerUtils
 import numpy as np
 from torch.utils.data import DataLoader
 

@@ -2,8 +2,8 @@
 action_model.py
 
 """
-from llavavla.model.modules.action_model.DiT_modules.models import DiT
-from llavavla.model.modules.action_model import create_diffusion
+from InternVLA.model.modules.action_model.DiT_modules.models import DiT
+from InternVLA.model.modules.action_model import create_diffusion
 from .DiT_modules import gaussian_diffusion as gd
 
 import torch

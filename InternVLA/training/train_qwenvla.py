@@ -22,9 +22,9 @@ from tqdm import tqdm
 from transformers import AutoProcessor, get_scheduler
 
 # Local Modules
-from llavavla.training.trainer_utils.metrics import normalize_dotlist_args # TODO 封装成为一个特殊的 arg 类别  --> 参数使用 yaml + .sh 控制， 单例模式
-from llavavla.model.framework import build_framework
-from llavavla.training.trainer_utils.metrics import TrainerUtils
+from InternVLA.training.trainer_utils.metrics import normalize_dotlist_args # TODO 封装成为一个特殊的 arg 类别  --> 参数使用 yaml + .sh 控制， 单例模式
+from InternVLA.model.framework import build_framework
+from InternVLA.training.trainer_utils.metrics import TrainerUtils
 
 
 
@@ -76,7 +76,7 @@ def build_model(cfg) -> torch.nn.Module:
     return model
 
 # 这里的变化需要📦封装 Dataloader
-from llavavla.dataloader import build_dataloader
+from InternVLA.dataloader import build_dataloader
 
 def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     """准备训练数据"""
@@ -433,7 +433,7 @@ class VLATrainer(TrainerUtils):
         
         self.accelerator.wait_for_everyone()
 
-from llavavla.training.trainer_utils.metrics import build_param_lr_groups
+from InternVLA.training.trainer_utils.metrics import build_param_lr_groups
 def main(cfg) -> None:
     logger.info("VLA Training :: Warming Up")
 

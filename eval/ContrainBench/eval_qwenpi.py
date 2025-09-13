@@ -4,9 +4,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision.ops import box_iou
-from llavavla.model.framework.qwenpi import QwenQFormerDiT
-from llavavla.training.metrics import TrainerUtils
-from llavavla.dataloader import build_dataloader
+from InternVLA.model.framework.qwenpi import QwenQFormerDiT
+from InternVLA.training.metrics import TrainerUtils
+from InternVLA.dataloader import build_dataloader
 import debugpy
 
 # Debug setup

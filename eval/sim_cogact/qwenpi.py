@@ -13,7 +13,7 @@ import numpy as np
 
 from transforms3d.euler import euler2axangle
 
-from llavavla.model.framework.qwendino_fmheader import QwenQFormerDiT #BUG @DEBUG 为了方便，这里先直接换掉
+from InternVLA.model.framework.qwendino_fmheader import QwenQFormerDiT #BUG @DEBUG 为了方便，这里先直接换掉
 
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 

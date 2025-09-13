@@ -8,7 +8,7 @@ from PIL import Image
 from transforms3d.euler import euler2axangle
 
 # 根据实际项目结构调整导入路径
-from llavavla.model.framework.DinoQFormerACT import QwenQFormerDiT as QwenpiPolicy
+from InternVLA.model.framework.DinoQFormerACT import QwenQFormerDiT as QwenpiPolicy
 from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
 
 

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import json
 
 
-from llavavla.training.trainer_utils import initialize_overwatch
+from InternVLA.training.trainer_utils import initialize_overwatch
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)

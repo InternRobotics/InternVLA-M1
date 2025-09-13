@@ -15,7 +15,7 @@ import tqdm
 import tyro
 from libero.libero import benchmark, get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
-from real_deployment.deploy.tools import websocket_policy_client
+from deployment.model_server.tools import websocket_policy_client
 # openpi_client 后去要变为 统一的 websocket_client_policy
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # TODO 这个类别是 封装 sim 中有不同的测试环境准备的， 它对接sim 和模型 （PolicyServer)

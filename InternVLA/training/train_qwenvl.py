@@ -366,7 +366,7 @@ class VLAMTrainer(TrainerUtils):
             self.optimizer.zero_grad()
             
             # VLA任务前向传播
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_loss, action_vlm_loss = self.model.forward(batch_vla)
                 total_loss = action_loss + action_vlm_loss
             
@@ -374,7 +374,8 @@ class VLAMTrainer(TrainerUtils):
             self.accelerator.backward(total_loss)
             
             # VLM任务前向传播
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            
+            with torch.autocast("cuda", dtype=torch.bfloat16):
                 vlm_output = self.model.qwen_vl_interface(**batch_vlm)
                 vlm_loss = vlm_output.loss * self.config.trainer.loss_scale.vlm
             

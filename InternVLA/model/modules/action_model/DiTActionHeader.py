@@ -53,21 +53,25 @@ class ActionModel(nn.Module):
                                         past_action_window_size = past_action_window_size
                                         )
 
-    # Given condition z and ground truth token x, compute loss
-    def loss(self, x, z):
-        # x: [B, T, C] tensor of ground truth tokens TODO 确定 z 的shape 
-        # z: [B, L, D_action] tensor of condition tokens (e.g., latent_action: [B, 64, 768])
+    def forward(self, gt_action, condition, **kwargs):
+        # x: [B, T, action_dim] tensor of ground truth tokens TODO 确定 z 的shape 
+        # z: [B, L, D] tensor of condition tokens (e.g., latent_action: [B, 64, 768])
         # sample random noise and timestep
-        noise = torch.randn_like(x) # [B, T, C]
-        timestep = torch.randint(0, self.diffusion.num_timesteps, (x.size(0),), device= x.device)
+        noise = torch.randn_like(gt_action) # [B, T, C]
+        timestep = torch.randint(0, self.diffusion.num_timesteps, (gt_action.size(0),), device= gt_action.device)
 
         # sample x_t from x
-        x_t = self.diffusion.q_sample(x, timestep, noise)
+        x_t = self.diffusion.q_sample(gt_action, timestep, noise)
 
         # predict noise from x_t
-        noise_pred = self.net(x_t, timestep, z)
+        noise_pred = self.net(x_t, timestep, condition)
 
-        assert noise_pred.shape == noise.shape == x.shape
+        assert noise_pred.shape == noise.shape == gt_action.shape
+
+        return noise_pred, noise, timestep
+    # Given condition z and ground truth token x, compute loss
+    def loss(self, noise_pred, noise):
+
         # Compute L2 loss
         loss = ((noise_pred - noise) ** 2).mean() # TODO 是否这里导致了 batch 并不能加速？
         # Optional: loss += loss_vlb

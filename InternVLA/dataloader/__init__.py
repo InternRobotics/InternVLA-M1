@@ -37,11 +37,8 @@ def save_dataset_statistics(dataset_statistics, run_dir):
 
 
 
-def build_dataloader(cfg): # TODO now here only is get dataset, we need mv dataloader to here
+def build_dataloader(cfg, dataset_py="lerobot_datasets_oxe"): # TODO now here only is get dataset, we need mv dataloader to here
 
-    # dataset_py="lerobot_datasets_oxe"
-    dataset_py = cfg.datasets.vla_data.dataset_py
-    dist.barrier()
     if dataset_py == "lerobot_datasets_oxe":
         from InternVLA.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
@@ -63,6 +60,7 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
             output_dir = Path(cfg.output_dir)
             vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
         return vla_train_dataloader
+    
     elif dataset_py == "lerobot_datasets_libero":
         from InternVLA.dataloader.lerobot_datasets_libero import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
@@ -82,7 +80,7 @@ def build_dataloader(cfg): # TODO now here only is get dataset, we need mv datal
         return vla_train_dataloader
 
     elif dataset_py == "vlm_datasets":
-            # VLM 数据加载器
+        # VLM 数据加载器
         vlm_data_module = make_vlm_dataloader(cfg)
         vlm_train_dataloader = vlm_data_module["train_dataloader"]
         

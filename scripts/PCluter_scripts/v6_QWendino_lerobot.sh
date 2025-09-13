@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=fm_qwenact            # name
+#SBATCH --job-name=m1            # name
 #SBATCH -p efm_p
 #SBATCH -N 4                         # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
@@ -64,7 +64,7 @@ export loss_scale_vla=1.0 # 1.0 is the default value, you can change it if neede
 export loss_scale_vlm=0.1 # 1.0 is the default value, you can change it if needed
 
 # 开始用 坤哥 的system2
-export run_id=0911_qwenact_fm_debug
+export run_id=0911_internM1
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -89,7 +89,7 @@ export pretrained_checkpoint=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Ch
 # 换回原来朴素版的 image transform
 
 # qwendino_cogactheader
-Framework_name=qwenact_fmheader
+export Framework_name=InternVLA-M1
 
 srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2.yaml \
@@ -98,11 +98,13 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --machine_rank $SLURM_PROCID \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
-  llavavla/training/train_qwenvla.py \
-  --config_yaml ./llavavla/config/lerobot_data/qwenvla_cotrain_oxe.yaml \
+  InternVLA/training/train_qwenvla.py \
+  --config_yaml ./InternVLA/config/training/qwenvla_cotrain_oxe.yaml \
   --framework.qwenvl.base_vlm ${MODEL_PATH} \
   --framework.framework_py ${Framework_name} \
   --datasets.vla_data.per_device_batch_size 16 \
+  --datasets.vlm_data.per_device_batch_size 4 \
+  --datasets.vlm_data.dataset_use ${system2_datasets} \
   --trainer.max_train_steps 100000 \
   --trainer.save_interval 10000 \
   --trainer.freeze_modules "" \

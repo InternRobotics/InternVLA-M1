@@ -8,7 +8,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, Auto
 
 from qwen_vl_utils import process_vision_info
 from llavavla.model.framework.qwenpi import QwenQFormerDiT
-from llavavla.model.framework.InternVLA import QwenQFormerDiT
+from llavavla.model.framework.DinoQFormerACT import QwenQFormerDiT
 import os, torch
 
 
@@ -18,7 +18,7 @@ print("🔍 Rank 0 waiting for debugger attach on port 10092...")
 debugpy.wait_for_client()
 
 saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0712_vla_v4_fixvit_vlma/checkpoints/steps_30000_pytorch_model.pt"
-saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0729_v6_vla_dino_3l_cotrain/checkpoints/steps_100000_pytorch_model.pt"
+saved_model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/qwendion_sota/checkpoints/steps_20000_pytorch_model.pt"
 
 qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dict:
           saved_model_path,                       # choose from ['CogACT/CogACT-Small', 'CogACT/CogACT-Base', 'CogACT/CogACT-Large'] or the local path
@@ -29,23 +29,6 @@ qwenact = QwenQFormerDiT.from_pretrained( # a lot of Missing key(s) in state_dic
 model = qwenact.qwen_vl_interface.model
 # default processer
 processor = qwenact.qwen_vl_interface.processor
-
-
-
-# model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"  # or your local path
-# model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-#     model_path,
-#     torch_dtype=torch.bfloat16,
-#     # attn_implementation="flash_attention_2",
-# )
-# model.forward
-# processor = AutoProcessor.from_pretrained(
-#     model_path, use_fast=True
-# )
-# tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
-# tokenizer.padding_side = "left"  # BATCH INFER
-# processor.tokenizer = tokenizer
-
 
 model.to("cuda")  # 将模型移动到 GPU
 model.eval()

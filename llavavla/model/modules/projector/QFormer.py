@@ -123,8 +123,8 @@ def get_layerwise_qformer(
     qformer_cfg = config.framework.layer_qformer
     num_layers = qformer_cfg.qformer_end_layer - qformer_cfg.qformer_start_layer  if config else num_layers
     num_query_tokens = qformer_cfg.num_query_tokens
-    input_hidden_dim=config.framework.qwenvl.vl_hidden_dim
-    output_hidden_dim=config.framework.action_model.action_hidden_dim
+    input_hidden_dim=config.framework.layer_qformer.input_dim
+    output_hidden_dim=config.framework.layer_qformer.ouptput_dim
     num_query_tokens=qformer_cfg.num_query_tokens
 
     qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads, config=config) 

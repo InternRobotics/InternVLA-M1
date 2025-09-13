@@ -15,7 +15,7 @@ from torchvision import transforms
 def apply_transform(view, transform):
     return transform(view)
 
-from llavavla.model.dino_model.dino_transforms import make_classification_train_transform
+# from llavavla.model.modules.dino_model.dino_transforms import make_classification_train_transform
 
 class DINOv2BackBone(nn.Module):
     def __init__(self, backone_name="dinov2_vits14", output_channels=1024) -> None:

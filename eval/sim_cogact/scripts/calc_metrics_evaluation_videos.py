@@ -983,11 +983,11 @@ CKPT_MAPPING = {
 
 # /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_bridge_rt_32gpus_lr_5e-5_qformer_36_37_rp/videos/need_steps_40000_pytorch_model.pt
 parser = argparse.ArgumentParser()
-model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0726_v6_vla_dinol_32_cotrain_freezedino/videos/steps_20000_pytorch_model.pt"
+model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0906_bestvla_retrain_lr_v2/videos/steps_5000_pytorch_model.pt"
 # 获得 文件名字
 model_name = model_path.split("/")[-1]
 model_path = model_path.replace(model_name, "")
-parser.add_argument("--task", type=str, default="move_near", help="task name")
+parser.add_argument("--task", type=str, default="long_horizon_apple_in_drawer", help="task name")
 parser.add_argument("--log-dir-root", type=str, default=f"{model_path}", help="log directory")
 
 args = parser.parse_args()

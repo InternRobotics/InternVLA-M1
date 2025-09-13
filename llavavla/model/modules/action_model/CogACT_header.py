@@ -2,9 +2,10 @@
 action_model.py
 
 """
-from llavavla.model.action_model.models import DiT
-from llavavla.model.action_model import create_diffusion
-from . import gaussian_diffusion as gd
+from llavavla.model.modules.action_model.DiT_modules.models import DiT
+from llavavla.model.modules.action_model import create_diffusion
+from .DiT_modules import gaussian_diffusion as gd
+
 import torch
 from torch import nn
 

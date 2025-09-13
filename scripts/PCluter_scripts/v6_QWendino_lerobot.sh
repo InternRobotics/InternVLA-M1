@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dinovla_co            # name
+#SBATCH --job-name=fm_qwenact            # name
 #SBATCH -p efm_p
 #SBATCH -N 4                         # nodes
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
@@ -64,7 +64,7 @@ export loss_scale_vla=1.0 # 1.0 is the default value, you can change it if neede
 export loss_scale_vlm=0.1 # 1.0 is the default value, you can change it if needed
 
 # 开始用 坤哥 的system2
-export run_id=0817_qwendino_vla_rpsota_withlerobot_v2
+export run_id=0911_qwenact_fm_debug
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -78,7 +78,7 @@ cp $0 ${output_dir}/
 
   #   --trainer.freeze_modules qwen_vl_interface \
 
-export pretrained_checkpoint=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0815_qwendino_vla/checkpoints/steps_10000_pytorch_model.pt
+export pretrained_checkpoint=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0815_qwendino_vla_cotrain/checkpoints/steps_70000_pytorch_model.pt
   # --trainer.pretrained_checkpoint ${pretrained_checkpoint} \
 # bridge_rt_1
 # oxe_magic_soup_plus
@@ -88,8 +88,11 @@ export pretrained_checkpoint=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Ch
 
 # 换回原来朴素版的 image transform
 
+# qwendino_cogactheader
+Framework_name=qwenact_fmheader
+
 srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
-  --config_file llavavla/config/deepseeds/deepspeed_zero2.yaml \
+  --config_file scripts/run_scripts/deepspeed_zero2.yaml \
   --main_process_ip $MASTER_ADDR \
   --main_process_port $MASTER_PORT \
   --machine_rank $SLURM_PROCID \
@@ -98,15 +101,14 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   llavavla/training/train_qwenvla.py \
   --config_yaml ./llavavla/config/lerobot_data/qwenvla_cotrain_oxe.yaml \
   --framework.qwenvl.base_vlm ${MODEL_PATH} \
-  --data_root_dir ${data_root_dir} \
-  --trainer.pretrained_checkpoint ${pretrained_checkpoint} \
+  --framework.framework_py ${Framework_name} \
   --datasets.vla_data.per_device_batch_size 16 \
-  --trainer.max_train_steps 50000 \
+  --trainer.max_train_steps 100000 \
   --trainer.save_interval 10000 \
   --trainer.freeze_modules "" \
   --run_root_dir ${run_root_dir} \
   --run_id ${run_id} \
-  --wandb_project Internvla \
+  --wandb_project Internvla_V2 \
   --wandb_entity jinhuiye \
   --is_resume False '
 

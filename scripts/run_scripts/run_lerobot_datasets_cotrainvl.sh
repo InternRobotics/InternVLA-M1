@@ -17,7 +17,7 @@ Pretrain_MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrain
 run_root_dir=./playground/Checkpoints
 run_id=0905_qwenact_ft_vla_lerobot_cotrain_oxe
 
-# export WANDB_MODE=disabled
+export WANDB_MODE=disabled
 
 
 
@@ -29,12 +29,13 @@ cp $0 ${output_dir}/
 
 accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2.yaml \
-  --num_processes 8 \
-  llavavla/training/train_qwenvla.py \
+  --num_processes 1 \
+  llavavla/training/train_qwenvla_cotrain.py \
   --config_yaml ./llavavla/config/lerobot_data/qwenvla_cotrain_oxe.yaml \
   --framework.framework_py ${Framework_name} \
   --framework.qwenvl.base_vlm ${Pretrain_MODEL_PATH} \
-  --datasets.vla_data.per_device_batch_size 32 \
+  --datasets.vla_data.per_device_batch_size 2 \
+  --datasets.vlm_data.per_device_batch_size 1 \
   --trainer.max_train_steps 100000 \
   --trainer.save_interval 10000 \
   --trainer.eval_interval 10 \
@@ -43,6 +44,6 @@ accelerate launch \
   --run_id ${run_id} \
   --wandb_project internvla \
   --wandb_entity jinhuiye \
-  # --is_debug True
+  --is_debug True
 
 

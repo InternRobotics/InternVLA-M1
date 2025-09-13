@@ -14,15 +14,17 @@ LOG_SUFFIXES=(
   "pytorch_model_infer_StackGreenCubeOnYellowCubeBakedTexInScene-v0.log.run1"
 )
 
+# playground/Checkpoints/0905_qwenact_ft_vla_lerobot_cotrain_oxe
+
 # 用于测试的脚本路径
 SCRIPT_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/eval/sim_cogact/scripts/qwenact/cogact_bridge.sh"
 
 # 直接把通配路径写在 for 循环里，Bash 会帮你展开所有匹配的目录
-# 0604_fixqwen_32gpus_lr_5e-5_qformer_36_37_rp
-# /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0604_ftqwen_32gpus_lr_5e-5_qformer_0_6
 
+# /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0831_qwendact_vla_fm/checkpoints/steps_40000_pytorch_model.pt
 
-for checkpoints_dir in "$ROOT_BASE"/0817_qwendino_vla_rpsota_withlerobot/checkpoints; do
+for checkpoints_dir in "$ROOT_BASE"/0831_qwendact_vla_fm/checkpoints; do
+  echo $checkpoints_dir
   # 确保 checklspoints 目录存在且是目录
   if [ -d "$checkpoints_dir" ]; then
     # 如果路径中包含 "without"，则跳过
@@ -55,7 +57,7 @@ for checkpoints_dir in "$ROOT_BASE"/0817_qwendino_vla_rpsota_withlerobot/checkpo
         MODEL_PATH="$checkpoints_dir/$pt_file"
         nohup srun -p efm_p --gres=gpu:4 /bin/bash "$SCRIPT_PATH" "$MODEL_PATH" &
         sleep 10
-        # rm $pt_file
+        # # # rm $pt_file
       else
         echo "✘ Logs missing for $pt_file — launching test"
         MODEL_PATH="$checkpoints_dir/$pt_file"

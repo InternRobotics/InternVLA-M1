@@ -2,7 +2,6 @@
 cogactvla.py
 
 """
-from __future__ import annotations
 from typing import Union, List
 import torchvision
 import os
@@ -17,7 +16,6 @@ from PIL import Image
 import re
 
 
-from accelerate.logging import get_logger
 from llavavla.training.trainer_utils import initialize_overwatch
 logger = initialize_overwatch(__name__)
 
@@ -29,14 +27,15 @@ from llavavla.model.framework.share_tools import dict_to_namespace
 
 # get QWen2.5
 from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
-from llavavla.model.vlm.QWen2_5 import get_qwen2_5_interface
-from llavavla.model.projector.QFormer import get_layerwise_qformer
-from llavavla.model.action_model.action_model import get_action_model
+from llavavla.model.modules.vlm.QWen2_5 import get_qwen2_5_interface
+from llavavla.model.modules.projector.QFormer import get_layerwise_qformer
+from llavavla.model.modules.action_model.CogACT_header import get_action_model
+from llavavla.model.modules.dino_model.dino import get_dino_model
+from llavavla.model.framework.base_framework import baseframework
 from llavavla.training.trainer_utils.metrics import resize_images
-from llavavla.model.dino_model.dino import get_dino_model
 
 
-class QwenQFormerDiT(nn.Module):
+class QwenQFormerDiT(baseframework):
     def __init__(
         self,
         config: Optional[dict] = None,  # @Jinhui TODO 这里应该是config, 但是现在是直接传入参数
@@ -47,7 +46,7 @@ class QwenQFormerDiT(nn.Module):
         self.config = config
 
         # TODO 全部转 全局config, 要面向对象编程
-        self.qwen_vl_interface = get_qwen2_5_interface(model_id=config.framework.qwenvl.base_vlm, config=self.config) 
+        self.qwen_vl_interface = get_qwen2_5_interface(config=self.config) 
         self.layer_qformer = get_layerwise_qformer(config=self.config) # @Jinhui 一般来说 人们喜欢总分结构， 但是有讨厌递归， 实验framework 下面就不能太总分了
         self.action_model = get_action_model(config=self.config)
         self.dino_encoder = get_dino_model(backone_name=getattr(self.config.framework.dino, "dino_backbone", "dinov2_vits14"))
@@ -67,10 +66,8 @@ class QwenQFormerDiT(nn.Module):
 
 
     @property
-    def trainable_module_keys(self) -> List[str]:
-
-        # TODO check, 原版返回的死 vlm.model, 新的实现是vlm --> 看一下保存逻辑是否发上变化
-        keys = auto_get_trainable_modules(self, max_depth=1)# auto 去判断哪些module是trainable的
+    def trainable_module_keys(self, max_depth=1) -> List[str]:
+        keys = auto_get_trainable_modules(self, max_depth=max_depth)# auto 去判断哪些module是trainable的
         return keys
     
 
@@ -81,14 +78,14 @@ class QwenQFormerDiT(nn.Module):
         **kwargs,  # 👈 敏捷代码的灵活性， 允许任何形式的传参数
     ) -> Tuple:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
-        # @Jinhui TBD TODO 
+        # @Jinhui TBD TODO  这里太长了，需要封装
+        # 1. prepare input
+        # 2. vlm forward
+        # 3. action forward
+        
         images = [example["image"] for example in examples]  #  [B，[PLT]]
         instructions = [example["lang"] for example in examples]  # [B, str]
         actions = [example["action"] for example in examples] #label [B， len, 7]
-        if "solution" in examples[0]:  # @Jinhui TODO 这里是为了兼容旧的格式
-            solutions = [example["solution"] for example in examples]  # [B, dict]
-        else: #  还有if else 和模型可阅读性的 trade off
-            solutions = None
 
         # Step 1: 使用 DINO imaga processing 是什么？
         # 将 PIL 图片转换为张量并 **归一化**
@@ -101,7 +98,7 @@ class QwenQFormerDiT(nn.Module):
 
         dino_encoded_features = self.dino_pro(dino_encoded_features) # [B, num_view * token, hidden_size]
         # Step 2: QWenVL 输入格式
-        qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=images, instructions = instructions, solutions=solutions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
+        qwen_inputs = self.qwen_vl_interface.build_qwenvl_train_inputs(images=images, instructions = instructions) # @Jinhui TODO 再考虑一下这里的分支分流应该有.py控制还是由 if else
         
         with torch.autocast("cuda", dtype=torch.bfloat16): # @Jinhui TODO 这里的 dtype 是不是应该是config里面的
             # dist.barrier()  # 确保所有进程都加载完毕
@@ -142,11 +139,11 @@ class QwenQFormerDiT(nn.Module):
             action_latent_feature = action_latent_feature.repeat(repeated_diffusion_steps, 1, 1)  # [repeated_diffusion_steps*B, T, D_action]
             # Action model forward and compute loss # 这里功能有点 越俎代庖 TODO 将loss 集中到 main module中统一处理
             action_loss = self.action_model.loss(actions_repeated, action_latent_feature) # TODO loss 应该放到另一个函数
-        return action_loss, action_cot_loss
+        return {"action_loss": action_loss, "action_cot_loss": action_cot_loss}
 
     @torch.inference_mode() # @Jinhui DEBUG 临时取消
     def predict_action( # TODO 之后要和CoT 方案同步
-        self, images: Union[Image, List[Image]], # 变成可以 batch infer
+        self, batch_images: List[List[Image.Image]], # B * List of PIL Image as [view1, view2]
         instructions: List[str], 
         solutions: Union[Dict, List[Dict]] = None, # @Jinhui TODO 这里是为了兼容旧的格式, 可以用于出中间表征的评测？
         unnorm_key: Optional[str] = None, 
@@ -156,16 +153,19 @@ class QwenQFormerDiT(nn.Module):
         **kwargs: str
     ) -> np.ndarray:
         """
+        Core function for VLA inference; maps input image and task instruction to continuous action.
 
+        @param batch_images: a batch of PIL Image as B* [view1, view2, ... ]
+        @param instructions: Task instruction string 
         @return Unnormalized (continuous) action vector --> end-effector deltas.
         """
 
         # @之后写入模型内部， 变成私有化方法 --> 应该是模型 processer 的方法
-        batch_images = resize_images(images, target_size=(224, 224))  # list of PIL RGB for one instruction
+        batch_images = resize_images(batch_images, target_size=(224, 224))  # list of PIL RGB for one instruction
         
         instructions = [instruction.lower()  for instruction in instructions] # @Jinhui TODO 这里是为了兼容旧的格式， 需要考虑是否要将lang 变成 list
         
-        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
+        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_train_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
         qwen_inputs = inferface_inputs
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
 
@@ -184,7 +184,7 @@ class QwenQFormerDiT(nn.Module):
 
             # TODO check bug， 从 08.18 号开始这里不能同时房本 with 的外面了 float != c10::BFloat16
             # get dino feature
-            B = len(images)
+            B = len(batch_images)
             image_tensors = self.dino_encoder.prepare_dino_input(batch_images)
             # print("image_tensors shape: ", image_tensors.shape) # [B, 3, 224, 224]
             dino_features = self.dino_encoder(image_tensors)  # DINO 输出为 OrderedDict
@@ -263,14 +263,14 @@ class QwenQFormerDiT(nn.Module):
             normalized_actions = samples.cpu().numpy()
 
             raw_actions = None
-        return raw_actions, normalized_actions # actions, normalized_actions #TODO 得想清楚， Un-normalize Actions  到底是谁控制的。 我觉得必须是模型， 因为减少相对变化， 扁平管理。 但是要单独写成函数
+        return  {"normalized_actions": normalized_actions}
 
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
         """
         将归一化的动作转换为原始动作空间。
         
-        :param normalized_actions: 归一化的动作数组，形状为 [B, T, D]。
+        :param normalized_actions: 归一化的动作数组，形状为 [action chunk, D]。
         :param action_norm_stats: 包含动作归一化统计信息的字典，必须包含以下键：
             - "q01": 动作的第 1 百分位值。
             - "q99": 动作的第 99 百分位值。

@@ -32,7 +32,7 @@ conda create -n llavavla python=3.10
 
 pip install -r requirements.txt
 
-pip install -e .
+pip install -e . --no-deps
 
 
 

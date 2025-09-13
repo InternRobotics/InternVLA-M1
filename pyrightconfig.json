@@ -9,7 +9,10 @@
       "scripts/debug",
       "eval/debug_logs",
       "playground",
-      "cogact.egg-info"
+      "cogact.egg-info",
+      "eval",
+      "example",
+      "deployment"
     ],
     "typeCheckingMode": "off",
     "remote.downloadExtensionsLocally": true,

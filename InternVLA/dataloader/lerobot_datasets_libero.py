@@ -2,10 +2,10 @@ from pathlib import Path
 from typing import Sequence
 from omegaconf import OmegaConf
 
-from llavavla.dataloader.gr00t_lerobot.data_config import DATA_CONFIG_MAP
-from llavavla.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag, DATASET_NAME_TO_EMBODIMENT_TAG
-from llavavla.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, LeRobotMixtureDataset
-from llavavla.dataloader.gr00t_lerobot.libero.mixtures import LIBERO_NAMED_MIXTURES
+from InternVLA.dataloader.gr00t_lerobot.data_config import DATA_CONFIG_MAP
+from InternVLA.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag, DATASET_NAME_TO_EMBODIMENT_TAG
+from InternVLA.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, LeRobotMixtureDataset
+from InternVLA.dataloader.gr00t_lerobot.libero.mixtures import LIBERO_NAMED_MIXTURES
 
 def collate_fn(batch):
     return batch # @TODO check 是方靖修改过么？

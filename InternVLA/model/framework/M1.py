@@ -16,26 +16,26 @@ from PIL import Image
 import re
 
 
-from llavavla.training.trainer_utils import initialize_overwatch
+from InternVLA.training.trainer_utils import initialize_overwatch
 logger = initialize_overwatch(__name__)
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 
-from llavavla.model.framework.share_tools import dict_to_namespace
+from InternVLA.model.framework.share_tools import dict_to_namespace
 
 
 # get QWen2.5
-from llavavla.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
-from llavavla.model.modules.vlm.QWen2_5 import get_qwen2_5_interface
-from llavavla.model.modules.projector.QFormer import get_layerwise_qformer
-from llavavla.model.modules.action_model.CogACT_header import get_action_model
-from llavavla.model.modules.dino_model.dino import get_dino_model
-from llavavla.model.framework.base_framework import baseframework
-from llavavla.training.trainer_utils.metrics import resize_images
+from InternVLA.model.tools import auto_get_module_keys, auto_get_trainable_modules # 后续应该是trainer 的职责范围
+from InternVLA.model.modules.vlm.QWen2_5 import get_qwen2_5_interface
+from InternVLA.model.modules.projector.QFormer import get_layerwise_qformer
+from InternVLA.model.modules.action_model.CogACT_header import get_action_model
+from InternVLA.model.modules.dino_model.dino import get_dino_model
+from InternVLA.model.framework.base_framework import baseframework
+from InternVLA.training.trainer_utils.metrics import resize_images
 
 
-class QwenQFormerDiT(baseframework):
+class InternVLA_M1(baseframework):
     def __init__(
         self,
         config: Optional[dict] = None,  # @Jinhui TODO 这里应该是config, 但是现在是直接传入参数
@@ -362,10 +362,10 @@ class QwenQFormerDiT(baseframework):
 
 # TODO 写一个build model 函数
 
-def build_model_framework(config: dict = {}) -> QwenQFormerDiT:
+def build_model_framework(config: dict = {}) -> InternVLA_M1:
     # TODO  实现和 config 对应的 load 逻辑
 
-    model = QwenQFormerDiT(config=config)
+    model = InternVLA_M1(config=config)
 
     return model
 
@@ -403,7 +403,7 @@ def load_from_pretrained(pretrained_checkpoint):
 
     # TODO 这里应该是从config中加载
     
-    model = QwenQFormerDiT.from_pretrained(
+    model = InternVLA_M1.from_pretrained(
         pretrained_checkpoint=pretrained_checkpoint)
     return model
 

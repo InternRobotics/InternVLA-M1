@@ -37,16 +37,16 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 from PIL import Image
 
-from llavavla.dataloader.gr00t_lerobot.video import get_all_frames, get_frames_by_timestamps
+from InternVLA.dataloader.gr00t_lerobot.video import get_all_frames, get_frames_by_timestamps
 
-from llavavla.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag
-from llavavla.dataloader.gr00t_lerobot.schema import (
+from InternVLA.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag
+from InternVLA.dataloader.gr00t_lerobot.schema import (
     DatasetMetadata,
     DatasetStatisticalValues,
     LeRobotModalityMetadata,
     LeRobotStateActionMetadata,
 )
-from llavavla.dataloader.gr00t_lerobot.transform import ComposedModalityTransform
+from InternVLA.dataloader.gr00t_lerobot.transform import ComposedModalityTransform
 
 import multiprocessing as mp
 from functools import partial

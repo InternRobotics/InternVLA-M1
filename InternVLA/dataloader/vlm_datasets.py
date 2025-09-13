@@ -21,8 +21,8 @@ from PIL import Image
 from decord import VideoReader
 import transformers
 from omegaconf import OmegaConf
-from llavavla.dataloader.qwenvl_llavajson.qwen_data_config import data_list
-from llavavla.dataloader.qwenvl_llavajson.rope2d import get_rope_index_25, get_rope_index_2
+from InternVLA.dataloader.qwenvl_llavajson.qwen_data_config import data_list
+from InternVLA.dataloader.qwenvl_llavajson.rope2d import get_rope_index_25, get_rope_index_2
 
 IGNORE_INDEX = -100
 IMAGE_TOKEN_INDEX = 151655

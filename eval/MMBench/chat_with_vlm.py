@@ -7,8 +7,8 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, Auto
 
 
 from qwen_vl_utils import process_vision_info
-from llavavla.model.framework.qwenpi import QwenQFormerDiT
-from llavavla.model.framework.DinoQFormerACT import QwenQFormerDiT
+from InternVLA.model.framework.qwenpi import QwenQFormerDiT
+from InternVLA.model.framework.DinoQFormerACT import QwenQFormerDiT
 import os, torch
 
 

@@ -111,6 +111,7 @@ trainer:
     vlm: 0.1
   # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
   # reload_modules: 'action_model,layer_qformer' # 警告： 这个可能会导致 模型无法收敛
+  repeated_diffusion_steps: 4
   max_grad_norm: 1.0
   warmup_ratio: 0.1
   weight_decay: 0.0

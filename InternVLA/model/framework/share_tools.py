@@ -1,5 +1,5 @@
 """
-cogactvla.py
+TODO  waiting to move # 全部tools 应该是要在一个位置的
 
 """
 
@@ -8,6 +8,18 @@ from pathlib import Path
 from types import SimpleNamespace
 import json
 
+from typing import Union, List
+import torchvision
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from types import SimpleNamespace
+import torch, json
+import torch.nn as nn
+import numpy as np
+from PIL import Image
+import re
 
 from InternVLA.training.trainer_utils import initialize_overwatch
 
@@ -149,6 +161,35 @@ def merge_pram_config(init):
 
 
 def read_model_config(pretrained_checkpoint):
+    if os.path.isfile(pretrained_checkpoint):
+        overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
+
+        # [Validate] Checkpoint Path should look like `.../<RUN_ID>/checkpoints/<CHECKPOINT_PATH>.pt`
+        assert (checkpoint_pt.suffix == ".pt")
+        run_dir = checkpoint_pt.parents[1]
+
+        # Get paths for `config.json`, `dataset_statistics.json` and pretrained checkpoint
+        config_json, dataset_statistics_json = run_dir / "config.json", run_dir / "dataset_statistics.json"
+        assert config_json.exists(), f"Missing `config.json` for `{run_dir = }`"
+        assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir = }`"
+
+    # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
+
+        # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
+        with open(config_json, "r") as f:
+            vla_cfg = json.load(f) #["vla"]
+            # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
+
+        # Load Dataset Statistics for Action Denormalization
+        with open(dataset_statistics_json, "r") as f:
+            norm_stats = json.load(f)
+    else:
+        overwatch.error(f"❌ Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
+        raise FileNotFoundError(f"Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
+    return vla_cfg, norm_stats
+
+
+def read_mode_config(pretrained_checkpoint):
     if os.path.isfile(pretrained_checkpoint):
         overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 

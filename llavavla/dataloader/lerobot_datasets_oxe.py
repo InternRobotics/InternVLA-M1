@@ -8,6 +8,7 @@ from llavavla.dataloader.gr00t_lerobot.transform import ComposedModalityTransfor
 from llavavla.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, LeRobotMixtureDataset
 from llavavla.dataloader.gr00t_lerobot.oxe.mixtures import OXE_NAMED_MIXTURES
 
+
 def collate_fn(batch):
     return batch # @TODO check 是方靖修改过么？
 
@@ -54,6 +55,7 @@ def get_vla_dataset(
     :param data_mix: The name of the dataset mixture.
     """
     data_root_dir = Path(data_cfg.data_root_dir)
+    data_mix = data_cfg.data_mix
     mixture_spec = OXE_NAMED_MIXTURES[data_mix]
     included_datasets, filtered_mixture_spec = set(), []
     for d_name, d_weight in mixture_spec:
@@ -90,6 +92,7 @@ if __name__ == "__main__":
     
     # Load YAML config & Convert CLI overrides to dotlist config
     config_yaml = "llavavla/config/lerobot_data/qwenvla_cotrain_oxe.yaml"
+    config_yaml = "llavavla/config/lerobot_data/qwenvla_cotrain_libero.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     vla_dataset_cfg = cfg.datasets.vla_data

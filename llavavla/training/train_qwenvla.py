@@ -85,10 +85,10 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     vla_train_dataloader = build_dataloader( # 这个写在dataload.py 内部
         cfg=cfg)
     
-    # 拒绝自动分发 # TODO 应该写到 accelerator config
-    accelerator.dataloader_config.dispatch_batches =  False
+    
+    accelerator.dataloader_config.dispatch_batches =  False # TODO 看一下证明移动到内部
     dist.barrier()
-    # vla_train_dataloader.dataset_statistics = statistics_data # eval 的时候使用 norm actions
+    
     return vla_train_dataloader
 
 def setup_optimizer_and_scheduler(
@@ -241,13 +241,13 @@ class VLATrainer(TrainerUtils):
     def _log_metrics(self, metrics):
         """记录训练指标"""
         if self.completed_steps % self.config.trainer.logging_frequency == 0: # 有些参数应该是需要intial 给 class 的了
-            if self.accelerator.is_main_process:
-                # 计算梯度范数
-                total_norm = 0.0
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        total_norm += p.grad.data.norm(2).item() ** 2
-                metrics["grad_norm"] = total_norm ** 0.5
+            if dist.get_rank() == 0:
+                # # 计算梯度范数
+                # total_norm = 0.0
+                # for p in self.model.parameters():
+                #     if p.grad is not None:
+                #         total_norm += p.grad.data.norm(2).item() ** 2
+                # metrics["grad_norm"] = total_norm ** 0.5
                 
                 # 添加学习率
                 metrics["learning_rate"] = self.lr_scheduler.get_last_lr()[0]
@@ -280,17 +280,9 @@ class VLATrainer(TrainerUtils):
             )
             batch_vla = next(self.vla_iter)
         
-        # try:
-        #     batch_vlm = next(self.vlm_iter) # TODO 首尾循环应该是dataset 自己的功能， 这里是考虑到很多人的dataset 是没有这个功能的
-        # except StopIteration: 
-        #     if not hasattr(self, 'vlm_epoch_count'):
-        #         self.vlm_epoch_count = 0
-        #     self.vlm_iter, self.vlm_epoch_count = self._reset_dataloader(
-        #         self.vlm_train_dataloader, self.vlm_epoch_count
-        #     )
-        #     batch_vlm = next(self.vlm_iter)
 
-        return batch_vla #, batch_vlm
+
+        return batch_vla
     
     def train(self):
         """执行训练循环"""
@@ -359,18 +351,19 @@ class VLATrainer(TrainerUtils):
             num_samples = len(examples)
 
             # @Jinhui TBD TODO 
-            images = [example["image"] for example in examples]  #  TODO check 是什么
+            batch_images = [example["image"] for example in examples]  #  TODO check 是什么
             instructions = [example["lang"] for example in examples]  # [B, str]
             actions = [example["action"] for example in examples] #label
 
             # Predict actions using the model
-            predicted_solutions, normalized_actions = self.model.predict_action( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
-                images=images,
+            output_dict  = self.model.predict_action( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
+                batch_images=batch_images,
                 instructions=instructions,
                 use_ddim=True,
                 num_ddim_steps=20)
             
-            # 提前转换 actions 为 numpy.ndarray
+            normalized_actions = output_dict["normalized_actions"] #B, T, D
+            
             actions = np.array(actions)  # 将 actions 转换为 numpy.ndarray
             # B, Chunk, dim = actions.shape
             num_pots = np.prod(actions.shape)
@@ -388,7 +381,7 @@ class VLATrainer(TrainerUtils):
         if self.accelerator.is_main_process:
             logger.info("***** Training Configuration *****")
             logger.info(f"  Total optimization steps = {self.config.trainer.max_train_steps}")
-            logger.info(f" Per device batch size = {self.config.datasets.vla_data.per_device_batch_size}")
+            logger.info(f"  Per device batch size = {self.config.datasets.vla_data.per_device_batch_size}")
             logger.info(f"  Gradient accumulation steps = {self.config.trainer.gradient_accumulation_steps}")
             logger.info(f"  Total batch size = {self.total_batch_size}")
 
@@ -396,25 +389,18 @@ class VLATrainer(TrainerUtils):
     
     def _train_step(self, batch_vla, batch_vlm=None):
         """执行单个训练步骤"""
-        # TODO: 实现梯度累积 @Yioutpi
         with self.accelerator.accumulate(self.model):
             self.optimizer.zero_grad()
             
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                action_loss, action_cot_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_cot_loss * self.config.trainer.loss_scale.vlm
-            
+                output_dict = self.model.forward(batch_vla)
+                # total_loss = 0 # 这个写法可读性很差 v1 是以可读性为前提的
+                action_loss = output_dict["action_loss"]
+                total_loss = action_loss
+
             # VLA反向传播
             self.accelerator.backward(total_loss)
-            
-            # # VLM任务前向传播
-            # with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            #     vlm_output = self.model.qwen_vl_interface(**batch_vlm)
-            #     vlm_loss = vlm_output.loss * self.config.trainer.loss_scale.vlm
-            
-            # VLM反向传播
-            # self.accelerator.backward(vlm_loss)
             
             # 梯度裁剪
             if self.config.trainer.gradient_clipping is not None:
@@ -429,8 +415,6 @@ class VLATrainer(TrainerUtils):
         
         return {
             "action_dit_loss": action_loss.item(),
-            "action_cot_loss": action_cot_loss.item(),
-            # "vlm_loss": vlm_loss.item(),
         }
     
     def _finalize_training(self):

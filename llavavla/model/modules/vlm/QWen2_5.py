@@ -35,25 +35,27 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
     def __init__(
         self,
-        model_id: str,
         config: Optional[dict] = None,
         **kwargs
     ):  
         super().__init__()
         # QWen 原生模型
+        qwenvl_config = config.framework.get("qwenvl", {})
+        model_id = qwenvl_config.get("base_vlm", "Qwen/Qwen2.5-VL-3B-Instruct")
+
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id,
-            attn_implementation="flash_attention_2", #"sdpa" TODO 要确认是否和 train 有关， 直觉上是无关的
+            attn_implementation="flash_attention_2",
             torch_dtype="auto",
             device_map="cuda",
         )
-        
-        processor = AutoProcessor.from_pretrained(model_id) #TODO check 
+        processor = AutoProcessor.from_pretrained(model_id) 
         processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
-
+        
         self.model = model
         self.processor = processor
         self.config = config
+
     def forward( # 后期这里应该是总结和qwen forward 对齐， 但是这里 TODO 移除这个逻辑， 直接调用qwen的逻辑
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -127,7 +129,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             )
         return generation_output
     
-    def build_qwenvl_inputs_v1(self, images, instructions, **kwargs): # 这个能够加速推理，但是会有几个字符差异，对libero 这种强overfit 的bench 影响很大
+    def build_qwenvl_infer_inputs(self, images, instructions, **kwargs): # 这个能够加速推理，但是会有几个字符差异，对libero 这种强overfit 的bench 影响很大
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -148,8 +150,13 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         assert len(images) == len(instructions), "Images and instructions must have the same length"
         for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
             content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
-            prompt = f"what is the key object to finish the task: {instruction}. Output the bbox to local the object"
-            # prompt = f"{instruction}."
+            
+            if "CoT_prompt" in self.config.datasets.vla_data: # If using a grounding prompt to task
+                CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", "")
+                prompt = CoT_prompt.replace("{instruction}", instruction)
+            else:
+                prompt = instruction
+            
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             messages.append(msg)
@@ -163,18 +170,17 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
         # image_inputs = list of PIL
         image_inputs, video_inputs = process_vision_info(messages)
-        inputs = self.processor( # @JinhuiYE TODO 这里需要检查是否图片是否放到的指定地方， 要去对比 官方dataloader
+        inputs = self.processor(
             text=texts,
-            images=image_inputs, # list of PIL
+            images=image_inputs,
             videos=video_inputs,
             padding=True,
             return_tensors="pt"
         )
-        # torch.distributed.barrier()
-        # inputs.keys() # dict_keys(['input_ids', , 'attention_mask', 'pixel_values', 'image_grid_thw']) # 验证 position_ids 不提的话， 内部会自己算
+
         return inputs.to(self.model.device)
     
-    def build_qwenvl_inputs(self, images, instructions, solutions=None):
+    def build_qwenvl_train_inputs(self, images, instructions, solutions=None):
         """
         Build Qwen2-VL compatible inputs for a batch of multi-camera images.
 
@@ -187,21 +193,23 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
         Returns:
             inputs: dict with input_ids, attention_mask, pixel_values, etc., ready for model.generate or model(...)
         """
-        # default 流程是 json, source --> message --> texts --> input_ids
-        # 这里我们做 Lerobot --> message -->json source --> text --> inputs with label
+        # TODO mv this to data processer or framework function to build converstion and then to vlm
+
+        # Lerobot batch --> message -->json source --> text --> inputs with label
         # Create messages: one message per sample
         messages = []
         assert len(images) == len(instructions), "Images and instructions must have the same length"
         
         # build conversation messages
-        for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
+        for imgs, instruction in zip(images, instructions):
 
-            content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
-            CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", None)
-            if CoT_prompt:
+            content = [{"type": "image", "image": img} for img in imgs]
+            
+            if "CoT_prompt" in self.config.datasets.vla_data: # If using a grounding prompt to task
+                CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", "")
                 prompt = CoT_prompt.replace("{instruction}", instruction)
             else:
-                prompt = f"Your task is {instruction} where is the pick object and where is the place object. locate the bbox of pick and place in json" # old prompt for onging ckpt
+                prompt = instruction
 
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
@@ -213,11 +221,6 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
             messages.append(msg)
     
         images, videos = process_vision_info(messages) # 这样可以处理不同 图片的复杂情况
-        # TODO v1 暂时不支持video 的处理. # 目前还不能image, video 交错， 如果实现需要而外的统一
-        # copy from .../transformers/models/qwen2_5_vl/processing_qwen2_5_vl.py
-        # copy from llavavla/dataloader/vlm_datasets.py, ⚠️， 为了 能够适用 批处理，做了修改
-        # TODO 要修改 官方的 preprocess_qwen_2_visual 中的函数， 同时确保多模态那边不会出现bug
-        # TODO 其实可以直接用 processor， 弊端是处理了两次 tokenizer, 但是我觉得开销 不大， 值得做的更加美观
         
         image_inputs = {}
         image_grid_thw = None
@@ -246,9 +249,7 @@ class _QWen_VL_Interface(nn.Module): #TODO @Jinhui 后期不能再向 PrismaticV
 
         # torch.distributed.barrier()
         inputs = BatchFeature(data={**text_inputs, **image_inputs, **video_inputs}, tensor_type="pt")
-        # qwen 官方： dict_keys(['input_ids', 'labels', 'position_ids', 'pixel_values', 'image_grid_thw'])
-        # 我们 的： dict_keys(['input_ids', 'labels', 'attention_mask','position_ids', 'pixel_values', 'image_grid_thw']) # 
-        # 验证了 position_ids 可以不提供， 内部自己会算 ../transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py
+
         return inputs.to(self.model.device)
 
 
@@ -395,9 +396,9 @@ def preprocess_qwen_2_visual(
     )
 
     
-def get_qwen2_5_interface(model_id, config=None):
+def get_qwen2_5_interface(config=None, **kwargs):
 
-    model = _QWen_VL_Interface(model_id, config=config) # 要时刻记住面向对象编程
+    model = _QWen_VL_Interface(config=config) # 要时刻记住面向对象编程
 
     return model
 

@@ -37,17 +37,20 @@ def save_dataset_statistics(dataset_statistics, run_dir):
 
 
 
-def build_dataloader(cfg, dataset_py="lerobot_datasets"): # TODO now here only is get dataset, we need mv dataloader to here
+def build_dataloader(cfg): # TODO now here only is get dataset, we need mv dataloader to here
 
-    if dataset_py == "lerobot_datasets":
-        from llavavla.dataloader.lerobot_datasets import get_vla_dataset, collate_fn
+    # dataset_py="lerobot_datasets_oxe"
+    dataset_py = cfg.datasets.vla_data.dataset_py
+    dist.barrier()
+    if dataset_py == "lerobot_datasets_oxe":
+        from llavavla.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
 
         data_root_dir = vla_dataset_cfg.data_root_dir
         data_mix = vla_dataset_cfg.data_mix
 
-        vla_dataset = get_vla_dataset(data_root_dir, data_mix) # TODO 要将config 传输融合进去
-        # VLA 数据加载器 #  -->  TODO 这个逻辑要写到 build_dataloader 内部
+        vla_dataset = get_vla_dataset(data_cfg=vla_dataset_cfg)
+        
         vla_train_dataloader = DataLoader(
             vla_dataset,
             batch_size=cfg.datasets.vla_data.per_device_batch_size,
@@ -55,12 +58,29 @@ def build_dataloader(cfg, dataset_py="lerobot_datasets"): # TODO now here only i
             num_workers=8,
             # shuffle=True # RLSD 不能做这个事情, leberot 也不需要， 但是在考虑中
         )        
-        if dist.get_rank() == 0: # TODO 后续要考虑统一判断 rank = 0
-            # save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
+        if dist.get_rank() == 0: 
+            
             output_dir = Path(cfg.output_dir)
             vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
         return vla_train_dataloader
-    
+    elif dataset_py == "lerobot_datasets_libero":
+        from llavavla.dataloader.lerobot_datasets_libero import get_vla_dataset, collate_fn
+        vla_dataset_cfg = cfg.datasets.vla_data
+
+        vla_dataset = get_vla_dataset(vla_dataset_cfg) # TODO 要将config 传输融合进去
+        vla_train_dataloader = DataLoader(
+            vla_dataset,
+            batch_size=cfg.datasets.vla_data.per_device_batch_size,
+            collate_fn=collate_fn,
+            num_workers=8,
+            # shuffle=True # RLSD 不能做这个事情, leberot 也不需要， 但是在考虑中
+        )        
+        if dist.get_rank() == 0:
+            
+            output_dir = Path(cfg.output_dir)
+            vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
+        return vla_train_dataloader
+
     elif dataset_py == "vlm_datasets":
             # VLM 数据加载器
         vlm_data_module = make_vlm_dataloader(cfg)

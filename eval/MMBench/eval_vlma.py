@@ -31,7 +31,7 @@ def extract_json_from_string(input_string):
         print("未找到有效的 JSON 部分")
         return None
 
-from llavavla.training.trainer_utils.metrics import TrainerUtils
+from llavavla.training.metrics import TrainerUtils
 from torchvision.ops import box_iou
 import numpy as np
 
@@ -105,13 +105,20 @@ processor = qwenpi.qwen_vl_interface.processor
 cfg = qwenpi.config
 
 from llavavla.dataloader import build_dataloader
-from llavavla.training.trainer_utils.metrics import TrainerUtils
+from llavavla.training.metrics import TrainerUtils
 import numpy as np
 from torch.utils.data import DataLoader
 
-vla_train_dataloader = build_dataloader( # 这个写在dataload.py 内部
+vla_dataset, collate_fn = build_dataloader( # 这个写在dataload.py 内部
     cfg=cfg)
 
+# VLA 数据加载器 # 
+vla_train_dataloader = DataLoader(
+    vla_dataset,
+    batch_size=cfg.datasets.vla_data.per_device_batch_size,
+    collate_fn=collate_fn,
+    # shuffle=True # RLSD 不能做这个事情
+)
 # 方法2: 使用迭代器
 dataset_iter = iter(vla_train_dataloader)
 count = 0

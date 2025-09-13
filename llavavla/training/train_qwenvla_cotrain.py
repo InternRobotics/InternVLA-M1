@@ -76,12 +76,10 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     # TODO @JinhuiYE 可以变得更加通用， 不如使用 dict 来传递参数  # TODO 还在暂时不能合并cotrain的这个模式
     logger.info(f"Creating VLA Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
     vla_train_dataloader = build_dataloader( # 这个写在dataload.py 内部,
-        cfg=cfg,
-        dataset_py=cfg.datasets.vla_data.dataset_py)
+        cfg=cfg)
     
     vlm_train_dataloader = build_dataloader(
-        cfg=cfg,
-        dataset_py=cfg.datasets.vlm_data.dataset_py
+        cfg=cfg
     )
 
     # 拒绝自动分发 # TODO 应该写到 accelerator config --> 这个deepseed 版本还不支持
@@ -102,7 +100,7 @@ def setup_optimizer_and_scheduler(
     param_groups = build_param_lr_groups(model=model, cfg=cfg)
     optimizer = torch.optim.AdamW(
         param_groups,
-        # lr=cfg.trainer.learning_rate.base,
+        lr=cfg.trainer.learning_rate.base,
         betas=tuple(cfg.trainer.optimizer.betas),
         weight_decay=cfg.trainer.optimizer.weight_decay,
         eps=cfg.trainer.optimizer.eps,
@@ -242,7 +240,7 @@ class VLAMTrainer(TrainerUtils):
     def _log_metrics(self, metrics):
         """记录训练指标"""
         if self.completed_steps % self.config.trainer.logging_frequency == 0: # 有些参数应该是需要intial 给 class 的了
-            if self.accelerator.is_main_process:
+            if dist.get_rank() == 0:
                 # 计算梯度范数 # TODO check accelerator 下任何获得 norm？
                 # total_norm = 0.0
                 # for p in self.model.parameters():
@@ -358,20 +356,20 @@ class VLAMTrainer(TrainerUtils):
             num_samples = len(examples)
 
             # @Jinhui TBD TODO 
-            images = [example["image"] for example in examples]  #  TODO check 是什么
+            batch_images = [example["image"] for example in examples]  #  TODO check 是什么
             instructions = [example["lang"] for example in examples]  # [B, str]
             actions = [example["action"] for example in examples] #label
 
             # Predict actions using the model
-            predicted_solutions, normalized_actions = self.model.predict_action( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
-                images=images,
+            output_dict = self.model.predict_action( # TODO 这里有 模型方法 依赖关系, 如果你要保持trainer的独立性，这里应该怎么设计？
+                batch_images=batch_images,
                 instructions=instructions,
                 use_ddim=True,
                 num_ddim_steps=20)
+
+            predicted_subcot = output_dict["predicted_subcot"] #B, T, D
+            normalized_actions = output_dict["normalized_actions"] #B, T, D
             
-
-
-            # 提前转换 actions 为 numpy.ndarray
             actions = np.array(actions)  # 将 actions 转换为 numpy.ndarray
             # B, Chunk, dim = actions.shape
             num_pots = np.prod(actions.shape)
@@ -404,8 +402,10 @@ class VLAMTrainer(TrainerUtils):
             
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                action_loss, action_cot_loss = self.model.forward(batch_vla)
-                total_loss = action_loss + action_cot_loss * self.config.trainer.loss_scale.vlm #@DEBUG
+                output_dict = self.model.forward(batch_vla)
+                action_loss = output_dict["action_loss"], 
+                # action_cot_loss = output_dict["action_cot_loss"]
+                total_loss = action_loss #+ action_cot_loss * self.config.trainer.loss_scale.vlm #@DEBUG
             self.accelerator.backward(total_loss)
             
             # VLM任务前向传播
@@ -413,27 +413,6 @@ class VLAMTrainer(TrainerUtils):
                 vlm_output = self.model.qwen_vl_interface(**batch_vlm)
                 vlm_loss = vlm_output.loss * self.config.trainer.loss_scale.vlm
             
-            vis_grad_angle = 0 # @Jinhui @DEBUG
-            if self.accelerator.is_main_process and vis_grad_angle:
-                """执行单个训练步骤，内置 PCGrad 和梯度夹角统计"""
-                # 拿到所有 qwen_vl_interface 的参数列表
-                # interface_params = list(self.model.qwen_vl_interface.model.model.visual.patch_embed.parameters())
-                interface_params = list(self.model.qwen_vl_interface.model.model.language_model.layers[-1].mlp.down_proj.parameters())
-
-                # 1) 先分别用 torch.autograd.grad 得到 grads_action, grads_vlm
-                grads_action = torch.autograd.grad(action_loss, interface_params, retain_graph=True)
-                # grads_vlm    = torch.autograd.grad(action_vlm_loss,    interface_params, retain_graph=True)
-                grads_vlm    = torch.autograd.grad(vlm_loss,    interface_params, retain_graph=True)
-
-                # 2) 统计夹角
-                mean_angle_deg, angle_variance = TrainerUtils.compute_grad_angle_with_stats(grads_action, grads_vlm)
-                log_dict["vl_action_grad_angle"] = mean_angle_deg
-                log_dict["angle_variance"] = angle_variance
-                # 3) PCGrad 投影
-                # grads_vlm = TrainerUtils.pcgrad_project(grads_action, grads_vlm)
-            # VLA反向传播
-            # self.accelerator.backward(total_loss)
-            # # VLM反向传播 @DEBUG
             self.accelerator.backward(vlm_loss)
             
             pass
@@ -442,7 +421,7 @@ class VLAMTrainer(TrainerUtils):
             # 梯度裁剪
             if self.config.trainer.gradient_clipping is not None:
                 self.accelerator.clip_grad_norm_(
-                    self.model.parameters(), 
+                    self.model.parameters(),
                     self.config.trainer.gradient_clipping
                 )
             
@@ -452,7 +431,7 @@ class VLAMTrainer(TrainerUtils):
 
             log_dict.update({
             "action_dit_loss": action_loss.item(),
-            "action_cot_loss": action_cot_loss.item(),
+            "action_cot_loss": action_loss.item(), #action_cot_loss.item(),
             "vlm_loss": vlm_loss.item(),
             })
         return log_dict
@@ -525,7 +504,7 @@ if __name__ == "__main__":
     if cfg.is_debug and dist.is_initialized() and dist.get_rank() == 0:
         import debugpy
         debugpy.listen(("0.0.0.0", 10092))
-        print("🔍 Rank 0 waiting for debugger attach on port 10092...")
+        print("🔍 Rank 0 waiting for debugger attach on port 10092...") # you may ask chatGPT what is debugger attach in vscode
         debugpy.wait_for_client()
 
     main(cfg)

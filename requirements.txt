@@ -1,10 +1,10 @@
 transformers==4.52.3
-accelerate
+accelerate==1.5.2
 tiktoken
 einops
 transformers_stream_generator==0.0.4
 scipy
-torchvision
+torchvision==0.21.0
 pillow
 tensorboard
 matplotlib
@@ -20,9 +20,4 @@ numpydantic==1.6.9
 deepspeed==0.16.9
 qwen-vl-utils
 omegaconf
-numpy==1.26.4 # 2.2.6 也可以，待全面验证 -> 并不能， 和 pyarrow 和 pandas 冲突了
-# git+https://github.com/kvablack/dlimp.git
-
-# TensorFlow 2.15 需要 numpy<2.0.0  --> 后续移除 rlds 依赖后可以跳过
-
-# deepspeed==0.17.4 是不对的，deepspeed config
+numpy==1.26.4

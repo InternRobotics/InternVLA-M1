@@ -16,7 +16,7 @@ if [ -z "$MODEL_PATH" ]; then
   export MODEL_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Checkpoints/0707_debug/checkpoints/steps_1000_pytorch_model.pt"
 fi
 
-policy_model=Qwenpi
+policy_model=qwenact
 ckpt_path=${MODEL_PATH} # CogACT/CogACT-Base CogACT/CogACT-Large CogACT/CogACT-Small
 
 

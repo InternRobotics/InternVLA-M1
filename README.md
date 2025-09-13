@@ -12,7 +12,6 @@ LLaVA-VLA
 │   ├── projector        # 这里开发各个模块的 align moduless
 │   ├── action_model     # 执行视觉语言动作
 │   ├── framework        # 这里对应的是论文的主图， 模型， 数据流，loss 搭建都在这里
-│   ├── openvla          # 这个是本地 cogact依赖， 在后续开发中会被移除
 │
 ├── dataloader           # 收据构建和预处理
 │
@@ -24,35 +23,30 @@ LLaVA-VLA
 ├── requirements.txt     # 依赖包列表
 ```
 
-# 最佳开发：
-1. 在 framework 一个.py 就是一个论文的 model, 可以理由 其他文件夹的share模块或者自己在.py local 定义 modules (经过考虑后可以移动到share)
-
-2. 全部模型参数 ，训练参数全部在 conf global 的方式分组管理。
-
-# 愿景: 开发一个可以同时支持 VLM traning (System2) 和 VLA training 的框架
-
-
-
-
 
 ### setup envs
 
 '''bash
-
 
 conda create -n llavavla python=3.10
 
 pip install -r requirements.txt
 
 pip install -e .
-<!-- 他们的 pyproject.toml 里面已经有很多包的版本很难install， 比如python 版本绑定为 3.10 -->
-<!-- 移除 presmiatic 之后将不需要 -->
+
 
 
 <!-- hard to pip install flash_attn-->
 pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 
 '''
+
+
+### prepare data
+download lerobot format dataset (e.g.,[LIBERO](https://huggingface.co/datasets/IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot))
+
+soft link your dataset to ./playground/Datasets/LEROBOT_LIBERO_DATA
+
 
 ### run vla only 
 
@@ -62,7 +56,14 @@ bash scripts/run_scripts/run_lerobot_datasets.sh # prepare OXE_LEROBOT_DATASET a
 
 ### eval 
 
-same to https://github.com/microsoft/CogACT?tab=readme-ov-file#getting-started
+我们的评价采用 server的形式， 首先 
+1. 讲本地模型部署为 soker
+
+python /mnt/petrelfs/yejinhui/Projects/llavavla/real_deployment/deploy/server_policy.py
+
+2. install LIBERO by following 
+
+3. 
 
 
 ## 许可证

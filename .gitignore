@@ -172,6 +172,7 @@ eval/*/*.jpg
 eval/*/*.png
 eval/**/*.ipynb
 # scripts
+# scripts
 bar
 eval/MMBench/*.jpeg
 eval/MMBench/play_ground_bbox.ipynb
@@ -196,4 +197,4 @@ debug_images/step1_raw.npy
 test_image.jpg
 test_image.jpg.npy
 test_image.jpg
-scripts/eval/see_success_windowx_main.sh
+scripts/*

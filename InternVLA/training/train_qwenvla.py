@@ -25,7 +25,7 @@ from transformers import AutoProcessor, get_scheduler
 from InternVLA.training.trainer_utils.metrics import normalize_dotlist_args # TODO 封装成为一个特殊的 arg 类别  --> 参数使用 yaml + .sh 控制， 单例模式
 from InternVLA.model.framework import build_framework
 from InternVLA.training.trainer_utils.metrics import TrainerUtils
-
+from InternVLA.training.trainer_utils.metrics import build_param_lr_groups
 
 
 deepspeed_plugin = DeepSpeedPlugin()# 这个插件是否能使用到 config 的参数呢？ 其实这里应该是可以飞显示用的， 感觉有版本问题 #zero_stage=2, gradient_accumulation_steps=1 ：v2: hf_ds_config="scripts/run_scripts/ds_config.yaml"
@@ -120,12 +120,6 @@ def setup_optimizer_and_scheduler(
         num_training_steps=cfg.trainer.max_train_steps,
         scheduler_specific_kwargs=cfg.trainer.scheduler_specific_kwargs,  # 最小学习率
     )
-    
-    # TODO mv to trainer
-    # # 准备所有组件
-    # (model, optimizer, vla_train_dataloader, vlm_train_dataloader) = accelerator.prepare(
-    #     model, optimizer, vla_train_dataloader, vlm_train_dataloader
-    # )
     
     return optimizer, lr_scheduler
 
@@ -242,13 +236,6 @@ class VLATrainer(TrainerUtils):
         """记录训练指标"""
         if self.completed_steps % self.config.trainer.logging_frequency == 0: # 有些参数应该是需要intial 给 class 的了
             if dist.get_rank() == 0:
-                # # 计算梯度范数
-                # total_norm = 0.0
-                # for p in self.model.parameters():
-                #     if p.grad is not None:
-                #         total_norm += p.grad.data.norm(2).item() ** 2
-                # metrics["grad_norm"] = total_norm ** 0.5
-                
                 # 添加学习率
                 metrics["learning_rate"] = self.lr_scheduler.get_last_lr()[0]
                 
@@ -395,7 +382,7 @@ class VLATrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 output_dict = self.model.forward(batch_vla)
-                # total_loss = 0 # 这个写法可读性很差 v1 是以可读性为前提的
+                
                 action_loss = output_dict["action_loss"]
                 total_loss = action_loss
 
@@ -433,7 +420,7 @@ class VLATrainer(TrainerUtils):
         
         self.accelerator.wait_for_everyone()
 
-from InternVLA.training.trainer_utils.metrics import build_param_lr_groups
+
 def main(cfg) -> None:
     logger.info("VLA Training :: Warming Up")
 

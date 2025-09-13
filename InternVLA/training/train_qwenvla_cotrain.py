@@ -76,18 +76,19 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     # TODO @JinhuiYE 可以变得更加通用， 不如使用 dict 来传递参数  # TODO 还在暂时不能合并cotrain的这个模式
     logger.info(f"Creating VLA Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
     vla_train_dataloader = build_dataloader( # 这个写在dataload.py 内部,
-        cfg=cfg)
+        cfg=cfg,
+        dataset_py=cfg.datasets.vla_data.dataset_py)
     
     vlm_train_dataloader = build_dataloader(
-        cfg=cfg
+        cfg=cfg,
+        dataset_py=cfg.datasets.vlm_data.dataset_py
     )
 
-    # 拒绝自动分发 # TODO 应该写到 accelerator config --> 这个deepseed 版本还不支持
     accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
 
     return vla_train_dataloader, vlm_train_dataloader
-    # return in dict # TODO 
+
 
 
 
@@ -119,12 +120,6 @@ def setup_optimizer_and_scheduler(
         num_training_steps=cfg.trainer.max_train_steps,
         scheduler_specific_kwargs=cfg.trainer.scheduler_specific_kwargs,  # 最小学习率
     )
-    
-    # TODO mv to trainer
-    # # 准备所有组件
-    # (model, optimizer, vla_train_dataloader, vlm_train_dataloader) = accelerator.prepare(
-    #     model, optimizer, vla_train_dataloader, vlm_train_dataloader
-    # )
     
     return optimizer, lr_scheduler
 
@@ -367,7 +362,6 @@ class VLAMTrainer(TrainerUtils):
                 use_ddim=True,
                 num_ddim_steps=20)
 
-            predicted_subcot = output_dict["predicted_subcot"] #B, T, D
             normalized_actions = output_dict["normalized_actions"] #B, T, D
             
             actions = np.array(actions)  # 将 actions 转换为 numpy.ndarray
@@ -403,11 +397,12 @@ class VLAMTrainer(TrainerUtils):
             # VLA任务前向传播
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 output_dict = self.model.forward(batch_vla)
-                action_loss = output_dict["action_loss"], 
-                # action_cot_loss = output_dict["action_cot_loss"]
-                total_loss = action_loss #+ action_cot_loss * self.config.trainer.loss_scale.vlm #@DEBUG
+                action_loss = output_dict["action_loss"]
+                total_loss = action_loss
             self.accelerator.backward(total_loss)
             
+            dist.barrier() #@DEBUG
+            pass
             # VLM任务前向传播
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 vlm_output = self.model.qwen_vl_interface(**batch_vlm)
@@ -431,7 +426,6 @@ class VLAMTrainer(TrainerUtils):
 
             log_dict.update({
             "action_dit_loss": action_loss.item(),
-            "action_cot_loss": action_loss.item(), #action_cot_loss.item(),
             "vlm_loss": vlm_loss.item(),
             })
         return log_dict

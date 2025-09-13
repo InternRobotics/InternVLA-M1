@@ -7,9 +7,8 @@ wandb_entity: jinhuiye
 wandb_project: llavavla
 is_debug: false
 
-
 framework:
-  framework_py: qwenact_fmheader # 之后注意改名字，这里确保还能 loader 之前的ckpt --> 算了直接往最后版本去？
+  framework_py: InternVLA-M1 # 之后注意改名字，这里确保还能 loader 之前的ckpt --> 算了直接往最后版本去？
   qwenvl: # TODO 后期不能交qwenvl 应该直接vlm
     base_vlm: ./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct
     attn_implementation: flash_attention_2
@@ -59,10 +58,6 @@ framework:
       num_layers: 16
       output_dim: 1024
       positional_embeddings: null
-  
-  # # waiting to check
-  # reduce_in_full_precision: true
-
 
 datasets:
   vlm_data:
@@ -74,8 +69,7 @@ datasets:
     base_interval: 2
     max_pixels: 50176
     min_pixels: 784
-    fix_image_size: [224, 224]
-    model_max_length: 1024 # 似乎这里必须是4096， 有些相互关联的内容并没有处理到
+    model_max_length: 2048 # 似乎这里必须是4096， 有些相互关联的内容并没有处理到
     model_type: qwen2.5vl
     per_device_batch_size: 4
 
@@ -98,10 +92,10 @@ trainer:
   num_warmup_steps: 5000
   save_interval: 5000
   eval_interval: 100
-  learning_rate:
+  learning_rate: # you can set different lr for different modules
     base: 5e-05
-    # qwen_vl_interface: 1.0e-05 # 整个freeze 掉了的时候会导致优化器 null error
-    # action_model: 1.0e-04
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
   lr_scheduler_type: cosine_with_min_lr
   scheduler_specific_kwargs:
     min_lr: 5.0e-07

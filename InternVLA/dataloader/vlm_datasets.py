@@ -693,8 +693,9 @@ def make_vlm_dataloader(cfg):
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=cfg.datasets.vlm_data.per_device_batch_size,
-        collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
-    ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
+        collate_fn=data_collator,
+        num_workers=8,
+    ) 
     
     # eval_dataloader = DataLoader(
     #     data_module["eval_dataset"],

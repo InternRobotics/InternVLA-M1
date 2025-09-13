@@ -10,7 +10,7 @@ authors = [
 
 ]
 description = "StarVLA: A simple and flexible and strong framework for explore vision language action models"
-version = "0.0.1"
+version = "1.0.1"
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = ["vision-language-actions models", " robotic manipulation", "multimodal pretraining", "robot learning", "generative models"]
@@ -54,13 +54,13 @@ exclude = [
     "eval",          # 评估相关目录
     ".vscode",       # VS Code 配置目录
     "*.egg-info",    # egg-info 元数据目录
-    "*.log",         # 日志文件
+    "**.log",         # 日志文件
     "*.tmp",         # 临时文件
     "*.bak",         # 备份文件
     "**__pycache__**",   # Python 缓存目录
     "*.pyc",         # 编译后的 Python 文件
     "*.pyo",          # 优化后的 Python 文件
-    "**bar",
+    "**bar**",
     "InternVLA/config",
 
 ]

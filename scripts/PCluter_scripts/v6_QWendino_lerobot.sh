@@ -64,7 +64,7 @@ export loss_scale_vla=1.0 # 1.0 is the default value, you can change it if neede
 export loss_scale_vlm=0.1 # 1.0 is the default value, you can change it if needed
 
 # 开始用 坤哥 的system2
-export run_id=0911_internM1
+export run_id=0911_internM1_libero_cotrain
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p ${output_dir}
@@ -98,8 +98,8 @@ srun --jobid $SLURM_JOBID bash -c 'accelerate launch \
   --machine_rank $SLURM_PROCID \
   --num_machines $SLURM_NNODES \
   --num_processes=${TOTAL_GPUS} \
-  InternVLA/training/train_qwenvla.py \
-  --config_yaml ./InternVLA/config/training/qwenvla_cotrain_oxe.yaml \
+  InternVLA/training/train_qwenvla_cotrain.py \
+  --config_yaml ./InternVLA/config/training/qwenvla_cotrain_libero.yaml \
   --framework.qwenvl.base_vlm ${MODEL_PATH} \
   --framework.framework_py ${Framework_name} \
   --datasets.vla_data.per_device_batch_size 16 \

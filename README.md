@@ -28,18 +28,18 @@ LLaVA-VLA
 
 '''bash
 
-conda create -n llavavla python=3.10
+conda create -n internVLA python=3.10
 
 pip install -r requirements.txt
 
-pip install -e . --no-deps
-
-
+pip install -e .
 
 <!-- hard to pip install flash_attn-->
 pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 
 '''
+
+
 
 
 ### prepare data

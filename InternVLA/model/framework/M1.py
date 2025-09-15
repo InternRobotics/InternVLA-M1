@@ -25,19 +25,38 @@ from InternVLA.training.trainer_utils.metrics import resize_images
 
 
 class InternVLA_M1(baseframework):
+    """
+    Multimodal vision-language-action model.
+
+    Components:
+      - Qwen2.5 VL interface for fused language/vision token embeddings
+      - Layer-wise QFormer for multi-layer feature aggregation
+      - DINO encoder for dense multi-view spatial tokens
+      - DiT diffusion head for future action sequence modeling
+
+    Focus: Predict future continuous actions conditioned on images + instruction.
+    """
+
     def __init__(
         self,
         config: Optional[dict] = None,
         **kwargs,
     ) -> None:
+        """
+        Construct all submodules and cache key configuration values.
+
+        Args:
+            config: Hierarchical configuration (OmegaConf/dict) containing framework + trainer sections.
+            **kwargs: Reserved for future overrides (unused).
+        """
         super().__init__()
         self.config = config
         self.qwen_vl_interface = get_qwen2_5_interface(config=self.config) 
-        self.layer_qformer = get_layerwise_qformer(config=self.config) # @Jinhui 一般来说 人们喜欢总分结构， 但是有讨厌递归， 实验framework 下面就不能太总分了
+        self.layer_qformer = get_layerwise_qformer(config=self.config)
         self.action_model = get_action_model(config=self.config)
         self.dino_encoder = get_dino_model(backone_name=getattr(self.config.framework.dino, "dino_backbone", "dinov2_vits14")) 
         self.dino_pro = nn.Linear(
-            in_features=self.dino_encoder.num_channels,  # DINO 输出的特征维度  
+            in_features=self.dino_encoder.num_channels,
             out_features=self.qwen_vl_interface.model.config.hidden_size)
         
         
@@ -46,11 +65,32 @@ class InternVLA_M1(baseframework):
 
     def forward(
         self,
-        examples: List[dict] = None,  # 这里的 examples 是指原始的输入数据
+        examples: List[dict] = None,
         **kwargs,  
     ) -> Tuple:
-        """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss). ask code assistant to get intro"""
+        """
+        Forward pass for training (diffusion objective).
 
+        Flow:
+          1. Build QwenVL inputs (images + instruction tokens)
+          2. Extract hidden states from configured layer range
+          3. Encode images with DINO, flatten multi-view tokens and project
+          4. Concatenate per-layer language tokens with visual tokens
+          5. Fuse via layer-wise QFormer -> action condition embeddings
+          6. Prepare repeated future action windows (for diffusion efficiency)
+          7. Predict noise and compute diffusion loss
+
+        Args:
+            examples: List[dict], each dict requires:
+                - image: List[PIL.Image] (multi-view)
+                - lang: str instruction
+                - action: np.ndarray or list shaped [T, action_dim]
+            **kwargs: Reserved.
+
+        Returns:
+            dict:
+                action_loss (torch.Tensor): Scalar diffusion noise prediction loss.
+        """
         batch_images = [example["image"] for example in examples]  #  [B，[PLT]]
         instructions = [example["lang"] for example in examples]  # [B, str]
         actions = [example["action"] for example in examples] #label [B， len, 7]
@@ -118,13 +158,27 @@ class InternVLA_M1(baseframework):
         **kwargs: str
     ) -> np.ndarray:
         """
-        Core function for VLA inference; maps input image and task instruction to continuous action.
+        Inference: generate future normalized action sequence via diffusion sampling.
 
-        @param batch_images: a batch of PIL Image as B* [view1, view2, ... ]
-        @param instructions: Task instruction string 
-        @return Unnormalized (continuous) action vector.
+        Steps:
+          1. Resize images to training resolution (if specified)
+          2. Encode with QwenVL (hidden states retained)
+          3. Extract DINO tokens and project to vlm hidden size
+          4. Build multi-layer fused QwenVL and DINO features via QFormer
+          5. Run diffusion sampling (DDIM optional, CFG optional)
+          6. Return normalized action trajectory
 
-        # align forward prediction is very important for robot
+        Args:
+            batch_images: List of samples; each sample is List[PIL.Image] (multi-view).
+            instructions: List[str] natural language task instructions.
+            cfg_scale: >1 enables classifier-free guidance (scales conditional vs unconditional).
+            use_ddim: Whether to use DDIM deterministic sampling.
+            num_ddim_steps: Number of DDIM steps if enabled.
+            **kwargs: Reserved.
+
+        Returns:
+            dict:
+                normalized_actions (np.ndarray): Shape [B, T, action_dim], diffusion-sampled normalized actions.
         """
         # align obs and lang
         train_obs_image_size = getattr(self.config.datasets.vla_data, "image_size", None)
@@ -132,7 +186,6 @@ class InternVLA_M1(baseframework):
             batch_images = resize_images(batch_images, target_size=train_obs_image_size)
         instructions = [instruction.lower()  for instruction in instructions]
         
-
         inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
         qwen_inputs = inferface_inputs
 
@@ -210,7 +263,15 @@ class InternVLA_M1(baseframework):
 
 
 def build_model_framework(config: dict = {}) -> InternVLA_M1:
+    """
+    Factory helper to build InternVLA_M1 with provided config.
 
+    Args:
+        config: Dict or OmegaConf containing framework/component settings.
+
+    Returns:
+        InternVLA_M1: Initialized model instance.
+    """
     model = InternVLA_M1(config=config)
     return model
 
@@ -224,7 +285,6 @@ if __name__ == "__main__":
     debugpy.listen(("0.0.0.0", 10092))
     print("🔍 Rank 0 waiting for debugger attach on port 10092...")
     debugpy.wait_for_client() 
-    samples = {}
 
     config_yaml = "InternVLA/config/lerobot_data/qwenvla_cotrain_oxe.yaml"
     cfg = OmegaConf.load(config_yaml)

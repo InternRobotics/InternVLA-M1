@@ -1,6 +1,9 @@
 """
-TODO  waiting to move # 全部tools 应该是要在一个位置的
-
+Shared configuration / utility helpers for framework components:
+- NamespaceWithGet: lightweight namespace behaving like a dict
+- OmegaConf conversion helpers
+- Config merging decorator for model __init__
+- Checkpoint config/statistics loading
 """
 
 import os
@@ -20,6 +23,14 @@ import torch.nn as nn
 import numpy as np
 from PIL import Image
 import re
+from omegaconf import OmegaConf
+from types import SimpleNamespace
+from omegaconf import OmegaConf
+import inspect
+import functools
+from typing import Any
+
+
 
 from InternVLA.training.trainer_utils import initialize_overwatch
 
@@ -32,52 +43,80 @@ from types import SimpleNamespace
 
 class NamespaceWithGet(SimpleNamespace):
     def get(self, key, default=None):
+        """
+        Return attribute value if present, else default (dict-like API).
+
+        Args:
+            key: Attribute name.
+            default: Fallback if attribute missing.
+
+        Returns:
+            Any: Stored value or default.
+        """
         return getattr(self, key, default)
 
     def items(self):
-        # 返回键值对生成器
+        """
+        Iterate (key, value) pairs like dict.items().
+
+        Returns:
+            Generator[Tuple[str, Any], None, None]
+        """
         return ((key, getattr(self, key)) for key in self.__dict__)
 
     def __iter__(self):
-        # 使对象支持字典解包
+        """
+        Return iterator over attribute keys (enables dict unpacking **obj).
+
+        Returns:
+            Iterator[str]
+        """
         return iter(self.__dict__)
 
     def to_dict(self):
-        # 递归将 NamespaceWithGet 转换为字典
+        """
+        Recursively convert nested NamespaceWithGet objects into plain dicts.
+
+        Returns:
+            dict: Fully materialized dictionary structure.
+        """
         return {key: (value.to_dict() if isinstance(value, NamespaceWithGet) else value)
                 for key, value in self.items()}
 
 
-# def dict_to_namespace(d): 
-#     if isinstance(d, dict):
-#         return NamespaceWithGet(**{k: dict_to_namespace(v) for k, v in d.items()})
-#     elif isinstance(d, list):
-#         return [dict_to_namespace(i) for i in d]
-#     else:
-#         return d
-    
-from omegaconf import OmegaConf
 
 def dict_to_namespace(d):
     """
-    将字典转换为 OmegaConf 对象。
+    Create an OmegaConf config from a plain dictionary.
+
+    Args:
+        d: Input dictionary.
+
+    Returns:
+        OmegaConf: DictConfig instance.
     """
     return OmegaConf.create(d)
 
 
 
 
-from types import SimpleNamespace
-from omegaconf import OmegaConf
-import inspect
-import functools
-from typing import Any
-
 # TODO use this for much good config handling in model code
 def _to_omegaconf(x: Any):
     """
-    Convert x to an OmegaConf object.
-    Accepts: None, str(path), dict, OmegaConf, NamespaceWithGet, SimpleNamespace.
+    Convert diverse input types into an OmegaConf object.
+
+    Accepted types:
+        - None -> empty DictConfig
+        - str path -> load YAML/JSON via OmegaConf.load
+        - dict -> DictConfig
+        - DictConfig / ListConfig -> returned unchanged
+        - NamespaceWithGet / SimpleNamespace -> converted via vars()/to_dict()
+
+    Args:
+        x: Input candidate.
+
+    Returns:
+        OmegaConf: Normalized configuration node.
     """
     if x is None:
         return OmegaConf.create({})
@@ -110,11 +149,20 @@ def _to_omegaconf(x: Any):
 
 def merge_pram_config(init):
     """
-    Decorator for __init__ that:
-    - extracts the 'config' argument (if any) and converts it to OmegaConf;
-    - converts other explicitly passed init args to an OmegaConf and merges: merged = OmegaConf.merge(loaded_cfg, params_cfg)
-      (explicit params override loaded cfg);
-    - sets self.config = merged and calls original __init__ with merged config and original other kwargs.
+    Decorator for __init__ to unify config handling.
+
+    Behavior:
+        1. Extract 'config' kwarg / arg (path | dict | OmegaConf | namespace)
+        2. Convert to OmegaConf
+        3. Merge with explicitly passed init parameters (explicit overrides file)
+        4. Attach merged config to self.config
+        5. Call original __init__ with merged config
+
+    Args:
+        init: Original __init__ function.
+
+    Returns:
+        Wrapped initializer.
     """
     @functools.wraps(init)
     def wrapper(self, *args, **kwargs):
@@ -161,6 +209,27 @@ def merge_pram_config(init):
 
 
 def read_model_config(pretrained_checkpoint):
+    """
+    Load global model configuration and dataset normalization statistics
+    associated with a saved checkpoint (.pt).
+
+    Expected directory layout:
+        <run_dir>/checkpoints/<name>.pt
+        <run_dir>/config.json
+        <run_dir>/dataset_statistics.json
+
+    Args:
+        pretrained_checkpoint: Path to a .pt checkpoint file.
+
+    Returns:
+        tuple:
+            global_cfg (dict): Loaded config.json contents.
+            norm_stats (dict): Dataset statistics for (de)normalization.
+
+    Raises:
+        FileNotFoundError: If checkpoint or required JSON files are missing.
+        AssertionError: If file suffix or structure invalid.
+    """
     if os.path.isfile(pretrained_checkpoint):
         overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 
@@ -177,8 +246,7 @@ def read_model_config(pretrained_checkpoint):
 
         # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
         with open(config_json, "r") as f:
-            vla_cfg = json.load(f) #["vla"]
-            # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
+            global_cfg = json.load(f)
 
         # Load Dataset Statistics for Action Denormalization
         with open(dataset_statistics_json, "r") as f:
@@ -186,10 +254,21 @@ def read_model_config(pretrained_checkpoint):
     else:
         overwatch.error(f"❌ Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
         raise FileNotFoundError(f"Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
-    return vla_cfg, norm_stats
+    return global_cfg, norm_stats
 
 
 def read_mode_config(pretrained_checkpoint):
+    """
+    Same as read_model_config (legacy duplicate kept for backward compatibility).
+
+    Args:
+        pretrained_checkpoint: Path to a .pt checkpoint file.
+
+    Returns:
+        tuple:
+            vla_cfg (dict)
+            norm_stats (dict)
+    """
     if os.path.isfile(pretrained_checkpoint):
         overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 

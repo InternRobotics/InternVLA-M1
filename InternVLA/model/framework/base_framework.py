@@ -1,5 +1,10 @@
-
-# 这里定义一个基本的 framework class 以及share 的func
+"""
+Base framework abstraction providing:
+- Pretrained loading (config + normalization stats + weights)
+- Action space utilities (dimension, stats, (un)normalization)
+- Trainable module discovery helper
+Note: No device placement or optimizer concerns handled here (delegated to trainer).
+"""
 
 import torch.nn as nn
 from typing import List
@@ -14,6 +19,7 @@ from typing import List
 
 from pathlib import Path
 from typing import Dict, List
+
 import numpy as np
 from InternVLA.model.tools import auto_get_trainable_modules # 后续应该是trainer 的职责范围
 
@@ -27,24 +33,55 @@ logger = initialize_overwatch(__name__)
 
 
 class baseframework(nn.Module):
+    """
+    Lightweight base class for higher-level VLA model assemblies.
+    Subclasses are expected to:
+      - Accept a structured config
+      - Register components in __init__
+      - Use provided helpers for action normalization handling
+    """
     def __init__(
         self,
     ) -> None:
+        """
+        Initialize base nn.Module. Subclasses add components.
+        """
         super().__init__()
     
     @classmethod
-    def from_pretrained( # @Jinhui TODO 这里要写如何resume checkpoints
+    def from_pretrained(
         cls,
         pretrained_checkpoint: str,
         **kwargs,
     ) -> None:
+        """
+        Restore a model instance from a saved checkpoint.
+
+        Workflow:
+            1. Resolve checkpoint path
+            2. Load config + dataset normalization statistics
+            3. Build model with loaded config
+            4. Load state_dict strictly (reports missing/unexpected keys)
+            5. Attach normalization stats for later un-normalization
+
+        Args:
+            pretrained_checkpoint: Path to .pt file inside run/checkpoints directory.
+            **kwargs: Extra constructor overrides passed to subclass.
+
+        Returns:
+            baseframework: Instantiated model (left on CPU; caller decides device).
+
+        Raises:
+            RuntimeError: If state_dict key mismatch occurs under strict=True.
+            FileNotFoundError: If underlying files are missing (surfaced earlier).
+        """
         pretrained_checkpoint = Path(pretrained_checkpoint)
         model_config, norm_stats = read_mode_config(pretrained_checkpoint) # 读取 config 和 norm_stats
         # TODO 
         config = dict_to_namespace(model_config)
-        model_config = config # TODO 不要使用相对变量 model_config， 需要换名字
-        model_config.trainer.pretrained_checkpoint = None # 为了加快加载速度，避免重复加载， TODO 其实不应该在initial的位置设置 load_pretrained_backbones
-        FrameworkModel = cls(config=model_config, **kwargs) # 初始化模型
+        model_config = config
+        model_config.trainer.pretrained_checkpoint = None 
+        FrameworkModel = cls(config=model_config, **kwargs)
         # set for action un-norm
         FrameworkModel.norm_stats = norm_stats
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
@@ -67,11 +104,25 @@ class baseframework(nn.Module):
             raise e
 
         # **确保模型在 GPU 上**
-        FrameworkModel = FrameworkModel #.to("cuda") # TODO 其实不应该是这里管理to GPU的
+        FrameworkModel = FrameworkModel
         return FrameworkModel
 
     @staticmethod
     def _check_unnorm_key(norm_stats, unnorm_key):
+        """
+        Infer or validate the dataset stats key used for un-normalization.
+
+        Args:
+            norm_stats: Dict[str, dict] mapping dataset key -> stats block.
+            unnorm_key: Optional explicit dataset key.
+
+        Returns:
+            str: Resolved key.
+
+        Raises:
+            AssertionError: If multiple datasets present and key not provided,
+                            or provided key not found.
+        """
         if unnorm_key is None:
             assert len(norm_stats) == 1, (
                 f"Your model was trained on more than one dataset, "
@@ -86,35 +137,54 @@ class baseframework(nn.Module):
         )
         return unnorm_key
 
-    def get_action_dim(self, unnorm_key=None):
-        """Dimensionality of the policy's action space."""
-        unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
-        return len(self.norm_stats[unnorm_key]["action"]["q01"])
+    def get_action_stats(self, unnorm_key=None):
+        """
+        Retrieve raw action normalization statistics.
 
-    def get_action_stats(self, unnorm_key=None):# 这个要来了任何和 lerobot 格式的对齐
-        """Dimensionality of the policy's action space."""
+        Args:
+            unnorm_key: Optional dataset stats key.
+
+        Returns:
+            dict: Stats structure (e.g. q01, q99, mask).
+        """
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
         return self.norm_stats[unnorm_key]["action"] 
 
-    @property # TODO 这个应该是trainer 的duty
+    @property
     def trainable_module_keys(self, max_depth=1) -> List[str]:
+        """
+        Enumerate trainable submodule names up to a depth.
+
+        Args:
+            max_depth: Descent depth when traversing module tree.
+
+        Returns:
+            List[str]: Module path names considered trainable.
+        """
         keys = auto_get_trainable_modules(self, max_depth=max_depth)# auto 去判断哪些module是trainable的
         return keys
     
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
         """
-        将归一化的动作转换为原始动作空间。
-        
-        :param normalized_actions: 归一化的动作数组，形状为 [action chunk, D]。
-        :param action_norm_stats: 包含动作归一化统计信息的字典，必须包含以下键：
-            - "q01": 动作的第 1 百分位值。
-            - "q99": 动作的第 99 百分位值。
-            - "mask": 可选，布尔数组，用于标记哪些动作需要反归一化。
-        :return: 反归一化后的动作数组，形状与输入 `normalized_actions` 相同。
-        """
+        Map normalized actions (≈[-1, 1]) back to original value range.
 
-        # @BUG 这个是 simpler 的
+        Steps:
+            - Clamp values to [-1, 1]
+            - Threshold channel index 6 to {0,1} (binary semantic)
+            - Apply linear scaling for masked dimensions using:
+                original = 0.5 * (norm + 1) * (q99 - q01) + q01
+
+        Args:
+            normalized_actions: Array shape [T, D] (or chunk length × action_dim).
+            action_norm_stats: Dict containing:
+                q01 (array-like): Lower percentile (per-dimension).
+                q99 (array-like): Upper percentile (per-dimension).
+                mask (optional bool array): True => apply de-normalization; False => keep original normalized value.
+
+        Returns:
+            np.ndarray: Unnormalized actions (same shape as input).
+        """
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
         normalized_actions = np.clip(normalized_actions, -1, 1)
@@ -129,6 +199,10 @@ class baseframework(nn.Module):
 
     @staticmethod
     def _check_unnorm_key(norm_stats, unnorm_key):
+        """
+        Duplicate helper (retained for backward compatibility).
+        See primary _check_unnorm_key above.
+        """
         if unnorm_key is None:
             assert len(norm_stats) == 1, (
                 f"Your model was trained on more than one dataset, "
@@ -143,12 +217,9 @@ class baseframework(nn.Module):
         )
         return unnorm_key
 
-    def get_action_dim(self, unnorm_key=None):
-        """Dimensionality of the policy's action space."""
+    def get_action_stats(self, unnorm_key=None):
+        """
+        Duplicate stats accessor (retained for backward compatibility).
+        """
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
-        return len(self.norm_stats[unnorm_key]["action"]["q01"])
-
-    def get_action_stats(self, unnorm_key=None):# 这个要来了任何和 lerobot 格式的对齐
-        """Dimensionality of the policy's action space."""
-        unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
-        return self.norm_stats[unnorm_key]["action"] 
+        return self.norm_stats[unnorm_key]["action"]

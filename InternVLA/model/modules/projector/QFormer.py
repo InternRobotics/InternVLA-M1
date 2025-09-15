@@ -19,9 +19,17 @@ class CrossAttentionBlock(nn.Module):
 
     def forward(self, query, encoder_hidden_state, encoder_attention_mask=None):
         """
-        query: [B, Q, D]
-        encoder_hidden_state: [B, L, D]
-        encoder_attention_mask: [B, L] or None
+        Cross-attention block forward.
+        Args:
+            query (Tensor): Shape [B, Q, D]. Learnable query tokens propagated across layers.
+            encoder_hidden_state (Tensor): Shape [B, L, D]. Features from one encoder layer.
+            encoder_attention_mask (Tensor | None): Shape [B, L]. 1/True=keep (visible), 0/False=mask. None disables masking.
+        Returns:
+            Tensor: Updated query tokens of shape [B, Q, D].
+        Details:
+            1. LayerNorm + MultiheadAttention (Q = query, K/V = encoder_hidden_state).
+            2. Residual path: query = query + attn_output, then add MLP residual.
+            3. Dropout is applied only on the MLP output.
         """
         q = self.norm1(query)
         kv = encoder_hidden_state
@@ -45,34 +53,43 @@ class LayerwiseQFormer(nn.Module):
         self.num_query_tokens = num_query_tokens
         self.num_layers = num_layers
         self.config = config
-        # 先把输入投影到 output_dim
+        # Project input to output dimension
         self.proj = nn.Linear(input_hidden_dim, output_hidden_dim)
         # Learnable query tokens
         self.query_tokens = nn.Parameter(torch.randn(num_query_tokens, output_hidden_dim))
 
-        # 37 independent cross-attn blocks
+        # Independent cross-attention blocks (one per encoder layer)
         self.layers = nn.ModuleList([
             CrossAttentionBlock(output_hidden_dim, num_heads) for _ in range(num_layers)
         ])
 
     def forward(self, hidden_states_list, encoder_attention_mask=None):
         """
-        hidden_states_list: list of encoder hidden states, each of shape [B, L, D]
-        encoder_attention_mask: optional [B, L]
-        return: updated query tokens [B, Q, D]
+        Layer-wise Q-Former forward pass.
+        Args:
+            hidden_states_list (List[Tensor]): Length == num_layers. Each tensor is [B, L, Din], raw encoder layer outputs (before projection).
+            encoder_attention_mask (Tensor | None): Shape [B, L]. Same semantics as in CrossAttentionBlock.
+        Returns:
+            Tensor: Aggregated query tokens of shape [B, Q, Dout].
+        Pipeline:
+            1. Stack per-layer features to [B, N, L, Din] and linearly project to Dout.
+            2. Expand global learnable query tokens to batch: [B, Q, Dout].
+            3. Apply cross-attention layer-by-layer: each query attends only to the corresponding encoder layer features.
+        Notes:
+            - Asserts len(hidden_states_list) == num_layers.
+            - Does not modify gradient flow of hidden_states_list.
         """
-
-        # hidden_states_list = self.scale_hook(hidden_states_list) #TODO 需要查看是否影响速度, 也需要check 是否影响性能
+        # hidden_states_list = self.scale_hook(hidden_states_list)
 
         assert len(hidden_states_list) == self.num_layers, f"Expected {self.num_layers} layers, got {len(hidden_states_list)}"
 
         B = hidden_states_list[0].size(0)
         # Project input hidden states to output dimension
-        #    结果形状 [B, N, L, D_in]
+        #    Result shape [B, N, L, Din]
         hs = torch.stack(hidden_states_list, dim=1)
-        #    proj_hs 形状 [B, N, L, D_out]
+        #    proj_hs shape [B, N, L, Dout]
         proj_hs = self.proj(hs)
-        # 3) 拆回列表，每个元素恢复为 [B, L, D_out]
+        # 3) Unbind back to list, each element restored to [B, L, Dout]
         hidden_states_list = list(proj_hs.unbind(dim=1))
 
         # Expand query tokens for each batch
@@ -84,24 +101,38 @@ class LayerwiseQFormer(nn.Module):
 
         return query
     
-    def scale_hook(self, hidden_states_list, scale_factor=0.1): #TODO 需要查看是否会影响分布式， 记得参数化
-        # --- 1. 对输入 hidden_states_list 的梯度注册缩放钩子 ---
-        # TODO @Jinhui 如果影响速度，需要用 lr 来曲线实现 --> 似乎是和 Deepspeed 加速冲突. lr 来曲线实现 这个不一定能够解，因为涉及到陡峭问题
-        # TODO Jinhui： 即使要写， 也是写在 QFormer 里面
+    def scale_hook(self, hidden_states_list, scale_factor=0.1):
+        """
+        (Experimental / optional) Register gradient scaling hooks on each layer's hidden states.
+        Args:
+            hidden_states_list (List[Tensor]): Per-layer feature tensors.
+            scale_factor (float): Gradient scaling factor (effective only if enabled via config and != 1).
+        Returns:
+            List[Tensor]: Original list (no data copy); hooks may be attached in-place.
+        Design:
+            - Currently returns immediately (guard condition hard-coded False) as a placeholder.
+            - Uses attribute _scaled_hook to avoid duplicate hook registration in distributed settings.
+            - Can be enabled later for gradient dampening or perturbation experiments.
+        Performance:
+            - Excessive hook registrations can hurt speed; kept lazy by default.
+        """
+        # --- 1. Register gradient scaling hooks on input hidden_states_list ---
+        # TODO @Jinhui If it affects speed, use lr to implement indirectly --> Seems to conflict with Deepspeed acceleration. lr implementation may not solve steepness issues.
+        # TODO @Jinhui: If implemented, it should be written in QFormer.
         if self.config and hasattr(self.config.vla, 'layer_qformer') and hasattr(self.config.vla.layer_qformer, 'grad_scale') \
-        and self.config.vla.layer_qformer.grad_scale != 1 and False:
+        and self.config.vla.layer_qformer.grad_scale != 1:
             scale_factor = self.config.vla.layer_qformer.grad_scale
         else:
-            return hidden_states_list  # 如果没有配置 grad_scale，直接返回原始列表
+            return hidden_states_list  # If grad_scale is not configured, return the original list
 
         scaled_hidden_states_list = []
         for hidden_states in hidden_states_list:
             if hidden_states.requires_grad:
-                # 确保在分布式环境下梯度缩放只执行一次
-                if not hasattr(hidden_states, '_scaled_hook'):  # 防止重复注册 --> 看起来可以加速，
+                # Ensure gradient scaling is executed only once in distributed settings
+                if not hasattr(hidden_states, '_scaled_hook'):  # Prevent duplicate registration --> Seems to accelerate
                     hook = lambda grad: grad * scale_factor
                     hidden_states.register_hook(hook)
-                    hidden_states._scaled_hook = True  # 标记已处理
+                    hidden_states._scaled_hook = True  # Mark as processed
             scaled_hidden_states_list.append(hidden_states)
 
         return hidden_states_list
@@ -116,8 +147,20 @@ def get_layerwise_qformer(
     **kwargs
 ):
     """
-    Returns a LayerwiseQFormer model with specified parameters.
-
+    Build a LayerwiseQFormer instance.
+    Args:
+        num_heads (int): Number of attention heads for CrossAttentionBlock.
+        config: Configuration object; must contain config.framework.layer_qformer with:
+            - qformer_start_layer / qformer_end_layer: range of layers (start inclusive, end exclusive).
+            - num_query_tokens: Number of learnable query tokens.
+            - input_dim: Input feature dimension (Din).
+            - ouptput_dim: Output feature dimension (Dout).
+        **kwargs: Reserved for future extensions (unused).
+    Returns:
+        LayerwiseQFormer: Instantiated model.
+    Notes:
+        - num_layers = end_layer - start_layer (half-open interval).
+        - Does not perform weight loading or device moves here.
     """
     # dist.barrier()
     qformer_cfg = config.framework.layer_qformer

@@ -1,6 +1,11 @@
 """
-InternVLA-M1.py
-
+InternVLA M1 framework:
+Vision-Language-Action diffusion model integrating:
+  - Qwen2.5 vision-language backbone
+  - Layer-wise QFormer aggregation
+  - DINO multi-view visual encoder
+  - DiT diffusion head for future action sequence prediction
+Primary goal: predict continuous future actions conditioned on multi-view images + instruction.
 """
 from typing import List
 from tqdm import tqdm

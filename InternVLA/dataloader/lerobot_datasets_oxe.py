@@ -10,9 +10,9 @@ from InternVLA.dataloader.gr00t_lerobot.oxe.mixtures import OXE_NAMED_MIXTURES
 
 
 def collate_fn(batch):
-    return batch # @TODO check 是方靖修改过么？
+    return batch
 
-# TODO dataset 逻辑需要放到这里？
+
 
 def make_LeRobotSingleDataset(
     data_root_dir: Path | str,

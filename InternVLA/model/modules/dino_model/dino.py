@@ -1,4 +1,12 @@
+"""
+DINOv2 vision backbone wrapper.
 
+Features:
+  - Loads DINOv2 variants via torch.hub (with local fallback)
+  - Exposes patch token features (x_norm_patchtokens)
+  - Provides preprocessing (resize + normalization) for multi-view PIL images
+  - Parallel per-view preprocessing using ThreadPoolExecutor
+"""
 
 from collections import OrderedDict
 import os
@@ -18,6 +26,18 @@ def apply_transform(view, transform):
 # from llavavla.model.modules.dino_model.dino_transforms import make_classification_train_transform
 
 class DINOv2BackBone(nn.Module):
+    """
+    Thin wrapper around a DINOv2 model.
+
+    Args:
+        backone_name: DINOv2 model id (e.g. dinov2_vits14, dinov2_vitb14).
+        output_channels: (Unused placeholder; retained for future extension).
+
+    Attributes:
+        body: Loaded DINOv2 model.
+        num_channels: Feature dimension of patch tokens.
+        dino_transform: Preprocessing pipeline (resize + tensor + normalize).
+    """
     def __init__(self, backone_name="dinov2_vits14", output_channels=1024) -> None:
         super().__init__()
         try:
@@ -60,12 +80,30 @@ class DINOv2BackBone(nn.Module):
         # self.dino_transform = make_classification_train_transform() ##DEBUG --> 不应该做 动态的resize?
     # @torch.no_grad()
     def forward(self, tensor):
+        """
+        Forward pass.
+
+        Args:
+            tensor: Image batch tensor [B*views, 3, H, W].
+
+        Returns:
+            torch.Tensor: Patch token features [B*views, N_tokens, C].
+        """
         xs = self.body.forward_features(tensor)["x_norm_patchtokens"]
 
         return xs # B*views, token, dim
     
     
     def prepare_dino_input(self, img_list):
+        """
+        Preprocess a batch of multi-view PIL image lists into a tensor suitable for DINO.
+
+        Args:
+            img_list: List of samples; each sample is List[PIL.Image] (multi-view).
+
+        Returns:
+            torch.Tensor: Flattened batch of shape [B * num_view, 3, H, W] on model device.
+        """
         # img_list: is a list of [PIL], each representing multi views of the same example.
         # refer to https://github.com/facebookresearch/dinov2/blob/main/dinov2/data/transforms.py
         # 定义完整的预处理（包括归一化）
@@ -87,7 +125,15 @@ class DINOv2BackBone(nn.Module):
         return image_tensors
 
 def get_dino_model(backone_name="dinov2_vits14") -> DINOv2BackBone:
+    """
+    Factory helper returning a configured DINOv2BackBone.
 
+    Args:
+        backone_name: DINOv2 variant name.
+
+    Returns:
+        DINOv2BackBone: Initialized backbone instance.
+    """
     return DINOv2BackBone(backone_name)
 
 

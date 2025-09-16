@@ -105,9 +105,9 @@ If you find this useful in your research, please consider citing:
 ```bibtex
 @misc{internvla2024,
   title  = {InternVLA-M1: Latent Spatial Planning for Instruction-Following Robotic Manipulation},
-  author = {Intern Robotics Team},
+  author = {InternVLA-M1 Contributors},
   year   = {2025},
-  url    = {https://github.com/InternRobotics/InternVLA-M1}
+  booktitle={arXiv},
 }
 ```
 

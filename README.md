@@ -1,86 +1,219 @@
+# InternVLA-M1
 
-# add log and demo video here
+> 一体化视觉-语言-动作 (Vision-Language-Action, VLA) 开源框架  
+> End-to-end, modular, research-friendly.
 
+<!-- TODO: 在此处插入项目 Logo / 架构图 / 动图 -->
+<!-- TODO: Demo Video 占位: 将 demo.mp4 放到 ./assets 并在此引用 -->
 
 # Introduction
 InternVLA-M1 is a open-source, end-to-end vision–language–action (VLA) framework. 
 
-1. Dual-System and Dual-Supervision
-InternVLA-M1 integrates both a language head and an action head within a single model. This enables training VLAs with multimodal data—particularly robotic perception data—enhancing interaction-following capabilities and generalization performance.
+## 🔥 核心特性 (Key Features)
 
-2. Efficient Training and Better Performance
-The model supports standalone pretraining on large-scale multimodal datasets to learn spatial priors. Through spatial prompt post-training, these priors can be effectively transferred to downstream tasks. For instance, InternVLA-M1 achieves state-of-the-art performance on the OXE dataset with faster convergence (∼2.5 epochs) even without action-specific pretraining.
+1. Modular & Extensible  
+   Core components (VLM, Action Model, Projector, DINO, Trainer) are fully decoupled. You can plug in custom vision-language backbones, action policies, or feature projectors without touching the rest. A unified data interface (e.g., LeRobot + custom robotics datasets) lowers integration and research iteration cost.
 
-3. Modular and Extensible Framework
-InternVLA-M1 draws inspiration from leading open-source works and emphasizes a highly modular codebase. Each major component is designed to be independently executable and easily modifiable, facilitating further research and development.
+2. Dual-System and Dual-Supervision
+InternVLA-M1 integrates a unified architecture with both a language head and an action head, enabling collaborative training under dual supervision, combining both language and action signals. This design supports learning from multimodal data, especially robotic perception data, significantly improving instruction-following capability.
+
+3. Efficient Training & Fast Convergence  
+   Learns spatial / visual priors from large-scale multimodal pretraining, then transfers them via spatial prompt fine-tuning. Achieves strong performance (e.g., OXE SOTA-level convergence in ~2.5 epochs without separate action pretraining). Built‑in optimizations: FlashAttention2, BF16, gradient accumulation, distributed (torchrun / DeepSpeed‑ready).
 
 
-## 文件结构
 
-```
+---
+
+## 📂 目录结构 (Repo Structure)
+
+```text
 InternVLA
-├── model                # 模型相关代码
-│   ├── framework        # 这里对应的是论文的主图， 模型， 数据流，loss 搭建都在这里
-│   ├── modules   # 处理这里这了实现各种 InternVLA-M1 需要的模块
-│   │   ├── vlm   # 处理这里这了实现各种VLM, LLM
-│   │   ├── action_model     # 执行视觉语言动作
-│   │   ├── projector        # 这里开发各个模块的 align moduless
-│   │   ├── dino_model       # 提取视觉细节特征
-│
-├── dataloader           # 收据构建和预处理
-│   ├── groot_lerobot    # lerobot 数据格式, 简洁 groot 做数据管理
-├── training             # 训练相关代码
-│   ├── train_vlm    # lerobot 数据格式, 简洁 groot 做数据管理
-│   ├── train_vla    # lerobot 数据格式, 简洁 groot 做数据管理
-│   ├── train_vla_withCotrain    # lerobot 数据格式, 简洁 groot 做数据管理
-├── config                  # global的统一上实验配置文件
-
+├── model
+│   ├── framework            # 主框架 (数据流 / loss / forward)
+│   ├── modules
+│   │   ├── vlm              # 各类多模态 / 语言模型
+│   │   ├── action_model     # 动作策略 / 控制模型
+│   │   ├── projector        # 特征对齐 / 空间映射
+│   │   ├── dino_model       # 视觉细节特征
+├── dataloader
+│   ├── groot_lerobot        # LeRobot / Groot 数据适配
+├── training
+│   ├── train_vlm
+│   ├── train_vla
+│   ├── train_vla_withCotrain
+├── config                   # 全局统一实验配置 (YAML)
+├── real_deployment          # 部署与推理
+│   ├── deploy/server_policy.py
+├── scripts                  # 训练与评估脚本
+├── playground               # 建议将符号链接放在此
+│   ├── Datasets             
+│   ├── Pretrain_models
 ```
 
+---
 
-### setup envs
+## 🛠 环境准备 (Environment Setup)
 
-'''bash
+快速安装：
 
-conda create -n internVLA python=3.10
+```bash
+conda create -n internVLA python=3.10 -y
+conda activate internVLA
 
+# 基础依赖
 pip install -r requirements.txt
 
+# FlashAttention2 (确保 Torch/CUDA 版本匹配)
+pip install flash-attn --no-build-isolation
+
+# 可编辑安装
 pip install -e .
 
-<!-- hard to pip install flash_attn-->
-pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 
-'''
+```
 
-
+---
 
 
-### prepare data
-download lerobot format dataset (e.g.,[LIBERO](https://huggingface.co/datasets/IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot))
+## 🚀 快速上手 (Quick Start)
+### Jinhui 在写这部分， 就是高数其他人如果我们要 follow 我们的工作， 大概的路线
+复现 --> 准备数据 --> 准备模型 --> 训练 --> 测试
 
-soft link your dataset to ./playground/Datasets/LEROBOT_LIBERO_DATA
-
-
-### run vla only 
-
-bash scripts/run_scripts/run_lerobot_datasets.sh # prepare OXE_LEROBOT_DATASET and QWenvl 3B to playground
+## 1 复现我们的结果 on SimplerENV
+我们会在examples/ 
+这里 提供 如果 reproduce internVLA-M1 
 
 
+## 🧩 扩展InternVLA to your work (How to Extend)
 
-### eval 
+### 1. Data Format & Loading：
+我们数据数据格式借鉴了开源的最佳实践。例如action数据采用 LeRobot provide by GR00T : https://github.com/NVIDIA/Isaac-GR00T. 多模态数据 follow Qwen2.5-VL : https://github.com/QwenLM/Qwen2.5-VL/tree/main/qwen-vl-finetune
 
-我们的评价采用 server的形式， 首先 
-1. 讲本地模型部署为 soker
+我可以参考他们的规范准备数据。and in 我们codebase, 
+对于 action 数据 应该是
+python ./InternVLA/dataloader/lerobot_datasets_oxe.py 
+查看是否能否成功返回数据
+每个数据的分会规范 是
+****
 
-python /mnt/petrelfs/yejinhui/Projects/llavavla/real_deployment/deploy/server_policy.py
+同理， 利用 python ./InternVLA/dataloader/vlm_datasets.py debug 查看 你的dataloader 是否好。
 
-2. install LIBERO by following 
-
-3. 
+一旦 dataloader 返回的内容符合你的预期， 注册 your own dataloader InternVLA/dataloader/__init__.py
 
 
-## 许可证
+### 2. 模型开发：
+你或许会开发你自己的模型
+我们约定 你只能有一个 framework.py (例如 InternVLA/model/framework/M1.py ) align with ther framework fig in your papar. 
+你可以在 InternVLA/model/modules 中定义你framework 需要的模块。 but 你想要保证 you can python framework.py. then build your model and forward your more with batch sample. 
+ 
+ then 
+register your framework in InternVLA/model/framework/__init__.py.
+
+
+### 3. 模型部署
+
+所有的framework 能够通过
+from InternVLA.model.framework.yourmodel import Yourframeork
+your_model_ckpt="playground/Checkpoints/debug_0910_internM1_cotrain/checkpoints/steps_2000_pytorch_model.pt"
+
+your_model = Yourframeork.from_pretrained(your_model_ckpt)
+
+then your kan
+your_model.predict_action()
+
+你能够使用 deployment/model_server 的服务来 server 评测
+
+
+### 参数配置：
+InternVLA-M1 采用 yaml 文件来管理
+
+只有一个 global 参数, 他们被统一 管理在 InternVLA/config/training/qwenvla_cotrain_oxe.yaml。 这是一个 灵活参数对象（例如dict）， 全局都对完整的参数对象可见，但是只有要使用的时候才访问对应的value， which mean 参数对象 可以冗余，but 不能缺失 if 在你的工程中明确要使用。
+
+InternVLA-M1 已经对参数进行了初步的分组。 例如 datasets, framework, trainer
+参数的优先级是 你可以通 CMD 覆盖或者增加 参数。
+
+最后生效的参数会被统一 save 在ckpt 文件夹， which 方便后续的去读
+
+
+---
+
+## 📈 Model Zoo (占位)
+
+| 模型 | 参数规模 | 预训练数据 | 下游 (LIBERO) 成绩 | 下载 |
+|------|----------|------------|--------------------|------|
+| InternVLA-M1 Base | ~ | ~ | ~ | TODO |
+| InternVLA-M1 Large | ~ | ~ | ~ | TODO |
+
+（TODO: 后续补充权重与日志）
+
+---
+
+
+## 🧩 扩展指南 (How to Extend)
+<!-- as toDO -->
+<!-- 新增 your own VLA：
+我们约定 你只能有一个 framework.py (例如 InternVLA/model/framework/M1.py ) align with ther framework fig in your papar. 
+你可以在 InternVLA/model/modules 中定义你framework 需要的模块。 but 你想要保证 you can python framework.py. then build your model and forward your more with batch sample. 
+
+then  register your framework in InternVLA/model/framework/__init__.py. 我们避免 使用 REGISTRY 方法以保留更好的可读性and 方便用户 review code.
+
+新增 your own 训练参数：
+InternVLA-M1 只有一个 global 参数, 他们被统一 管理在 InternVLA/config/training/qwenvla_cotrain_oxe.yaml。 这是一个 灵活参数对象（例如dict），你可以通 CMD 覆盖或者增加 参数。 全局都对完整的参数对象可见，但是只有要使用的时候才访问对应的value， which mean 参数对象 可以冗余，but 不能缺失 if 在你的工程中明确要使用。
+InternVLA-M1 已经对参数进行了初步的分组。 例如 datasets, framework, trainer
+
+新增 训练策略：
+InternVLA-M1 的trainer 是 自建的base 最基础的 torch 函数完成， 例如对于 freeze modular,  通过 trainer.freeze_modules 直接声明 用户自己framework moduels name， and 我们通过RE 去查看模型模块， 并使用 采用最基础的 torch 函数完成 参数的冻结（看TrainerUtils）
+
+
+yep，InternVLA-M1 might not 上手就来，因为他使用了很多 最基础的 pytorch 工具来完成 codebase 实现更好的解偶和 保持更好的扩展性。 but 如果try， your will find it 优势。 -->
+
+---
+
+## 📜 Citation (引用)
+
+如果本项目对你的研究有帮助，请引用（占位）：
+
+```bibtex
+@misc{internvla2024,
+  title  = {InternVLA-M1: An Open Vision-Language-Action Framework},
+  author = {InternVLA Contributors},
+  year   = {2024},
+  url    = {https://github.com/...}
+}
+```
+
+---
+
+## ✅ TODO Roadmap
+
+- [ ] 发布模型权重
+- [ ] 增加多任务混合训练示例
+- [ ] 集成 Deepspeed / FSDP
+- [ ] 发布真实机器人 Demo
+- [ ] 添加日志可视化 (TensorBoard / WandB)
+- [ ] 统一评估脚本指标输出
+
+---
+
+## 🤝 Contributing
+
+欢迎 PR / Issue：
+
+---
+
+## 🔐 License
 
 MIT License
+
+---
+
+## 📬 联系
+
+- Issue：提交详细日志 + 复现步骤
+- 邮件：TODO (如需添加)
+- 交流群：TODO (可放飞书/钉钉/微信群二维码)
+
+---
+
+感谢使用 InternVLA-M1！🎯 如果觉得有用，欢迎 Star 支持。
 

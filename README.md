@@ -79,6 +79,10 @@ We will release a series of pretrained models and checkpoints to facilitate repr
 
 - Full list and download links: assets/MODEL_ZOO.md
 
+⚠️⚠️⚠️ **Note on Hugging Face availability**  
+Due to Hugging Face Hub storage restrictions, some model weights are not yet uploaded there.  
+This is a temporary limitation and not related to the training or upload scripts. We are in contact with Hugging Face to unlock more storage.  
+
 Status: rolling release. If you need early access or encounter broken links, please open an issue.
 
 # 🗺️ Roadmap

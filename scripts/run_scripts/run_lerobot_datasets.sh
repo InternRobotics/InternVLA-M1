@@ -1,6 +1,4 @@
 
-export HF_HOME=/mnt/petrelfs/share/yejinhui/Models/huggingface_cache
-
 export NCCL_SOCKET_IFNAME=bond0
 export NCCL_IB_HCA=mlx5_2,mlx5_3
 
@@ -9,10 +7,10 @@ export NCCL_BLOCKING_WAIT=1
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_TIMEOUT=1000  # 超时时间设为 1 小时（单位：秒）
 
-cd /mnt/petrelfs/yejinhui/Projects/llavavla
+cd InternVLA-M1
 
 Framework_name=InternVLA-M1
-base_vlm=/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # must be a local path, due to simpler will run in other where
+base_vlm=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # must be a local path, due to simpler will run in other where
 
 run_root_dir=./playground/Checkpoints
 run_id=debug_0910_internM1

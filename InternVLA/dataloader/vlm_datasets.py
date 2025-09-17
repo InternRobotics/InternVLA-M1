@@ -625,14 +625,6 @@ class FlattenedDataCollatorForSupervisedDataset(DataCollatorForSupervisedDataset
 
 
 
-def collate_fn(batch):
-    # batch: list of items, 假设每个 item 是 (PIL.Image, other_info)
-
-    pass # TODO 如果要动态 input， 就不能用 default_collate
-    # dist.barrier()  # 确保所有进程都在同一时间点
-
-    return batch # 我们宁愿返回一个 list_of_dict for 动态的 inputs
-
 
 def make_supervised_data_module(
     tokenizer: transformers.PreTrainedTokenizer, data_args
@@ -672,7 +664,7 @@ def make_vlm_dataloader(cfg):
         cfg.framework.qwenvl.base_vlm,
         model_max_length=data_args.model_max_length,
         padding_side="left", # flash Attention version of Qwen2.5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input.
-        use_fast=False, # TODO padding_side="left" 这个事情应该是要和flash Attention 对齐的 
+        use_fast=False,
     )
 
     # 避免在dataset 内部处理这些
@@ -694,14 +686,7 @@ def make_vlm_dataloader(cfg):
         train_dataset,
         batch_size=cfg.datasets.vlm_data.per_device_batch_size,
         collate_fn=data_collator,
-        num_workers=8,
     ) 
-    
-    # eval_dataloader = DataLoader(
-    #     data_module["eval_dataset"],
-    #     batch_size=cfg.vlm_data.per_device_batch_size,
-    #     collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
-    # ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
     
 
     return {

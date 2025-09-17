@@ -7,6 +7,7 @@ name = "InternVLA"
 authors = [
     {name = "Jinhui Ye", email="jinhuiyes@gmail.com"},
     {name = "Fangjing Wang", email="fangjing_wang@outlook.com"},
+    {name = "Junqiu Yu", email="michaelyu1101@163.com"},
 
 ]
 description = "StarVLA: A simple and flexible and strong framework for explore vision language action models"

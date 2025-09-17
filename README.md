@@ -4,7 +4,7 @@
 
 https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
-[![Paper](https://img.shields.io/badge/Paper-arXiv-red.svg)](https://arxiv.org/) [![Website](https://img.shields.io/badge/Website-GitHub%20Pages-blue.svg)](https://internrobotics.github.io/internvla-m1.github.io) [![Demo](https://img.shields.io/badge/Demo-YouTube-red.svg)](https://www.youtube.com/) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-red.svg)](https://github.com/InternRobotics/InternVLA-M1/blob/InternVLA-M1/assets/InternVLA_M1.pdf) [![Website](https://img.shields.io/badge/Website-GitHub%20Pages-blue.svg)](https://internrobotics.github.io/internvla-m1.github.io) [![Demo](https://img.shields.io/badge/Demo-YouTube-red.svg)](https://youtu.be/n129VDqJCk4) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ![](assets/teaser.png)
 

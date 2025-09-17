@@ -26,6 +26,19 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 2. Teams co-training action datasets jointly with multimodal (vision–language) data.
 3. Researchers exploring alternative VLA architectures and training strategies.
 
+## 📊 Experimental Results
+|             | WindowX | Google Robot(VA) | Google Robot(VM) | LIBERO |
+|-------------|---------|------------------|------------------|--------|
+| pi0         | 27.1    | 54.8             | 58.8             | 94.2   |
+| gr00t       | 61.9    | 44.5             | 35.2             | 93.9   |
+| InterVLA-M1 |**71.7** |**76.0**          |**80.7**          |**95.9**|
+|             |         |                  |                  |        |
+
+
+
+
+
+
 # 🚀 Quick Start
 
 ## 🛠 Environment Setup

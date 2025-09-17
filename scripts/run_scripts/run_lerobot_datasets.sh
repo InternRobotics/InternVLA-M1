@@ -2,10 +2,10 @@
 export NCCL_SOCKET_IFNAME=bond0
 export NCCL_IB_HCA=mlx5_2,mlx5_3
 
-# 用于check save 的时候的通信
+# used for check save when communication
 export NCCL_BLOCKING_WAIT=1
 export NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_TIMEOUT=1000  # 超时时间设为 1 小时（单位：秒）
+export NCCL_TIMEOUT=1000  # timeout set to 1 hour (unit: seconds)
 
 cd InternVLA-M1
 

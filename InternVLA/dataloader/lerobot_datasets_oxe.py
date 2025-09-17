@@ -84,7 +84,6 @@ def get_vla_dataset(
 if __name__ == "__main__":
     data_root_dir = Path("/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Datasets/OXE_LEROBOT_DATASET")
     data_mix = "bridge" # bridge_rt_1
-    # TODO 为什么参数这么少？
     import debugpy
     debugpy.listen(("0.0.0.0", 10092))
     print("Waiting for client to attach 10092...")

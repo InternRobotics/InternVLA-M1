@@ -46,10 +46,10 @@ class WebsocketPolicyServer:
 
         await websocket.send(packer.pack(self._metadata))
 
-        while True: # TODO 这里定义了有什么服务， 但是看起来服务非映射还做的很不高兴
+        while True:
             try:
                 msg = msgpack_numpy.unpackb(await websocket.recv())
-                ret = self._route_message(msg)  # 路由消息
+                ret = self._route_message(msg)  # route message
                 await websocket.send(packer.pack(ret))
             except websockets.ConnectionClosed:
                 logging.info(f"Connection from {websocket.remote_address} closed")
@@ -61,20 +61,20 @@ class WebsocketPolicyServer:
                     reason="Internal server error. Traceback included in previous frame.",
                 )
                 raise
-    # 路由逻辑： 识别 client 端发过来的 request
+    # route logic: recognize request from client
     def _route_message(self, msg: dict) -> dict:
         """
-        路由规则：
+        route rules:
         - 兼容两种风格：
-          1) 显式 type：msg = {"type": "ping|init|infer|reset", "request_id": "...", "payload": {...}}
-          2) 旧版隐式键：包含 "device" 视为 init，包含 "reset" 视为 reset，否则 infer
-        返回：统一字典，至少包含 {"status": "ok"|"error"}，并尽量附带 "ok"/"type"/"request_id"
+          1) explicit type: msg = {"type": "ping|init|infer|reset", "request_id": "...", "payload": {...}}
+          2) old version implicit key: contains "device" as init, contains "reset" as reset, otherwise infer
+        return: unified dictionary, at least contains {"status": "ok"|"error"}, and include "ok"/"type"/"request_id"
         """
         req_id = msg.get("request_id", "default")
-        mtype = msg.get("type", "default")  # 默认为 infer
-        payload = msg.get("payload", msg)  # 无 payload 时直接用顶层
+        mtype = msg.get("type", "default")  # default is infer
+        payload = msg.get("payload", msg)  # when no payload, use top level
 
-        # 1) 显式类型路由
+        # 1) explicit type routing
         if mtype == "ping":
             return {"status": "ok", "ok": True, "type": "pong", "request_id": req_id}
 
@@ -86,7 +86,7 @@ class WebsocketPolicyServer:
                     "message": "Failed to initialize device"}
 
         if mtype == "reset":
-            # 兼容不同字段名
+            # compatible with different field names
             instr = payload.get("instruction") or payload.get("task_description")
             self._policy.reset(instr)
             return {"status": "ok", "ok": True, "type": "reset_result", "request_id": req_id}
@@ -95,7 +95,7 @@ class WebsocketPolicyServer:
             data = self._policy.step(payload)
             return {"status": "ok", "ok": True, "type": "inference_result", "request_id": req_id, "data": data}
 
-        # 2) 兼容旧版隐式键路由
+        # 2) compatible with old version implicit key routing
         if "device" in msg:
             ok = bool(self._policy.init_infer(msg))
             if ok:
@@ -108,9 +108,9 @@ class WebsocketPolicyServer:
             self._policy.reset(instr)
             return {"status": "ok", "ok": True, "type": "reset_result", "request_id": req_id}
 
-        # 默认：推理 --> 消息转发就不要改动任何key-value 了
-        # 借口会因为模型和 其他不一样而发生变化
-        # 消息不能在这里比
+        # default: inference --> message forwarding should not change any key-value
+        # interface will change because of model and other differences
+        # message cannot be changed here
         raw_action = self._policy.step(**msg)
         data = {"raw_action": raw_action}
         return {"status": "ok", "ok": True, "type": "inference_result", "request_id": req_id, "data": data}

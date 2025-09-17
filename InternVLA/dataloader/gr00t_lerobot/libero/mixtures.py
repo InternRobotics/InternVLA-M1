@@ -5,7 +5,6 @@ Defines a registry of dataset mixtures and weights for the Open-X Embodiment Dat
 a float "sampling weight"
 """
 
-# TODO 未来不要是一个文件夹
 from typing import Dict, List, Tuple
 
 # fmt: off

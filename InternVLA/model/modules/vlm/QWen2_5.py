@@ -259,8 +259,8 @@ class _QWen_VL_Interface(nn.Module):
         # Create messages: one message per sample
         messages = []
         assert len(images) == len(instructions), "Images and instructions must have the same length"
-        for imgs, instruction in zip(images, instructions): # 思考多图应该怎么处理？
-            content = [{"type": "image", "image": img} for img in imgs] # 其实是支持多图的
+        for imgs, instruction in zip(images, instructions): 
+            content = [{"type": "image", "image": img} for img in imgs]
             
             if "CoT_prompt" in self.config.datasets.vla_data: # If using a grounding prompt to task
                 CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", "")
@@ -273,7 +273,7 @@ class _QWen_VL_Interface(nn.Module):
             messages.append(msg)
 
         # Prepare text prompts using processor
-        # default 流程是 json --> message --> texts --> input_ids
+        # default process is json --> message --> texts --> input_ids
         texts = [
             self.processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
             for m in messages

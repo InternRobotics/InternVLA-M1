@@ -10,8 +10,6 @@ LOG_PATH=${MODEL_DIR}/videos/steps_${step}_pytorch_model.pt/logs
 mkdir -p $LOG_PATH
 
 
-#  # TODO 
-#  # 有个 5101911 4 卡的 需要跑很久 --> 好像并不是这个问题 它是跑 brige， 然后卡住了
 SCRIPT_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/eval/sim_cogact/scripts/qwenact/cogact_drawer_variant_agg.sh
 # 2 * (378 / 42) = 18
 nohup srun -p efm_p --gres=gpu:8 /bin/bash "$SCRIPT_PATH" "$MODEL_PATH" > "${LOG_PATH}/drawer_variant.log" 2>&1 &
@@ -43,7 +41,6 @@ nohup srun -p efm_p --gres=gpu:8 /bin/bash "$SCRIPT_PATH" "$MODEL_PATH" > "$LOG_
 
 sleep 1
 
-# 这个结束很快？ 
 SCRIPT_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/eval/sim_cogact/scripts/qwenact/cogact_pick_coke_can_visual_matching.sh
 #  12
 nohup srun -p efm_p --gres=gpu:8 /bin/bash "$SCRIPT_PATH" "$MODEL_PATH" > "$LOG_PATH/pick_coke_can_visual_matching.log" 2>&1 &

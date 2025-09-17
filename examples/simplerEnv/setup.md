@@ -1,5 +1,4 @@
-
-To reproduce the training results, you can use the following steps:
+> To reproduce the training results, you can use the following steps:
 
  ## 📦 Data Preparation
  To prepare the training data, follow the NVIDIA/Isaac-GR00T dataset instructions:
@@ -12,14 +11,14 @@ To reproduce the training results, you can use the following steps:
     ```bash
     tree -L 1 playground/Datasets/OXE_LEROBOT/
     ```
-
-playground/Datasets/OXE_LEROBOT/
-├── bridge_orig_1.0.0_lerobot
-│   ├── data
-│   ├── meta
-│   └── videos
-└── fractal20220817_data_0.1.0_lerobot
-
+    ```
+    playground/Datasets/OXE_LEROBOT/
+    ├── bridge_orig_1.0.0_lerobot
+    │   ├── data
+    │   ├── meta
+    │   └── videos
+    └── fractal20220817_data_0.1.0_lerobot
+    ```
 
  ## 🚀 Model Training
  The fine-tuning script supports multiple configurations for different simulation environments. Use the appropriate command based on your target dataset:

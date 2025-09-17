@@ -8,8 +8,6 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
 ![](assets/teaser.png)
 
----
-
 ## 🔥 Key Features
 
 1. **Modular & Extensible**  
@@ -22,16 +20,11 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 3. **Efficient Training & Fast Convergence**
    Learns spatial and visual priors from large-scale multimodal pretraining and transfers them via spatial prompt fine-tuning. Achieves strong performance (e.g., SOTA-level convergence on  in \~2.5 epochs without separate action pretraining). 
 
----
-
 ## 🎯 Target Audience
 
 1. Users who want to leverage open-source VLMs (e.g., Qwen2.5-VL) for robot control.
 2. Teams co-training action datasets jointly with multimodal (vision–language) data.
 3. Researchers exploring alternative VLA architectures and training strategies.
-
-
----
 
 # 🚀 Quick Start
 
@@ -55,8 +48,6 @@ pip install flash-attn --no-build-isolation
 pip install -e .
 ```
 
----
-
 ## 📘 Examples
 
 We provide several end-to-end examples for reference:
@@ -70,17 +61,12 @@ We provide several end-to-end examples for reference:
 * **Extending InternVLA-M1**
   [Example](examples/extending_m1/README.md)
 
----
-
 ## 📈 Model Zoo
 We will release a series of pretrained models and checkpoints to facilitate reproduction and downstream use.
 
 - Full list and download links: assets/MODEL_ZOO.md
 
 Status: rolling release. If you need early access or encounter broken links, please open an issue.
-
-
----
 
 # 🗺️ Roadmap
 
@@ -89,14 +75,10 @@ Status: rolling release. If you need early access or encounter broken links, ple
 * [ ] Release real-robot demo
 * [ ] Unify evaluation scripts and metrics
 
----
-
 # 🤝 Contributing
 
 We welcome contributions via Pull Requests or Issues.
 Please include detailed logs and reproduction steps when reporting bugs.
-
----
 
 # 📜 Citation
 
@@ -111,13 +93,9 @@ If you find this useful in your research, please consider citing:
 }
 ```
 
----
-
 # 📬 Contact
 
 * Issues: Submit via GitHub Issues with detailed logs and steps
-
----
 
 # 🙏 Acknowledgements
 

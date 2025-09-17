@@ -70,7 +70,7 @@ Status: rolling release. If you need early access or encounter broken links, ple
 
 # 🗺️ Roadmap
 
-* [ ] Release model weights
+* [ ] Release model weights (Stay tuned, coming soon)
 * [ ] Add multi-task mixed training examples
 * [ ] Release real-robot demo
 * [ ] Unify evaluation scripts and metrics
@@ -86,7 +86,7 @@ If you find this useful in your research, please consider citing:
 
 ```bibtex
 @misc{internvla2024,
-  title  = {InternVLA-M1: Latent Spatial Planning for Instruction-Following Robotic Manipulation},
+  title  = {InternVLA-M1: Latent Spatial Grounding for Instruction-Following Robotic Manipulation},
   author = {InternVLA-M1 Contributors},
   year   = {2025},
   booktitle={arXiv},

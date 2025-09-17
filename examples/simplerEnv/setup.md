@@ -1,63 +1,101 @@
-> To reproduce the training results, you can use the following steps:
+# 🚀 Eval SimplerEnv
 
- ## 📦 Data Preparation
- To prepare the training data, follow the NVIDIA/Isaac-GR00T dataset instructions:
- 1. Clone or download the dataset from: https://github.com/NVIDIA/Isaac-GR00T/tree/main/examples/SimplerEnv
- 2. Create a symbolic link to the dataset directory:
-    ```bash
-    ln -s [path_to_downloaded_dataset] playground/Datasets/OXE_LEROBOT
-    ```
- 3. Verify the dataset structure:
-    ```bash
-    tree -L 1 playground/Datasets/OXE_LEROBOT/
-    ```
-    ```
-    playground/Datasets/OXE_LEROBOT/
-    ├── bridge_orig_1.0.0_lerobot
-    │   ├── data
-    │   ├── meta
-    │   └── videos
-    └── fractal20220817_data_0.1.0_lerobot
-    ```
+This document provides instructions for reproducing our **experimental results** with SimplerEnv.  
+The evaluation process consists of two main parts:  
 
- ## 🚀 Model Training
- The fine-tuning script supports multiple configurations for different simulation environments. Use the appropriate command based on your target dataset:
- ### 1. Bridge Dataset Training
- ```bash
- python scripts/gr00t_finetune.py \
-     --dataset-path /tmp/bridge_orig_lerobot/ \
-     --data_config examples.SimplerEnv.custom_data_config:BridgeDataConfig \
-     --num-gpus 8 \
-     --batch-size 64 \
-     --output-dir /tmp/bridge-checkpoints \
-     --max-steps 60000 \
-     --video-backend torchvision_av
- ```
- ### 2. Fractal Dataset Training
- ```bash
- python scripts/gr00t_finetune.py \
-     --dataset-path /tmp/fractal20220817_data_lerobot/ \
-     --data_config examples.SimplerEnv.custom_data_config:FractalDataConfig \
-     --num-gpus 8 \
-     --batch-size 128 \
-     --output-dir /tmp/fractal-checkpoints/ \
-     --max-steps 60000 \
-     --video-backend torchvision_av
- ```
- ## 🎯 Model Evaluation
- Evaluation is performed using the [SimplerEnv repository](https://github.com/youliangtan/SimplerEnv/tree/main).
- ### Step 1: Start the Inference Server
- ```bash
- python scripts/inference_service.py \
-     --model-path youliangtan/gr00t-n1.5-bridge-posttrain/ \
-     --server \
-     --data_config examples.SimplerEnv.custom_data_config:BridgeDataConfig \
-     --denoising-steps 8 \
-     --port 5555 \
-     --embodiment-tag new_embodiment
- ```
- 
- ### Step 2: Run Evaluation
- ```bash
- python eval_simpler.py --env widowx_spoon_on_towel --groot_port 5555
- ```
+1. Setting up the `simpler_env` environment and dependencies.  
+2. Running the evaluation by launching services in both `internvla_m1` and `simpler_env` environments.  
+
+We have verified that this workflow runs successfully on both **NVIDIA A100** and **RTX 4090** GPUs.  
+
+---
+
+## 📊 Experimental Results
+
+### 1. WidowX Robot
+
+| Task                              | Success Rate (%) |
+| --------------------------------- | ---------------- |
+| Put Spoon on Towel                | 87.5             |
+| Put Carrot on Plate               | 67.9             |
+| Stack Green Block on Yellow Block | 31.3             |
+| Put Eggplant in Yellow Basket     | 100.0            |
+| **Average**                       | **71.7**         |
+
+---
+
+### 2. Google Robot (Visual Matching)
+
+| Task                                     | Success Rate (%) |
+| ---------------------------------------- | ---------------- |
+| Pick Coke Can                            | 95.3             |
+| Move Near                                | 90.0             |
+| Open/Close Drawer                        | 75.5             |
+| Open Top Drawer and Place Apple          | 62.0             |
+| **Average**                              | **80.7**         |
+
+---
+
+### 3. Google Robot (Variant Aggregation)
+
+| Task                                     | Success Rate (%) |
+| ---------------------------------------- | ---------------- |
+| Pick Coke Can                            | 86.1             |
+| Move Near                                | 82.0             |
+| Open/Close Drawer                        | 72.0             |
+| Open Top Drawer and Place Apple          | 64.0             |
+| **Average**                              | **76.0**         |
+
+---
+
+## 📦 1. Environment Setup
+
+To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment.  
+
+Afterwards, inside the `simpler_env` environment, install the following dependencies:  
+
+```bash
+pip install tyro matplotlib mediapy websockets msgpack
+pip install numpy==1.24.4
+```
+
+⚠️ **Common Issues**
+When testing SimplerEnv on NVIDIA A100, you may encounter the following error:
+`libvulkan.so.1: cannot open shared object file: No such file or directory`
+You can refer to this link to fix: [Installation Guide – Vulkan Section](https://maniskill.readthedocs.io/en/latest/user_guide/getting_started/installation.html#vulkan)
+
+---
+
+## 🚀 2. Evaluation Workflow
+
+The evaluation should be run **from the repository root** using **two separate terminals**, one for each environment:  
+
+- **internvla_m1 environment**: runs the inference server.  
+- **simpler_env environment**: runs the simulation.  
+
+### Step 1. Start the server (internvla_m1 environment)
+
+In the first terminal, activate the `internvla_m1` conda environment and run:  
+
+```bash
+bash examples/Eval_simplenv_clean/start_server.sh
+```
+
+⚠️ **Note:** Please ensure that you specify the correct checkpoint path in  
+`examples/Eval_simplenv_clean/start_server.sh`  
+
+
+---
+
+### Step 2. Start the simulation (simpler_env environment)
+
+In the second terminal, activate the `simpler_env` conda environment and run:  
+
+```bash
+export PYTHONPATH=$(pwd):$PYTHONPATH
+bash examples/Eval_simplenv_clean/start_simpler_env.sh
+```
+This script will automatically launch the WidowX Robot evaluation tasks, reproducing the benchmark results reported above.
+
+⚠️ **Note:** Please ensure that you specify the correct rgb_overlay_path in  
+`examples/Eval_simplenv_clean/start_simpler_env.sh`  

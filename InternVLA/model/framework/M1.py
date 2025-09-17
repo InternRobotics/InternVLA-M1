@@ -100,7 +100,7 @@ class InternVLA_M1(baseframework):
         instructions = [example["lang"] for example in examples]  # [B, str]
         actions = [example["action"] for example in examples] #label [B， len, 7]
 
-        # Step 1: QWenVL 输入格式
+        # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions = instructions)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             qwenvl_outputs = self.qwen_vl_interface( 
@@ -114,7 +114,7 @@ class InternVLA_M1(baseframework):
         # Step 2: DINO Forward
         image_tensors = self.dino_encoder.prepare_dino_input(batch_images) # 
         B = len(batch_images)
-        dino_features = self.dino_encoder(image_tensors)  # DINO 输出为 [B*num_view, token, dim]
+        dino_features = self.dino_encoder(image_tensors)  # DINO output is [B*num_view, token, dim]
         dino_encoded_features = dino_features.reshape(B, -1, dino_features.shape[-1])  # [B, num_view * token, dim]
         dino_encoded_features = self.dino_pro(dino_encoded_features) # [B, num_view * token, hidden_size]
 
@@ -237,7 +237,7 @@ class InternVLA_M1(baseframework):
                 uncondition_shape = uncondition.shape
                 uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
                 uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
-                z = torch.cat([action_condition_feature, uncondition], 0) # [2, 64, 768] TODO check 看看 training的时候是剁手
+                z = torch.cat([action_condition_feature, uncondition], 0) # [2, 64, 768] 
                 cfg_scale = cfg_scale
                 model_kwargs = dict(z=z, cfg_scale=cfg_scale)
                 sample_fn = self.action_model.net.forward_with_cfg
@@ -285,7 +285,7 @@ def build_model_framework(config: dict = {}) -> InternVLA_M1:
 
 if __name__ == "__main__":
     from omegaconf import OmegaConf
-    # 模型参数
+    # model parameters
     import debugpy
     debugpy.listen(("0.0.0.0", 10092))
     print("🔍 Rank 0 waiting for debugger attach on port 10092...")

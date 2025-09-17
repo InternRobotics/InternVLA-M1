@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
-from InternVLA.model.tools import auto_get_trainable_modules # 后续应该是trainer 的职责范围
+from InternVLA.model.tools import auto_get_trainable_modules
 
 from InternVLA.model.framework.share_tools import read_mode_config
 from InternVLA.training.trainer_utils import initialize_overwatch
@@ -76,7 +76,7 @@ class baseframework(nn.Module):
             FileNotFoundError: If underlying files are missing (surfaced earlier).
         """
         pretrained_checkpoint = Path(pretrained_checkpoint)
-        model_config, norm_stats = read_mode_config(pretrained_checkpoint) # 读取 config 和 norm_stats
+        model_config, norm_stats = read_mode_config(pretrained_checkpoint) # read config and norm_stats
         # TODO 
         config = dict_to_namespace(model_config)
         model_config = config
@@ -103,7 +103,7 @@ class baseframework(nn.Module):
 
             raise e
 
-        # **确保模型在 GPU 上**
+        # **ensure model is on GPU**
         FrameworkModel = FrameworkModel
         return FrameworkModel
 
@@ -161,7 +161,7 @@ class baseframework(nn.Module):
         Returns:
             List[str]: Module path names considered trainable.
         """
-        keys = auto_get_trainable_modules(self, max_depth=max_depth)# auto 去判断哪些module是trainable的
+        keys = auto_get_trainable_modules(self, max_depth=max_depth) # auto check which modules are trainable
         return keys
     
     @staticmethod

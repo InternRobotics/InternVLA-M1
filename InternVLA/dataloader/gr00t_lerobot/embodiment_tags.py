@@ -60,10 +60,10 @@ EMBODIMENT_TAG_MAPPING = {
     EmbodimentTag.OXE_RT1.value: 19,
     EmbodimentTag.AGIBOT_GENIE1.value: 26,
     EmbodimentTag.GR1.value: 24,
-    EmbodimentTag.FRANKA.value: 25, # TODO @JinhuiYE 这个是什么意思？
+    EmbodimentTag.FRANKA.value: 25,
 }
 
-# dataset name to embodiment tag TODO @JinhuiYE 这个是用来干什么的？--> groot 考虑了跨本体的情况，所以记录了一下
+# dataset name to embodiment tag
 DATASET_NAME_TO_EMBODIMENT_TAG = {
     "bridge_orig_1.0.0_lerobot": EmbodimentTag.OXE_BRIDGE,
     "fractal20220817_data_0.1.0_lerobot": EmbodimentTag.OXE_RT1,
@@ -73,7 +73,6 @@ DATASET_NAME_TO_EMBODIMENT_TAG = {
     "bench_v6_all_longrange_split3_h264": EmbodimentTag.FRANKA,
     "bench_v6_all_longrange_split4_h264": EmbodimentTag.FRANKA,
 
-    # 没必要在这里再写一次，直接标注到data meta 中
     "libero_10_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,
     "libero_goal_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,
     "libero_spatial_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,

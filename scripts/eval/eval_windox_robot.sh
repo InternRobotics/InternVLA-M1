@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # test_all.sh
-# 遍历所有以 0*e-3 开头的实验目录下的 checkpoints，若对应的日志缺失则通过 srun 启动测试
+# traverse all checkpoints in experiments starting with 0*e-3, if the corresponding logs are missing, launch tests through srun
 
-# 目录（Checkpoints 的父目录）
+# directory (parent directory of Checkpoints)
 ROOT_BASE="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints"
 
-# 日志文件名后缀（不含 steps_${step}_ 前缀）
+# log file name suffix (without steps_${step}_ prefix)
 LOG_SUFFIXES=(
   "pytorch_model_infer_PutCarrotOnPlateInScene-v0.log.run1"
   "pytorch_model_infer_PutEggplantInBasketScene-v0.log.run1"
@@ -16,18 +16,18 @@ LOG_SUFFIXES=(
 
 # playground/Checkpoints/0905_qwenact_ft_vla_lerobot_cotrain_oxe
 
-# 用于测试的脚本路径
+# script path for testing
 SCRIPT_PATH="/mnt/petrelfs/yejinhui/Projects/llavavla/eval/sim_cogact/scripts/qwenact/cogact_bridge.sh"
 
-# 直接把通配路径写在 for 循环里，Bash 会帮你展开所有匹配的目录
+# directly write the wildcard path in the for loop, Bash will expand all matching directories for you
 
 # /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/0831_qwendact_vla_fm/checkpoints/steps_40000_pytorch_model.pt
 
 for checkpoints_dir in "$ROOT_BASE"/0831_qwendact_vla_fm/checkpoints; do
   echo $checkpoints_dir
-  # 确保 checklspoints 目录存在且是目录
+  # ensure checklspoints directory exists and is a directory
   if [ -d "$checkpoints_dir" ]; then
-    # 如果路径中包含 "without"，则跳过
+    # if the path contains "without", skip
     if [[ "$checkpoints_dir" == *"without"* ]]; then
       echo "Skipping directory (contains 'without'): $checkpoints_dir"
       continue
@@ -35,14 +35,14 @@ for checkpoints_dir in "$ROOT_BASE"/0831_qwendact_vla_fm/checkpoints; do
     echo "Processing directory: $checkpoints_dir"
     cd "$checkpoints_dir" || continue
 
-    # 遍历所有以 steps_*_pytorch_model.pt 命名的 checkpoint 文件
+    # traverse all checkpoint files named steps_*_pytorch_model.pt
     for pt_file in steps_*_pytorch_model.pt; do
-      [ -e "$pt_file" ] || continue  # 如果没有匹配的文件，则跳过
+      [ -e "$pt_file" ] || continue  # if there is no matching file, skip
 
-      # 提取 step 编号（文件名格式假设为 steps_<step>_pytorch_model.pt）
+      # extract step number (file name format assumed to be steps_<step>_pytorch_model.pt)
       step=$(echo "$pt_file" | cut -d'_' -f2)
 
-      # 检查对应的 4 个日志文件是否都存在
+      # check if all 4 corresponding log files exist
       all_logs_exist=true
       for suffix in "${LOG_SUFFIXES[@]}"; do
         log_file="steps_${step}_${suffix}"
@@ -57,7 +57,7 @@ for checkpoints_dir in "$ROOT_BASE"/0831_qwendact_vla_fm/checkpoints; do
         MODEL_PATH="$checkpoints_dir/$pt_file"
         nohup srun -p efm_p --gres=gpu:4 /bin/bash "$SCRIPT_PATH" "$MODEL_PATH" &
         sleep 10
-        # # # rm $pt_file
+        # rm $pt_file
       else
         echo "✘ Logs missing for $pt_file — launching test"
         MODEL_PATH="$checkpoints_dir/$pt_file"

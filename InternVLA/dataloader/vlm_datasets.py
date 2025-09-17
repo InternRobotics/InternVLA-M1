@@ -85,8 +85,8 @@ def preprocess_qwen_2_visual(
 
             role = roles.get(role, role)
             if role == "user":
-                visual_tag = f"<{visual_type}>" # @Jinhui 这里为什么不用 DEFAULT_IMAGE_TOKEN?
-                if visual_tag in content: # 一旦文本中有 visual_type， 就会导致错位
+                visual_tag = f"<{visual_type}>" 
+                if visual_tag in content: 
                     parts = content.split(visual_tag)
                     new_parts = []
                     for i in range(len(parts) - 1):
@@ -116,7 +116,6 @@ def preprocess_qwen_2_visual(
         input_ids.append(input_id)
         targets.append(target)
 
-    # 这里似乎可以 预留了给batch 的处理， 但是又默认 batch = 1
     input_ids = torch.tensor(input_ids, dtype=torch.long)
     targets = torch.tensor(targets, dtype=torch.long)
 
@@ -170,18 +169,16 @@ class LazySupervisedDataset(Dataset):
                     ann["data_path"] = ann["raw_data"]["data_root"]
             list_data_dict += annotations
 
-        # 这里要 filter 非常长的数据
-        list_data_dict = self.pre_filter_long_case(list_data_dict, max_words=tokenizer.max_len_single_sentence ) # 这个操作需要很小心， 不需要过分截断的数据
+        list_data_dict = self.pre_filter_long_case(list_data_dict, max_words=tokenizer.max_len_single_sentence )
         random.shuffle(list_data_dict)  # Randomly shuffle the data for training
 
         self.tokenizer = tokenizer
         self.list_data_dict = list_data_dict
-        self.data_args = data_args # 这里还是展示需要 image_processor
+        self.data_args = data_args
 
         rank0_print(f"Total training samples: {len(self.list_data_dict)}")
         rank0_print("Formatting inputs...Skip in lazy mode")
 
-        # TODO 这个逻辑很不清晰， 不能这样修改
         # self.data_args.image_processor.max_pixels = data_args.max_pixels
         # self.data_args.image_processor.min_pixels = data_args.min_pixels
         # self.data_args.image_processor.size["longest_edge"] = data_args.max_pixels
@@ -191,7 +188,7 @@ class LazySupervisedDataset(Dataset):
         return len(self.list_data_dict)
 
     def pre_filter_long_case(self, list_data_dict, max_words=1024):
-        """ 初步过滤掉过滤掉 conversations 总词数超过 max_words 的样本"""
+        """filter out conversations with total words exceeding max_words"""
         def count_total_words(convs):
             total = 0
             for entry in convs:
@@ -239,7 +236,7 @@ class LazySupervisedDataset(Dataset):
     def process_image_unified(self, image_file):
         processor = copy.deepcopy(self.data_args.image_processor)
         image = Image.open(image_file).convert("RGB")
-        # @Jinhui 如果要fix image size?
+        # if fix image size?
         if getattr(self.data_args, "fix_image_size", None) is not None:
             image = image.resize(
                 self.data_args.fix_image_size,
@@ -328,10 +325,10 @@ class LazySupervisedDataset(Dataset):
             sources = [sources]
         assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
         video = None
-        if "images" in sources[0] and len(sources[0]["images"]): #@jinhui here is a bug, 只能在一开头加入 images?
+        if "images" in sources[0] and len(sources[0]["images"]):
             image_folder = self.list_data_dict[i]["data_path"]
             image_file = self.list_data_dict[i]["images"]
-            if isinstance(image_file, List): # TODO Jinhui 这里是官方代码，为什么要分两个分支？
+            if isinstance(image_file, List):
                 if len(image_file) > 1:
                     image_file = [
                         os.path.join(image_folder, file) for file in image_file
@@ -364,7 +361,7 @@ class LazySupervisedDataset(Dataset):
                 data_dict["input_ids"],
                 torch.stack(grid_thw, dim=0), # (1,16,16)
             )
-        elif "videos" in sources[0] and  len(sources[0]["videos"]): # 明显这里不支持 video / image 交错
+        elif "videos" in sources[0] and  len(sources[0]["videos"]):
             video_file = self.list_data_dict[i]["videos"]
             video_folder = self.list_data_dict[i]["data_path"]
             if isinstance(video_file, List):
@@ -401,8 +398,8 @@ class LazySupervisedDataset(Dataset):
                 video_grid_thw=torch.stack(grid_thw, dim=0),
                 second_per_grid_ts=second_per_grid_ts,
             )
-        else: # 这个是纯文本的分支， 但是目前要和 Qwen 官方对齐
-            grid_thw_merged = None #@ here is a bug --> qwen 官方已经更新了这个位置，需要找时间 mergin 一下
+        else: 
+            grid_thw_merged = None
             sources = copy.deepcopy([e["conversations"] for e in sources])
             data_dict = preprocess_qwen_2_visual(
                 sources, self.tokenizer, grid_thw=grid_thw_merged
@@ -420,8 +417,7 @@ class LazySupervisedDataset(Dataset):
                 labels=data_dict["labels"][0],
                 position_ids=position_ids,
             )
-        # here is a bug, can not process images in qwen2.5?
-        if "images" in self.list_data_dict[i]: # @ziqing: here is a bug
+        if "images" in self.list_data_dict[i]:
             data_dict["pixel_values"] = image
             data_dict["image_grid_thw"] = grid_thw
         # video exist in the data
@@ -429,7 +425,6 @@ class LazySupervisedDataset(Dataset):
             data_dict["pixel_values_videos"] = video
             data_dict["video_grid_thw"] = grid_thw
 
-        # 如果太长了，需要自己截断， 不要padding后截断
         max_len = self.tokenizer.max_len_single_sentence
         if data_dict["input_ids"].shape[0] > max_len:
             data_dict["input_ids"] = data_dict["input_ids"][:max_len]
@@ -464,7 +459,7 @@ class DataCollatorForSupervisedDataset(object):
             [instance[key] for instance in instances]
             for key in ("input_ids", "labels", "position_ids")
         )
-        input_ids = torch.nn.utils.rnn.pad_sequence( # 它没有考虑padding side 的问题 @Jinhui fix qwenvl bug
+        input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id, padding_side=self.tokenizer.padding_side
         )
         labels = torch.nn.utils.rnn.pad_sequence(
@@ -472,8 +467,7 @@ class DataCollatorForSupervisedDataset(object):
         )
         position_ids = pad_and_cat(position_ids)
         
-        # 修正截断逻辑 --> 不管是什么对齐， 都有想要在 右边截断
-        input_ids = input_ids[:, : self.tokenizer.model_max_length]  # 右对齐时保留左侧
+        input_ids = input_ids[:, : self.tokenizer.model_max_length]
         labels = labels[:, : self.tokenizer.model_max_length]
         position_ids = position_ids[..., :self.tokenizer.model_max_length] # 3,bs,length
     
@@ -630,18 +624,18 @@ def make_supervised_data_module(
     tokenizer: transformers.PreTrainedTokenizer, data_args
 ) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
-    # 加载训练数据集
+    # load training dataset
     train_dataset = LazySupervisedDataset(tokenizer=tokenizer, data_args=data_args)
     
-    # 加载验证数据集（如果指定了 eval 数据路径）
+    # load evaluation dataset (if specified eval dataset path)
     eval_dataset = None
     if hasattr(data_args, "eval_dataset") and data_args.eval_dataset:
         eval_data_args = copy.deepcopy(data_args)
         eval_data_args.dataset_use = data_args.eval_dataset
         eval_dataset = LazySupervisedDataset(tokenizer=tokenizer, data_args=eval_data_args)
     
-    # 根据是否需要 flatten 数据选择合适的 collator
-    if data_args.data_flatten: # TODO 这里是 将  Concatenate batch sequences， 建议取消掉， 带来的变化是 action 很难处理的
+    # select appropriate collator based on whether data needs to be flattened
+    if data_args.data_flatten:
         data_collator = FlattenedDataCollatorForSupervisedDataset(tokenizer=tokenizer)
     else:
         data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
@@ -659,7 +653,6 @@ def make_vlm_dataloader(cfg):
         cfg.framework.qwenvl.base_vlm,
         ).image_processor
 
-    #  @Jinhui TODO 后期要移除 和模型绑定的逻辑，直接用qwen_processor
     tokenizer = transformers.AutoTokenizer.from_pretrained( 
         cfg.framework.qwenvl.base_vlm,
         model_max_length=data_args.model_max_length,
@@ -667,14 +660,14 @@ def make_vlm_dataloader(cfg):
         use_fast=False,
     )
 
-    # 避免在dataset 内部处理这些
+    # avoid processing these in dataset
     image_processor.max_pixels = int(data_args.max_pixels)
     image_processor.min_pixels = int(data_args.min_pixels)
     image_processor.size["longest_edge"] = int(data_args.max_pixels)
     image_processor.size["shortest_edge"] = int(data_args.min_pixels)
     data_args.model_type = "qwen2.5vl"
     data_args_ns = SimpleNamespace(**OmegaConf.to_container(data_args, resolve=True))
-    data_args_ns.image_processor = image_processor # TODO 后期看如何 移除和模型绑定的逻辑                         
+    data_args_ns.image_processor = image_processor # TODO later remove the logic bound to model                         
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args_ns)
     
 
@@ -697,7 +690,7 @@ def make_vlm_dataloader(cfg):
 from transformers import AutoTokenizer, AutoProcessor
 
 if __name__ == "__main__":
-    # 每个文件要能够独立调试和测试
+    # each file should be able to be debugged and tested independently
 
     # data config
     # 
@@ -714,7 +707,6 @@ if __name__ == "__main__":
         cfg.framework.qwenvl.base_vlm,
         ).image_processor
 
-    #  @Jinhui TODO 后期要移除 和模型绑定的逻辑，直接用qwen_processor
     tokenizer = transformers.AutoTokenizer.from_pretrained( 
         cfg.framework.qwenvl.base_vlm,
         model_max_length=data_args.model_max_length,
@@ -722,14 +714,14 @@ if __name__ == "__main__":
         use_fast=False,
     )
 
-    # 避免在dataset 内部处理这些
+    # avoid processing these in dataset
     image_processor.max_pixels = data_args.max_pixels
     image_processor.min_pixels = data_args.min_pixels
     image_processor.size["longest_edge"] = data_args.max_pixels
     image_processor.size["shortest_edge"] = data_args.min_pixels
     data_args.model_type = "qwen2.5vl"
     data_args_ns = SimpleNamespace(**OmegaConf.to_container(data_args, resolve=True))
-    data_args_ns.image_processor = image_processor # TODO 后期看如何 移除和模型绑定的逻辑                         
+    data_args_ns.image_processor = image_processor # TODO later remove the logic bound to model                         
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args_ns)
     
     #
@@ -739,11 +731,11 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=cfg.datasets.vlm_data.per_device_batch_size,
-        collate_fn=data_collator, # TODO 这里或许可以有其他模式的  DataLoader 和 collate_fn 看是直接搬qwen 
-    ) # 不太好迁移， 里面涉及到和特殊的 mask 逻辑， 他能mask掉 prompt 的部分。
+        collate_fn=data_collator, 
+    )
     batchs = iter(train_dataloader)
     batch_samples = next(batchs) #for debug
-    # 跳过前 99 个 batch，获取第 100 个 batch
+    # skip the first 99 batches, get the 100th batch
     from itertools import islice
     # batch_samples = next(islice(batchs, 99, 100))
     count = 0

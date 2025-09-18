@@ -48,6 +48,11 @@ We have verified that this workflow runs successfully on both **NVIDIA A100** an
 
 ---
 
+## ⬇️ 0. Download Checkpoints
+First, download the checkpoints from [InternVLA-M1](https://huggingface.co/InternRobotics/InternVLA-M1)
+
+
+
 ## 📦 1. Environment Setup
 
 To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment.  

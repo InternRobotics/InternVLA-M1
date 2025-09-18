@@ -49,7 +49,7 @@ We have verified that this workflow runs successfully on both **NVIDIA A100** an
 ---
 
 ## ⬇️ 0. Download Checkpoints
-First, download the checkpoints from [[InternVLA-M1](https://huggingface.co/InternRobotics/InternVLA-M1)](https://huggingface.co/InternRobotics/InternVLA-M1-Pretrain-RT-1-Bridge)
+First, download the checkpoints from [[InternVLA-M1-Pretrain-RT-1-Bridge](https://huggingface.co/InternRobotics/InternVLA-M1-Pretrain-RT-1-Bridge)]
 
 
 

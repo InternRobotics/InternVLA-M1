@@ -8,9 +8,8 @@ from InternVLA.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, Le
 from InternVLA.dataloader.gr00t_lerobot.libero.mixtures import LIBERO_NAMED_MIXTURES
 
 def collate_fn(batch):
-    return batch # @TODO check 是方靖修改过么？
+    return batch
 
-# TODO dataset 逻辑需要放到这里？
 
 def make_LeRobotSingleDataset(
     data_root_dir: Path | str,
@@ -82,7 +81,6 @@ def get_vla_dataset(
 if __name__ == "__main__":
     data_root_dir = Path("/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Datasets/OXE_LEROBOT_DATASET")
     data_mix = "bridge" # bridge_rt_1
-    # TODO 为什么参数这么少？
     import debugpy
     debugpy.listen(("0.0.0.0", 10092))
     print("Waiting for client to attach 10092...")

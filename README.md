@@ -31,8 +31,7 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 |-------------|---------|------------------|------------------|--------|
 | pi0         | 27.1    | 54.8             | 58.8             | 94.2   |
 | gr00t       | 61.9    | 44.5             | 35.2             | 93.9   |
-| InterVLA-M1 |**71.7** |**76.0**          |**80.7**          |**95.9**|
-|             |         |                  |                  |        |
+| InternVLA-M1|**71.7** |**76.0**          |**80.7**          |**95.9**|
 
 
 
@@ -79,6 +78,10 @@ We will release a series of pretrained models and checkpoints to facilitate repr
 
 - Full list and download links: assets/MODEL_ZOO.md
 
+⚠️⚠️⚠️ **Note on Hugging Face availability**  
+Due to Hugging Face Hub storage restrictions, some model weights are not yet uploaded there.  
+This is a temporary limitation and not related to the training or upload scripts. We are in contact with Hugging Face to unlock more storage.  
+
 Status: rolling release. If you need early access or encounter broken links, please open an issue.
 
 # 🗺️ Roadmap
@@ -118,6 +121,7 @@ We thank the open-source community for their inspiring work. This project builds
 - [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-finetune/README.md): Multimodal input/output format, data loader, and pretrained VLM backbone.
 - [CogACT](https://github.com/microsoft/CogACT/tree/main/action_model): Reference for a DiT-style action head design.
 - [llavavla](https://github.com/JinhuiYE/llavavla): Baseline code structure and engineering design references.
+- [GenManip Simulation Platform](https://github.com/InternRobotics/GenManip): Simulation platform for generalizable pick-and-place based on Isaac Sim.
 
 
 Notes:

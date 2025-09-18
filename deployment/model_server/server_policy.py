@@ -3,12 +3,12 @@ import logging
 import socket
 
 # from hume.models import HumePolicy
-from tools.websocket_policy_server import WebsocketPolicyServer # TODO 考虑为什么要分开两个文件？是否可以合并？
+from tools.websocket_policy_server import WebsocketPolicyServer
 from tools.model_interface import QwenpiPolicyInterfence
 
 def main(args) -> None:
     
-    inferencer = QwenpiPolicyInterfence( # 去封装不同model的变化
+    inferencer = QwenpiPolicyInterfence(
         saved_model_path=args.ckpt_path,
         unnorm_key=args.unnorm_key,
         image_size=args.image_size,
@@ -23,14 +23,14 @@ def main(args) -> None:
 
     server = WebsocketPolicyServer(
         policy=inferencer,
-        host="0.0.0.0", # 表示监听任何外/内部访问
+        host="0.0.0.0", # represent listen any external/internal access
         port=args.port,
         metadata={},
     )
     logging.info("server running")
     server.serve_forever()
 
-# TODO 要和 tools 内部合并么？
+# TODO merge with tools inside?
 import argparse
 def build_argparser():
     parser = argparse.ArgumentParser()
@@ -50,7 +50,7 @@ def build_argparser():
 
 
 def start_debugpy_once():
-    """只启动一次 debugpy"""
+    """only start once debugpy"""
     import debugpy
     if getattr(start_debugpy_once, "_started", False):
         return

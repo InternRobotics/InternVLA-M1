@@ -1,11 +1,9 @@
 import re
 
 from pathlib import Path
-# 这里和 rlds 要放到不同文件夹， 避免互相混淆
-system2_root="/mnt/petrelfs/yejinhui/Projects/System2VLA" # TODO 如果这个位置需要 能够在cfg中指定应该怎么做？
+system2_root="/mnt/petrelfs/yejinhui/Projects/System2VLA"
 json_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/llava_format"
 image_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/visualData"
-# 新增数据集定义
 MAPQA_MATHV360K = {
     "annotation_path": f"{json_root}/MapQA_MathV360K.json",
     "data_path": f"{image_root}/",
@@ -43,12 +41,12 @@ VISUALWEBINSTRUCT_FILTERED = {
 
 MAGPIE_PRO_L3_80B_MT = {
     "annotation_path": f"{json_root}/magpie_pro_l3_80b_mt.json",
-    "data_path": "",  # 该数据集无 image
+    "data_path": "",
 }
 
 MAGPIE_PRO_L3_80B_ST = {
     "annotation_path": f"{json_root}/magpie_pro_l3_80b_st.json",
-    "data_path": "",  # 该数据集无 image
+    "data_path": "",
 }
 
 VISUAL7W_CCAULDRON_LLAVA = {
@@ -142,9 +140,7 @@ GENMANIP_vla_onlytgt_Kichen = {
 
 
 
-# 将所有数据集注册到 data_dict
 data_dict = {
-    # … 已有数据集 …
     "MapQA_MathV360K": MAPQA_MATHV360K,
     "aokvqa_cauldron_llava_format": AOKVQA_CCAULDRON_LLAVA,
     "sharegpt4v_coco": SHAREGPT4V_COCO,
@@ -156,7 +152,6 @@ data_dict = {
     "visualmrc_cauldron": VISUALMRC_CCAULDRON,
     "vsr_cauldron_llava_format": VSR_CCAULDRON_LLAVA,
 
-    # 仿真数据
     "GENMANIP_conception_train": GENMANIP_conception_train,
     "GENMANIP_vla_task_dropturn_train": GENMANIP_vla_task_dropturn_train,
     "GENMANIP_vla_task_one_train": GENMANIP_vla_task_one_train,
@@ -301,7 +296,7 @@ GENMANIP_vla_onlytgt_ObjectContainer = {
     "data_path": f"{genmanip_image_root}",
 }
 
-# 将这些新数据集注册到 data_dict
+# register new datasets to data_dict
 data_dict.update({
     "GENMANIP_vla_onetask_Banana": GENMANIP_vla_onetask_Banana,
     "GENMANIP_vla_onlytgt_Banana": GENMANIP_vla_onlytgt_Banana,
@@ -311,7 +306,7 @@ data_dict.update({
     "GENMANIP_vla_onlytgt_Sandwich": GENMANIP_vla_onlytgt_Sandwich,
 })
 
-# 将这些新数据集注册到 data_dict
+# register new datasets to data_dict
 data_dict.update({
     "GENMANIP_vla_onetask_AllAll": GENMANIP_vla_onetask_AllAll,
     "GENMANIP_vla_onlytgt_AllAll": GENMANIP_vla_onlytgt_AllAll,
@@ -345,7 +340,7 @@ GENMANIP_vla_task_dropturn_ObjectObject = {
     "data_path": f"{genmanip_image_root}",
 }
 
-# 将这些新数据集注册到 data_dict
+# register new datasets to data_dict
 data_dict.update({
     "GENMANIP_vla_onetask_ObjectObject": GENMANIP_vla_onetask_ObjectObject,
     "GENMANIP_vla_onlytgt_ObjectObject": GENMANIP_vla_onlytgt_ObjectObject,
@@ -358,7 +353,7 @@ data_dict.update({
 
 # V5
 
-# 注册新的 Genmanip_vlm_v5 数据集
+# register new Genmanip_vlm_v5 datasets
 
 genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v5"
 
@@ -419,7 +414,7 @@ GENMANIP_v5_kitchen_sandwich = {
     "data_path": f"{genmanip_kitchen_sandwich_root}",
 }
 
-# ——注册到 data_dict 中
+# register to data_dict
 data_dict.update({
     "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
     "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
@@ -435,7 +430,7 @@ data_dict.update({
 
 # V6
 
-# 注册新的 Genmanip_vlm_v5 数据集
+# register new Genmanip_vlm_v5 datasets
 
 genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v6"
 
@@ -496,7 +491,7 @@ GENMANIP_v5_kitchen_sandwich = {
     "data_path": f"{genmanip_kitchen_sandwich_root}",
 }
 
-# ——注册到 data_dict 中
+# register to data_dict
 data_dict.update({
     "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
     "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
@@ -605,7 +600,7 @@ vsr_en = {
     "data_path": f"{data_root}",
 }
 
-# —— 注册到 data_dict 中
+# register to data_dict
 data_dict.update({
     "asv2_conversation_en": asv2_conversation_en,
     "asv2_detailed_description_en": asv2_detailed_description_en,
@@ -647,8 +642,8 @@ data_dict.update({
     "GENMANIP_v7_r2s_task2_eval": GENMANIP_v7_r2s_task2_eval,
 })
 
-# 正式版本 system2 from @kun
-# 增加这些数据集到 data_dict
+# official version system2 from @kun
+# add these datasets to data_dict
 
 genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056_224"
 genmanip_sys2_14k_v2_image_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627"

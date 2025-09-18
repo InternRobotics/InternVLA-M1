@@ -11,7 +11,7 @@ input_txt = sys.argv[1]
 output_csv = sys.argv[2] if len(sys.argv) > 2 else "success_summary.csv"
 output_png = sys.argv[3] if len(sys.argv) > 3 else None
 
-# 更宽泛的 task 捕捉方式，兼容中划线
+# more broader task capture way, compatible with hyphen
 pattern = r"steps_(\d+)_pytorch_model_infer_(.+)-v0\.log\.run(\d+) → Average success: ([0-9.]+)"
 
 data = []
@@ -33,7 +33,7 @@ if df.empty:
     print("❌ No valid data found in input file.")
     sys.exit(1)
 
-# 聚合：对同一 step、task 的多 run 求平均
+# aggregate: average multiple runs for the same step and task
 avg_df = (
     df.groupby(['step', 'task'])['score']
     .mean()
@@ -41,14 +41,14 @@ avg_df = (
     .sort_index()
 )
 
-# 添加总平均列
+# add total average column
 avg_df['Average Across Tasks'] = avg_df.mean(axis=1)
 
-# 保存 CSV
+# save CSV
 avg_df.to_csv(output_csv)
 print(f"✅ CSV saved to {output_csv}")
 
-# 可视化
+# visualize
 if output_png:
     plt.figure(figsize=(10, 6))
     for column in avg_df.columns:

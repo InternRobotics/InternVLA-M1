@@ -118,8 +118,8 @@ class LeRobotSingleDataset(Dataset):
         video_backend: str = "decord",
         video_backend_kwargs: dict | None = None,
         transforms: ComposedModalityTransform | None = None,
-        augsteps: int = 0, # TODO gripper 变化的增加模式很奇特，不要做这样的，应该是分析 整条轨迹 然后对变化明显的地方进行aug
-        delte_pause_frame: bool = True, # 这个是要开起来的
+        augsteps: int = 0,
+        delte_pause_frame: bool = True,
         num_workers: int = 1,
         **kwargs: dict  # Additional keyword arguments for future extensibility
     ):
@@ -140,11 +140,9 @@ class LeRobotSingleDataset(Dataset):
         # first check if the path directory exists
         if not Path(dataset_path).exists():
             raise FileNotFoundError(f"Dataset path {dataset_path} does not exist")
-        # TODO 变成一个前处理函数，而不是对这个数据有用的
         self._is_gripper_aug = augsteps > 0
         self.augsteps = augsteps 
-        self.delte_pause_frame = delte_pause_frame # 如果不用delta 不是G了么？ 这里应该是个处理函数，去改变数据集的，而不是动态使用函数
-        # TODO 去搞明白这里的修改后，还怎么index example?
+        self.delte_pause_frame = delte_pause_frame
         self.modality_configs = modality_configs
         self.video_backend = video_backend
         self.video_backend_kwargs = video_backend_kwargs if video_backend_kwargs is not None else {}
@@ -155,7 +153,7 @@ class LeRobotSingleDataset(Dataset):
         self._dataset_path = Path(dataset_path)
         self._dataset_name = self._dataset_path.name
         if isinstance(embodiment_tag, EmbodimentTag):
-            self.tag = embodiment_tag.value # 这个很诡异
+            self.tag = embodiment_tag.value
         else:
             self.tag = embodiment_tag
 
@@ -173,8 +171,8 @@ class LeRobotSingleDataset(Dataset):
 
         self._trajectory_ids, self._trajectory_lengths = self._get_trajectories()
         self._modality_keys = self._get_modality_keys()
-        self._delta_indices = self._get_delta_indices() # @Jinhui 这个用来干什么的？
-        self._all_steps = self._get_all_steps(num_workers=num_workers) #  用这个来定义数据集的 index -> (eps_id, base_index) 的形式
+        self._delta_indices = self._get_delta_indices()
+        self._all_steps = self._get_all_steps(num_workers=num_workers)
         self.set_transforms_metadata(self.metadata)
         self.set_epoch(0)
 
@@ -195,7 +193,7 @@ class LeRobotSingleDataset(Dataset):
         return self._metadata
 
     @property
-    def trajectory_ids(self) -> np.ndarray: # 你为什么非的这样子呢？多调一次？
+    def trajectory_ids(self) -> np.ndarray:
         """The trajectory IDs in the dataset, stored as a 1D numpy array of strings."""
         return self._trajectory_ids
 
@@ -287,7 +285,6 @@ class LeRobotSingleDataset(Dataset):
         assert (
             modality_meta_path.exists()
         ), f"Please provide a {LE_ROBOT_MODALITY_FILENAME} file in {self.dataset_path}"
-        # @JinhuiYE TODO 这个文件是groot 定义了 他的 data_config 和 数据集中间的关系，它在和原始数据meta 中间增加了一层 （TODO 我感觉有点多余）--》 其实是将code 变化转移到config 但是这里并没有切干净，导致code 中还需要coding --> 但是人家加了肯定是有道理的
         # 1.1. State and action modalities
         simplified_modality_meta: dict[str, dict] = {}
         with open(modality_meta_path, "r") as f:
@@ -462,20 +459,19 @@ class LeRobotSingleDataset(Dataset):
         except Exception as e:
             print(f"Failed to cache steps: {e}")
         
-        return all_steps # 这里不应该是这样的， 这里应该是提前算好 一个list 之后就不要随机读取了，因为我的epoch很小， 不会多次重复的
+        return all_steps 
 
     def _get_steps_config_key(self) -> str:
         """Generate a configuration key for steps caching."""
-        config_dict = { # 一定要面向对象，不能面向参数
+        config_dict = {
             "delte_pause_frame": self.delte_pause_frame,
             "augsteps": self.augsteps, #
-            "dataset_name": self.dataset_name,  # 添加数据集名称
-            # 可以根据需要添加更多配置项
+            "dataset_name": self.dataset_name,
             # "modality_keys": sorted([str(k) for k in self._get_modality_keys().items()]),
         }
         # Create a hash of the configuration
         config_str = str(sorted(config_dict.items()))
-        return hashlib.md5(config_str.encode()).hexdigest()[:12]  # 使用12位短hash避免文件名过长
+        return hashlib.md5(config_str.encode()).hexdigest()[:12]
 
     def _get_all_steps_multiprocess(self, num_workers: int) -> list[tuple[int, int]]:
         """Compute all steps using multiprocessing."""
@@ -561,9 +557,9 @@ class LeRobotSingleDataset(Dataset):
             if not trajectory_skipped:
                 processed_trajectories += 1
             
-            if self.delte_pause_frame: # V1 版本只做这个修正
+            if self.delte_pause_frame:
                 # Get position and gripper fields based on available columns
-                delta_position_values, gripper_values = self._get_position_and_gripper_values(data) # 这个很危险， 如果就是要停止呢？
+                delta_position_values, gripper_values = self._get_position_and_gripper_values(data)
                 previous_gripper = gripper_values[0]
                 for base_index in range(trajectory_length):
                     if base_index >= len(delta_position_values) or base_index >= len(gripper_values):
@@ -579,8 +575,8 @@ class LeRobotSingleDataset(Dataset):
                 for base_index in range(trajectory_length):
                     all_steps.append((trajectory_id, base_index))
                     
-            # Gripper augmentation logic - 与单进程版本保持一致
-            if self._is_gripper_aug and self.augsteps > 0: # 🙅不要做这个增加，没必要
+            # Gripper augmentation logic
+            if self._is_gripper_aug and self.augsteps > 0:
                 change_indices = set()
                 values = []
                 action_keys = self.modality_keys.get('action', [])
@@ -589,7 +585,7 @@ class LeRobotSingleDataset(Dataset):
                         subkey = key.split('.')[1]
                     else:
                         subkey = key
-                    if 'gripper_close' == subkey or 'gripper' == subkey: # 也不应该是针对它来做
+                    if 'gripper_close' == subkey or 'gripper' == subkey:
                         if hasattr(self.lerobot_modality_meta, 'action'):
                             le_state_or_action_cfg = self.lerobot_modality_meta.action
                             if subkey in le_state_or_action_cfg:
@@ -605,7 +601,7 @@ class LeRobotSingleDataset(Dataset):
                         flag = [values[j][i] == values[j][i + 1] == values[j][i + 2] for j in range(len(values))]
                         if False in flag:
                             change_indices.update((i, i + 1, i + 2))
-                    # 窗口增广：左右各 augsteps，且每个位置只加一次
+                    # window augmentation: left and right augsteps, and each position only added once
                     augmented_positions = set()
                     radius = int(self.augsteps)
                     for change_index in change_indices:
@@ -641,7 +637,7 @@ class LeRobotSingleDataset(Dataset):
 
     def _get_delta_indices(self) -> dict[str, np.ndarray]:
         """Restructure the delta indices to use modality.key as keys instead of just the modalities."""
-        delta_indices: dict[str, np.ndarray] = {} # @TODO  @check 这里的逻辑是什么？
+        delta_indices: dict[str, np.ndarray] = {}
         for config in self.modality_configs.values():
             for key in config.modality_keys:
                 delta_indices[key] = np.array(config.delta_indices)
@@ -746,7 +742,6 @@ class LeRobotSingleDataset(Dataset):
             action.append(data[action_key])
         action = np.concatenate(action, axis=1)
         # print(action.shape)
-        # @TODO 这里和 mixture 也有互拆性
         return dict(action=action, image=[image_0], language=[language])
 
     def get_step_data(self, trajectory_id: int, base_index: int) -> dict:
@@ -1260,8 +1255,6 @@ class MixtureSpecElement(BaseModel):
     )
 
 
-# 在文件顶部添加统计相关的辅助函数
-
 def combine_modality_stats(modality_stats: dict) -> dict:
     """
     Combine statistics from all sub-keys under a modality.
@@ -1475,9 +1468,9 @@ class LeRobotMixtureDataset(Dataset):
         dataset_index = rng.choice(len(self.datasets), p=self.dataset_sampling_weights)
         dataset = self.datasets[dataset_index]
 
-        single_step_index = rng.choice(len(dataset.all_steps)) # TODO 不要random try? 而是打乱一下？
+        single_step_index = rng.choice(len(dataset.all_steps))
         trajectory_id, base_index = dataset.all_steps[single_step_index]
-        return dataset, trajectory_id, base_index # TODO 要check base_index 是否对上了
+        return dataset, trajectory_id, base_index
 
     def __getitem__(self, index: int) -> dict:
         """Get the data for a single trajectory and start index.
@@ -1496,15 +1489,15 @@ class LeRobotMixtureDataset(Dataset):
                 dataset, trajectory_name, step = self.sample_step(index)
                 data = dataset.transforms(dataset.get_step_data(trajectory_name, step))
                 image_0 = data[dataset.modality_keys["video"][0]][0]
-                image_0 = Image.fromarray(image_0).resize((224, 224)) # 变成config 控制
+                image_0 = Image.fromarray(image_0).resize((224, 224))
                 # image_1 = data[dataset.modality_keys["video"][1]][0]
-                # image_1 = Image.fromarray(image_1).resize((224, 224)) # TODO 后面参数话掉
+                # image_1 = Image.fromarray(image_1).resize((224, 224))
                 language = data[dataset.modality_keys["language"][0]][0]
                 action = []
                 for action_key in dataset.modality_keys["action"]:
                     action.append(data[action_key])
                 action = np.concatenate(action, axis=1).astype(np.float16)
-                # image = [image_0, image_1] # TODO 实现参数控制 --> 和 config 对齐
+                # image = [image_0, image_1]
                 input_obs = [image_0]
                 return dict(action=action, image=input_obs, lang=language)
                 
@@ -1834,11 +1827,11 @@ class LeRobotMixtureDataset(Dataset):
         print(f"Used state keys (reordered): {list(all_used_state_keys)}")
 
     def _combine_modality_stats(self, modality_stats: dict) -> dict:
-        """向后兼容的包装器."""
+        """ backward compatibility wrapper."""
         return combine_modality_stats(modality_stats)
 
     def _generate_action_mask_for_used_keys(self, action_modalities: dict, used_action_keys_ordered) -> list[bool]:
-        """向后兼容的包装器."""
+        """backward compatibility wrapper."""
         return generate_action_mask_for_used_keys(action_modalities, used_action_keys_ordered)
 
     def _get_dataset_counts(self, tag: str) -> dict:
@@ -1970,11 +1963,9 @@ def _process_single_trajectory_with_language_check(args: Tuple) -> List[Tuple[in
         # Check language instruction if language modality is configured
         if has_language_modality and language_key:
             try:
-                # # 复制 get_language 方法的逻辑
                 # assert language_key.startswith("annotation."), f"Language key must start with 'annotation.', got {language_key}"
                 # subkey = language_key.replace("annotation.", "")
                 
-                # # 获取 annotation metadata (需要从 lerobot_modality_meta 中获取)
                 # annotation_meta = lerobot_modality_meta.annotation
                 # if annotation_meta is None or subkey not in annotation_meta:
                 #     return []  # No annotation metadata found
@@ -1984,15 +1975,13 @@ def _process_single_trajectory_with_language_check(args: Tuple) -> List[Tuple[in
                 # if original_key is None:
                 #     original_key = language_key
                 
-                # # 获取 task indices (base_index=0 对应单进程版本的逻辑)
                 # if original_key not in data.columns:
                 #     return []  # Original key not found in data
                 
-                # task_index = data[original_key].iloc[0]  # 对应 base_index=0
+                # task_index = data[original_key].iloc[0]
                 # if pd.isna(task_index) or task_index == "":
                 #     return []  # Empty task index
                 
-                # # 从 tasks DataFrame 获取实际的语言指令
                 # if not hasattr(tasks, 'loc') or task_index not in tasks.index:
                 #     return []  # Task index not found
                 
@@ -2027,12 +2016,11 @@ def _process_single_trajectory_with_language_check(args: Tuple) -> List[Tuple[in
             for base_index in range(trajectory_length):
                 all_steps.append((trajectory_id, base_index))
                     
-        # Gripper augmentation logic - 与单进程版本保持一致
+        # Gripper augmentation logic
         if is_gripper_aug and augsteps > 0:
             change_indices = set()
             values = []
             
-            # 获取action keys
             action_keys = modality_keys.get('action', [])
             for key in action_keys:
                 if '.' in key:
@@ -2041,7 +2029,6 @@ def _process_single_trajectory_with_language_check(args: Tuple) -> List[Tuple[in
                     subkey = key
                     
                 if 'gripper_close' == subkey or 'gripper' == subkey:
-                    # 使用lerobot_modality_meta获取gripper数据
                     if hasattr(lerobot_modality_meta, 'action'):
                         le_state_or_action_cfg = lerobot_modality_meta.action
                         if subkey in le_state_or_action_cfg:
@@ -2061,7 +2048,7 @@ def _process_single_trajectory_with_language_check(args: Tuple) -> List[Tuple[in
                     for i in range(augsteps):
                         all_steps.append((trajectory_id, max(change_index - 15, 0)))
             else:
-                # 与单进程版本保持一致的消息
+                # same message as single process version
                 print(f"No action-gripper data found for trajectory {trajectory_id}. Skipping augmentation.")
                         
     except Exception as e:

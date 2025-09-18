@@ -29,7 +29,7 @@ accelerate launch \
   --config_file scripts/run_scripts/deepspeed_zero2.yaml \
   --num_processes 8 \
   InternVLA/training/train_qwenvla.py \
-  --config_yaml ./InternVLA/config/training/qwenvla_cotrain_oxe.yaml \
+  --config_yaml ./InternVLA/config/training/internvla_cotrain_oxe.yaml \
   --framework.framework_py ${Framework_name} \
   --framework.qwenvl.base_vlm ${base_vlm} \
   --datasets.vla_data.per_device_batch_size 16 \

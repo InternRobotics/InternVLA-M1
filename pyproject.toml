@@ -46,21 +46,21 @@ sagemaker = [
 [tool.setuptools.packages.find]
 where = ["."]
 exclude = [
-    "tests",         # 测试目录
-    "cache",         # 缓存目录
+    "tests",         # test directory
+    "cache",         # cache directory
     "playground",
-    "results",       # 结果文件夹
-    "checkpoints",   # 模型检查点
-    "scripts",       # 脚本目录
-    "eval",          # 评估相关目录
-    ".vscode",       # VS Code 配置目录
-    "*.egg-info",    # egg-info 元数据目录
-    "**.log",         # 日志文件
-    "*.tmp",         # 临时文件
-    "*.bak",         # 备份文件
-    "**__pycache__**",   # Python 缓存目录
-    "*.pyc",         # 编译后的 Python 文件
-    "*.pyo",          # 优化后的 Python 文件
+    "results",       # result directory
+    "checkpoints",   # model checkpoint
+    "scripts",       # script directory
+    "eval",          # evaluation related directory
+    ".vscode",       # VS Code configuration directory
+    "*.egg-info",    # egg-info metadata directory
+    "**.log",         # log file
+    "*.tmp",         # temporary file
+    "*.bak",         # backup file
+    "**__pycache__**",   # Python cache directory
+    "*.pyc",         # compiled Python file
+    "*.pyo",          # optimized Python file
     "**bar**",
     "InternVLA/config",
 

@@ -48,6 +48,11 @@ We have verified that this workflow runs successfully on both **NVIDIA A100** an
 
 ---
 
+## ⬇️ 0. Download Checkpoints
+First, download the checkpoints from [InternVLA-M1](https://huggingface.co/InternRobotics/InternVLA-M1)
+
+
+
 ## 📦 1. Environment Setup
 
 To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment.  
@@ -78,11 +83,11 @@ The evaluation should be run **from the repository root** using **two separate t
 In the first terminal, activate the `internvla_m1` conda environment and run:  
 
 ```bash
-bash examples/Eval_simplenv_clean/start_server.sh
+bash examples/simplerEnv/start_server.sh
 ```
 
 ⚠️ **Note:** Please ensure that you specify the correct checkpoint path in  
-`examples/Eval_simplenv_clean/start_server.sh`  
+`examples/simplerEnv/start_server.sh`  
 
 
 ---
@@ -93,9 +98,9 @@ In the second terminal, activate the `simpler_env` conda environment and run:
 
 ```bash
 export PYTHONPATH=$(pwd):$PYTHONPATH
-bash examples/Eval_simplenv_clean/start_simpler_env.sh
+bash examples/simplerEnv/start_simpler_env.sh
 ```
 This script will automatically launch the WidowX Robot evaluation tasks, reproducing the benchmark results reported above.
 
 ⚠️ **Note:** Please ensure that you specify the correct rgb_overlay_path in  
-`examples/Eval_simplenv_clean/start_simpler_env.sh`  
+`examples/simplerEnv/start_simpler_env.sh`  

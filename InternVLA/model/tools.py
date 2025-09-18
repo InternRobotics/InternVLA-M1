@@ -6,14 +6,14 @@ TODO  waiting to move # 全部tools 应该是要在一个位置的
 
 def auto_get_module_keys(module, max_depth=0, prefix_list=None, current_depth=0, current_prefix=''):
     """
-    获取模块的所有子模块键，支持设置递归深度和前缀列表。
+    get all submodule keys of a module, support setting recursion depth and prefix list.
 
-    :param module: 要遍历的PyTorch模块。
-    :param max_depth: 最大递归深度，默认为1。
-    :param prefix_list: 仅包含指定前缀的模块，默认为None表示不限制。
-    :param current_depth: 当前递归深度，内部使用。
-    :param current_prefix: 当前前缀，内部使用。
-    :return: 模块键的列表。
+    :param module: the module to traverse.
+    :param max_depth: the maximum recursion depth, default is 1.
+    :param prefix_list: only include modules with specified prefix, default is None means no restriction.
+    :param current_depth: the current recursion depth, internal use.
+    :param current_prefix: the current prefix, internal use.
+    :return: the list of module keys.
     """
     if current_depth > max_depth:
         return []
@@ -31,33 +31,33 @@ import torch.nn as nn
 
 def is_module_trainable(module):
     """
-    判断一个模块是否可训练：如果模块本身有参数，则要求其所有参数 require_grad 为 True；
-    如果模块没有直接参数，则认为其是否可训练依赖于子模块。
+    check if a module is trainable: if the module itself has parameters, then all its parameters require_grad must be True;
+    if the module itself has no parameters, then its trainability depends on its submodules.
     """
     params = list(module.parameters(recurse=False))
     if params:
         return all(p.requires_grad for p in params)
     else:
-        # 对于没有直接参数的容器模块，视为可训练（最终结果取决于其子模块）
+        # for container modules with no direct parameters, consider them trainable (the final result depends on their submodules)
         return True
 
 def auto_get_trainable_modules(module, prefix='', max_depth=None):
     """
-    递归遍历模块，返回所有可训练模块的名称列表。
-    如果一个模块的所有子模块都是可训练的，则只返回父模块的名称，不再递归输出其各个子模块名称。
+    recursively traverse the module, return the list of all trainable module names.
+    if all submodules of a module are trainable, then only return the name of the parent module, no longer recursively output the names of its submodules.
     
-    参数：
-      - module: 需要遍历的模块。
-      - prefix: 当前模块的名称前缀（内部使用）。
-      - max_depth: 最大递归深度，None 表示无限递归。
+    parameters:
+      - module: the module to traverse.
+      - prefix: the name prefix of the current module (internal use).
+      - max_depth: the maximum recursion depth, None means infinite recursion.
       
-    返回：
-      一个模块名称的列表。
+    return:
+      a list of module names.
     """
-    # 获取当前模块的所有直接子模块
+    # get all direct submodules of the current module
     children = list(module.named_children())
     
-    # 如果达到最大深度或没有子模块，则返回当前模块（如果可训练且prefix非空）
+    # if the maximum depth is reached or there are no submodules, return the current module (if trainable and prefix is not empty)
     if (max_depth is not None and max_depth <= 0) or not children:
         return [prefix] if prefix and is_module_trainable(module) else []
     
@@ -65,21 +65,21 @@ def auto_get_trainable_modules(module, prefix='', max_depth=None):
     all_children_trainable = True
     for name, child in children:
         full_name = f"{prefix}.{name}" if prefix else name
-        # 递归获取子模块的可训练键
+        # recursively get the trainable keys of the submodules
         keys = auto_get_trainable_modules(child, full_name, None if max_depth is None else max_depth - 1)
         if not keys:
-            # 如果子模块没有进一步的子模块返回，则检查子模块自身
+            # if the submodule does not return any further submodules, check the submodule itself
             if is_module_trainable(child):
                 keys = [full_name]
             else:
                 all_children_trainable = False
         else:
-            # 如果子模块返回了多个名称，则说明未能合并
+            # if the submodule returns multiple names, it means that it cannot be merged
             if len(keys) > 1:
                 all_children_trainable = False
         child_keys.extend(keys)
     
-    # 如果当前模块可训练且所有子模块都可训练，则返回当前模块名称
+    # if the current module is trainable and all submodules are trainable, return the name of the current module
     if is_module_trainable(module) and all_children_trainable and child_keys:
         return [prefix] if prefix else child_keys
     else:
@@ -89,33 +89,33 @@ def auto_get_trainable_modules(module, prefix='', max_depth=None):
 
 def print_freeze_status(self):
     """
-    对每个顶层子模块，只要其所有参数都是同一状态（全冻结或全可训练），就只打印顶层模块。
-    如果某个顶层子模块内部参数状态混合（部分冻结、部分可训练），则列出该子模块下每个参数的状态。
+    for each top-level submodule, if all its parameters are in the same state (all frozen or all trainable), only print the top-level module.
+    if some top-level submodule has mixed parameter states (some frozen, some trainable), list the state of each parameter under the submodule.
     """
     from collections import defaultdict
 
-    # 收集每个顶层模块下参数的状态
+    # collect the state of parameters under each top-level module
     status_dict = defaultdict(lambda: {"Frozen": 0, "Trainable": 0, "params": []})
     for full_name, param in self.named_parameters():
-        # full_name 形如 "qwen_vl_interface.model.layer.weight"
-        top_module = full_name.split(".", 1)[0]  # 取顶层模块名
+        # full_name is like "qwen_vl_interface.model.layer.weight"
+        top_module = full_name.split(".", 1)[0]  # get the top-level module name
         state = "Frozen" if not param.requires_grad else "Trainable"
         status_dict[top_module]["params"].append((full_name, state))
         status_dict[top_module][state] += 1
 
-    print("=== 模块参数冻结情况 ===")
+    print("=== module parameter freezing status ===")
     for top_module, info in status_dict.items():
         frozen_count = info["Frozen"]
         trainable_count = info["Trainable"]
 
         if frozen_count > 0 and trainable_count == 0:
-            # 全部冻结
+            # all frozen
             print(f"{top_module:40s}  |  全部 Frozen ({frozen_count} 参数)")
         elif trainable_count > 0 and frozen_count == 0:
-            # 全部可训练
+            # all trainable
             print(f"{top_module:40s}  |  全部 Trainable ({trainable_count} 参数)")
         else:
-            # 状态混合，先打印模块名概况，再列出每个参数
+            # mixed state, first print the module name summary, then list the state of each parameter
             print(f"{top_module:40s}  |  混合状态 → Frozen: {frozen_count}, Trainable: {trainable_count}")
             for pname, pstate in info["params"]:
                 print(f"    {pname:60s}  |  {pstate}")

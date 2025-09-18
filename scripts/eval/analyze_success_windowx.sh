@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 用法: ./analyze_success_all.sh <log_dir> <output_dir> [true|false]
+# usage: ./analyze_success_all.sh <log_dir> <output_dir> [true|false]
 LOG_DIR="$1/checkpoints"
 OUT_DIR="$1/success_summary"
 mkdir -p "$OUT_DIR"
@@ -10,7 +10,7 @@ RAW_TXT="$OUT_DIR/raw_success.txt"
 CSV_OUT="$OUT_DIR/success_summary.csv"
 PNG_OUT="$OUT_DIR/success_plot.png"
 
-# 检查输入
+# check input
 if [ -z "$LOG_DIR" ] || [ -z "$OUT_DIR" ]; then
   echo "Usage: $0 <log_directory> <output_directory> [true|false]"
   exit 1
@@ -20,7 +20,7 @@ mkdir -p "$OUT_DIR"
 echo "📁 Logs: $LOG_DIR"
 echo "📤 Output: $OUT_DIR"
 
-Step 1: 提取成功率日志
+# Step 1: extract success rate logs
 echo "🔍 Extracting success scores..."
 OUTPUT=""
 for file in "$LOG_DIR"/*.log.*; do
@@ -40,10 +40,10 @@ for file in "$LOG_DIR"/*.log.*; do
   fi
 done
 
-# ✅ 保存日志到 TXT 文件（修复关键点）
+# ✅ save logs to TXT file (fix key points)
 echo "$OUTPUT" > "$RAW_TXT"
 
 export PYTHON_SCRIPT="/mnt/petrelfs/yejinhui/Projects/llavavla/scripts/eval/vis_results_windox.py"
-# Step 3: 执行 Python 分析脚本
+# Step 3: execute Python analysis script
 echo "🐍 Running Python analysis..."
 python3 "$PYTHON_SCRIPT" "$RAW_TXT" "$CSV_OUT" "$PNG_OUT"

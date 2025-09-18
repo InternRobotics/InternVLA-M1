@@ -73,11 +73,11 @@ class DINOv2BackBone(nn.Module):
         else:
             raise NotImplementedError(f"DINOv2 backbone {backone_name} not implemented")
         self.dino_transform = transforms.Compose([
-            transforms.Resize(224),  # 调整尺寸 #@DEBUG 发现动态resize会导致问题
+            transforms.Resize(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
-        # self.dino_transform = make_classification_train_transform() ##DEBUG --> 不应该做 动态的resize?
+        # self.dino_transform = make_classification_train_transform()
     # @torch.no_grad()
     def forward(self, tensor):
         """
@@ -106,9 +106,8 @@ class DINOv2BackBone(nn.Module):
         """
         # img_list: is a list of [PIL], each representing multi views of the same example.
         # refer to https://github.com/facebookresearch/dinov2/blob/main/dinov2/data/transforms.py
-        # 定义完整的预处理（包括归一化）
 
-        # 使用线程池并行处理每个视图
+        # use thread pool to parallel process each view
         with ThreadPoolExecutor() as executor:
             image_tensors = torch.stack([
                 torch.stack(list(executor.map(lambda view: apply_transform(view, self.dino_transform), views)))
@@ -116,7 +115,7 @@ class DINOv2BackBone(nn.Module):
             ])
 
 
-        # 将张量移动到 DINO 编码器的设备
+        # move the tensor to the device of DINO encoder
         B, num_view, C, H, W = image_tensors.shape
         image_tensors = image_tensors.view(B * num_view, C, H, W)
         device = next(self.parameters()).device

@@ -1209,8 +1209,8 @@ class SinglePandaHandDataConfig:
 
 ###########################################################################################
 
-class Libero4in1DataConfig: #@Yioutpi @JinhuiYE TODO 感觉上这里的配置和 datameta 中纯在重复的问题 --> 如果是，建议只保存数据内部一份， 然后config 去使用
-    video_keys = [ # 这个对齐的是 info.json? --> 不应该是和 modality 对齐么？ 想法是 raw data 是大于 modality 当前使用的 --> TODO 还是感觉可以不用 modality
+class Libero4in1DataConfig:
+    video_keys = [
         "video.primary_image",
         "video.wrist_image",
     ]
@@ -1238,7 +1238,7 @@ class Libero4in1DataConfig: #@Yioutpi @JinhuiYE TODO 感觉上这里的配置和
     language_keys = ["annotation.human.action.task_description"]
 
     observation_indices = [0]
-    action_indices = list(range(16)) # 这个是？ @Yioutpi
+    action_indices = list(range(16))
 
     def modality_config(self):
         video_modality = ModalityConfig(
@@ -1266,7 +1266,7 @@ class Libero4in1DataConfig: #@Yioutpi @JinhuiYE TODO 感觉上这里的配置和
         return modality_configs
 
     def transform(self):
-        transforms = [ # TODO 我们不对内容做任何模型相关的 transform ， 但是这里要做 aug 相关的transform
+        transforms = [
             # video transforms
             # VideoToTensor(apply_to=self.video_keys),
             # VideoCrop(apply_to=self.video_keys, scale=0.95),
@@ -1314,7 +1314,7 @@ class Libero4in1DataConfig: #@Yioutpi @JinhuiYE TODO 感觉上这里的配置和
             #     # state_concat_order=self.state_keys,
             #     action_concat_order=self.action_keys,
             # ),
-            # GR00TTransform( #@TODO  为什么这个不做？
+            # GR00TTransform(
             #     state_horizon=len(self.observation_indices),
             #     action_horizon=len(self.action_indices),
             #     max_state_dim=64,

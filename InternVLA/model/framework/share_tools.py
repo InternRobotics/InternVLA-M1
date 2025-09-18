@@ -25,7 +25,6 @@ from PIL import Image
 import re
 from omegaconf import OmegaConf
 from types import SimpleNamespace
-from omegaconf import OmegaConf
 import inspect
 import functools
 from typing import Any
@@ -277,16 +276,19 @@ def read_mode_config(pretrained_checkpoint):
         run_dir = checkpoint_pt.parents[1]
 
         # Get paths for `config.json`, `dataset_statistics.json` and pretrained checkpoint
-        config_json, dataset_statistics_json = run_dir / "config.json", run_dir / "dataset_statistics.json"
-        assert config_json.exists(), f"Missing `config.json` for `{run_dir = }`"
+        config_yaml, dataset_statistics_json = run_dir / "config.yaml", run_dir / "dataset_statistics.json"
+        assert config_yaml.exists(), f"Missing `config.yaml` for `{run_dir = }`"
         assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir = }`"
 
     # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
 
         # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
-        with open(config_json, "r") as f:
-            vla_cfg = json.load(f) #["vla"]
-            # model_cfg = ModelConfig.get_choice_class(vla_cfg["base_vlm"])() #@TODO check 我觉得其实不重要，
+        try:
+            ocfg = OmegaConf.load(str(config_yaml))
+            global_cfg = OmegaConf.to_container(ocfg, resolve=True)
+        except Exception as e:
+            overwatch.error(f"❌ Failed to load YAML config `{config_yaml}`: {e}")
+            raise
 
         # Load Dataset Statistics for Action Denormalization
         with open(dataset_statistics_json, "r") as f:
@@ -294,4 +296,4 @@ def read_mode_config(pretrained_checkpoint):
     else:
         overwatch.error(f"❌ Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
         raise FileNotFoundError(f"Pretrained checkpoint `{pretrained_checkpoint}` does not exist.")
-    return vla_cfg, norm_stats
+    return global_cfg, norm_stats

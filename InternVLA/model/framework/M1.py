@@ -14,6 +14,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 from PIL import Image
+from qwen_vl_utils import process_vision_info
+
+
 
 from InternVLA.training.trainer_utils import initialize_overwatch
 logger = initialize_overwatch(__name__)
@@ -265,7 +268,64 @@ class InternVLA_M1(baseframework):
 
         return  {"normalized_actions": normalized_actions} # [B, T, action_dim]
 
+    @torch.inference_mode()
+    def chat_with_M1(
+        self,
+        image: Image.Image,
+        text: str,
+        max_new_tokens: int = 128,
+        device: Optional[str] = "cuda",
+    ) -> List[str]:
+        """
+        批量对话推理：输入 batched messages（每项为一段对话列表），返回各自文本答案。
+        """
+        processor = getattr(self.qwen_vl_interface, "processor", None)
+        model = getattr(self.qwen_vl_interface, "model", None)
+        # if processor is None or model is None:
+        #     raise RuntimeError("qwen_vl_interface 缺少 processor 或 model。")
 
+        messages0 = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "image": image,
+                    },
+                    {"type": "text", "text": text},
+                ],
+            }
+        ]
+
+
+
+        messages = [messages0]
+        # text info
+        texts = [
+            processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            for msg in messages
+        ]
+        # visual info
+        image_inputs, video_inputs = process_vision_info(messages)
+
+        # tokenizer
+        inputs = processor(
+            text=texts,
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(device)
+
+        model.eval()
+        generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        outputs = processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
+        return outputs
 
 def build_model_framework(config: dict = {}) -> InternVLA_M1:
     """
@@ -291,13 +351,18 @@ if __name__ == "__main__":
     print("🔍 Rank 0 waiting for debugger attach on port 10092...")
     debugpy.wait_for_client() 
 
-    config_yaml = "InternVLA/config/lerobot_data/qwenvla_cotrain_oxe.yaml"
+    config_yaml = "InternVLA/config/training/internvla_cotrain_oxe.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     # try get model
     model = build_model_framework(cfg)
     print(model)
 
+    # 
+    model_path="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0906_bestvla_retrain_sota2/checkpoints/steps_50000_pytorch_model.pt"
+    state_dict = torch.load(model_path, map_location="cpu")
+
+    model.load_state_dict(state_dict, strict=True)
     # try forward model
     # can be fake sample， but here get from dataloader for simpler
 

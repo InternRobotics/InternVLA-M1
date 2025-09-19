@@ -1,9 +1,9 @@
-run_id: qwenact
+run_id: internvla_cotrain_custom
 run_root_dir: results/Checkpoints
 seed: 42
 trackers: [jsonl, wandb]
-wandb_entity: jinhuiye
-wandb_project: llavavla
+wandb_entity: WANDB_ENTITY
+wandb_project: WANDB_PROJECT
 is_debug: false
 
 framework:

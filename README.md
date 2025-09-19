@@ -150,21 +150,24 @@ We provide several end-to-end examples for reference:
   [Example](examples/extending_m1/README.md)
 
 ## 📈 Model Zoo
-We will release a series of pretrained models and checkpoints to facilitate reproduction and downstream use.
+We release a series of pretrained models and checkpoints to facilitate reproduction and downstream use.
 
-- Full list and download links: assets/MODEL_ZOO.md
+### ✅ Available Checkpoints
 
-⚠️⚠️⚠️ **Note on Hugging Face availability**  
-Due to Hugging Face Hub storage restrictions, some model weights are not yet uploaded there.  
-This is a temporary limitation and not related to the training or upload scripts. We are in contact with Hugging Face to unlock more storage.  
-
-Status: rolling release. If you need early access or encounter broken links, please open an issue.
+| Model | Description | Link |
+|-------|-------------|------|
+| **InternVLA-M1** | Main pretrained model | [🤗 Hugging Face](https://huggingface.co/InternRobotics/InternVLA-M1) |
+| **InternVLA-M1-Pretrain-RT-1-Bridge** | Pretraining on RT-1 Bridge data | [🤗 Hugging Face](https://huggingface.co/InternRobotics/InternVLA-M1-Pretrain-RT-1-Bridge) |
+| **InternVLA-M1-LIBERO-Long** | Fine-tuned on LIBERO Long-horizon tasks | [🤗 Hugging Face](https://huggingface.co/InternRobotics/InternVLA-M1-LIBERO-Long) |
+| **InternVLA-M1-LIBERO-Goal** | Fine-tuned on LIBERO Goal-conditioned tasks | [🤗 Hugging Face](https://huggingface.co/InternRobotics/InternVLA-M1-LIBERO-Goal) |
+| **InternVLA-M1-LIBERO-Spatial** | Fine-tuned on LIBERO Spatial reasoning tasks | [🤗 Hugging Face](https://huggingface.co/InternRobotics/InternVLA-M1-LIBERO-Spatial) |
+| **InternVLA-M1-LIBERO-Object** | Fine-tuned on LIBERO Object-centric tasks | [🤗 Hugging Face](https://huggingface.co/InternRobotics/InternVLA-M1-LIBERO-Object) |
 
 
 
 # 🗺️ Roadmap
 
-* [x] Release model weights
+* [✅] Release model weights
 * [ ] Add multi-task mixed training examples
 * [ ] Unify evaluation scripts and metrics
 

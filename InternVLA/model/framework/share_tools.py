@@ -30,15 +30,14 @@ import functools
 from typing import Any
 
 
-
 from InternVLA.training.trainer_utils import initialize_overwatch
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
 
-
 from types import SimpleNamespace
+
 
 class NamespaceWithGet(SimpleNamespace):
     def get(self, key, default=None):
@@ -79,9 +78,7 @@ class NamespaceWithGet(SimpleNamespace):
         Returns:
             dict: Fully materialized dictionary structure.
         """
-        return {key: (value.to_dict() if isinstance(value, NamespaceWithGet) else value)
-                for key, value in self.items()}
-
+        return {key: value.to_dict() if isinstance(value, NamespaceWithGet) else value for key, value in self.items()}
 
 
 def dict_to_namespace(d):
@@ -95,8 +92,6 @@ def dict_to_namespace(d):
         OmegaConf: DictConfig instance.
     """
     return OmegaConf.create(d)
-
-
 
 
 def _to_omegaconf(x: Any):
@@ -162,6 +157,7 @@ def merge_pram_config(init):
     Returns:
         Wrapped initializer.
     """
+
     @functools.wraps(init)
     def wrapper(self, *args, **kwargs):
         # Map positional args to parameter names (excluding self)
@@ -204,8 +200,6 @@ def merge_pram_config(init):
     return wrapper
 
 
-
-
 def read_model_config(pretrained_checkpoint):
     """
     Load global model configuration and dataset normalization statistics
@@ -232,7 +226,7 @@ def read_model_config(pretrained_checkpoint):
         overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 
         # [Validate] Checkpoint Path should look like `.../<RUN_ID>/checkpoints/<CHECKPOINT_PATH>.pt`
-        assert (checkpoint_pt.suffix == ".pt")
+        assert checkpoint_pt.suffix == ".pt"
         run_dir = checkpoint_pt.parents[1]
 
         # Get paths for `config.json`, `dataset_statistics.json` and pretrained checkpoint
@@ -270,7 +264,7 @@ def read_mode_config(pretrained_checkpoint):
         overwatch.info(f"Loading from local checkpoint path `{(checkpoint_pt := Path(pretrained_checkpoint))}`")
 
         # [Validate] Checkpoint Path should look like `.../<RUN_ID>/checkpoints/<CHECKPOINT_PATH>.pt`
-        assert (checkpoint_pt.suffix == ".pt")
+        assert checkpoint_pt.suffix == ".pt"
         run_dir = checkpoint_pt.parents[1]
 
         # Get paths for `config.json`, `dataset_statistics.json` and pretrained checkpoint

@@ -80,7 +80,9 @@ def _build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--port", type=int, default=10093, help="server port")
     ap.add_argument("--api_key", default="", help="optional: API key for authentication")
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"], help="initialize device")
-    ap.add_argument("--test", choices=["init", "infer"], default="infer", help="test mode: only initialize, or try simple inference")
+    ap.add_argument(
+        "--test", choices=["init", "infer"], default="infer", help="test mode: only initialize, or try simple inference"
+    )
     ap.add_argument("--log_level", default="INFO")
     return ap
 
@@ -93,7 +95,7 @@ def _main():
     logging.info("Connected. Server metadata: %s", client.get_server_metadata())
 
     # 1) device initialization
-    init_ret = client.init_device(args.device) # here to set some things on the server
+    init_ret = client.init_device(args.device)  # here to set some things on the server
     logging.info("Init device resp: %s", init_ret)
 
     # 2) optional: try one simple inference
@@ -107,10 +109,10 @@ def _main():
 
             observation = {  # key to align with model API
                 "request_id": "smoke-test",
-                "observation.primary": np.expand_dims(img, axis=0),         # (1,H,W,C), uint8 0-255
+                "observation.primary": np.expand_dims(img, axis=0),  # (1,H,W,C), uint8 0-255
                 "observation.wrist_image": np.expand_dims(wrist_img, axis=0),  # (1,H,W,C)
-                "observation.state": np.expand_dims(state, axis=0),         # (1,7), float32
-                "instruction": ["debug: pick up the red block"],            # single element list
+                "observation.state": np.expand_dims(state, axis=0),  # (1,7), float32
+                "instruction": ["debug: pick up the red block"],  # single element list
             }
 
             obs = {

@@ -47,10 +47,11 @@ class EmbodimentTag(Enum):
     Any new embodiment for finetuning.
     """
 
-    FRANKA = 'franka'
+    FRANKA = "franka"
     """
     The Franka Emika Panda robot.
     """
+
 
 # Embodiment tag string: to projector index in the Action Expert Module
 EMBODIMENT_TAG_MAPPING = {
@@ -72,13 +73,9 @@ DATASET_NAME_TO_EMBODIMENT_TAG = {
     "bench_v6_all_longrange_split2_h264": EmbodimentTag.FRANKA,
     "bench_v6_all_longrange_split3_h264": EmbodimentTag.FRANKA,
     "bench_v6_all_longrange_split4_h264": EmbodimentTag.FRANKA,
-
     "libero_10_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,
     "libero_goal_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,
     "libero_spatial_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,
     "libero_90_no_noops_lerobot": EmbodimentTag.FRANKA,
     "libero_object_no_noops_1.0.0_lerobot": EmbodimentTag.FRANKA,
-
-
-
 }

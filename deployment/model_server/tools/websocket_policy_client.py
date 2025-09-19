@@ -29,16 +29,19 @@ class WebsocketClientPolicy:
     def _wait_for_server(self) -> Tuple[websockets.sync.client.ClientConnection, Dict]:
         logging.info(f"Waiting for server at {self._uri}...")
         ## avoid any proxy interference --> only for cluster
-        for k in ("HTTP_PROXY","http_proxy","HTTPS_PROXY","https_proxy","ALL_PROXY","all_proxy"):
+        for k in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
             os.environ.pop(k, None)
         while True:
             try:
                 headers = {"Authorization": f"Api-Key {self._api_key}"} if self._api_key else None
                 conn = websockets.sync.client.connect(
-                    self._uri, compression=None, max_size=None, additional_headers=headers,
+                    self._uri,
+                    compression=None,
+                    max_size=None,
+                    additional_headers=headers,
                     open_timeout=150,  # adjust handshake timeout
                     ping_interval=20,
-                    ping_timeout=20
+                    ping_timeout=20,
                 )
                 # server first send metadata (msgpack binary)
                 metadata = msgpack_numpy.unpackb(conn.recv())
@@ -85,7 +88,9 @@ def _build_argparser():
     ap.add_argument("--port", type=int, default=10093, help="server port")
     ap.add_argument("--api_key", default="", help="optional: API key for authentication")
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"], help="initialize device")
-    ap.add_argument("--test", choices=["init", "infer"], default="infer", help="test mode: only initialize, or try simple inference")
+    ap.add_argument(
+        "--test", choices=["init", "infer"], default="infer", help="test mode: only initialize, or try simple inference"
+    )
     ap.add_argument("--log_level", default="INFO")
     return ap
 
@@ -104,8 +109,7 @@ def _main():
     # 2) optional: try one simple inference
     if args.test == "infer":
         try:
-            obs = {"request_id": "smoke-test", "ping": True} # give your model inputs
-
+            obs = {"request_id": "smoke-test", "ping": True}  # give your model inputs
 
             infer_ret = client.infer(obs)
             logging.info("Infer resp: %s", infer_ret)

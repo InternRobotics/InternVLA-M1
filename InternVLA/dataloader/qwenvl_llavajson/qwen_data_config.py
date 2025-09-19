@@ -1,7 +1,8 @@
 import re
 
 from pathlib import Path
-system2_root="/mnt/petrelfs/yejinhui/Projects/System2VLA"
+
+system2_root = "/mnt/petrelfs/yejinhui/Projects/System2VLA"
 json_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/llava_format"
 image_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/visualData"
 MAPQA_MATHV360K = {
@@ -137,9 +138,6 @@ GENMANIP_vla_onlytgt_Kichen = {
 }
 
 
-
-
-
 data_dict = {
     "MapQA_MathV360K": MAPQA_MATHV360K,
     "aokvqa_cauldron_llava_format": AOKVQA_CCAULDRON_LLAVA,
@@ -151,14 +149,12 @@ data_dict = {
     "visual7w_cauldron_llava_format": VISUAL7W_CCAULDRON_LLAVA,
     "visualmrc_cauldron": VISUALMRC_CCAULDRON,
     "vsr_cauldron_llava_format": VSR_CCAULDRON_LLAVA,
-
     "GENMANIP_conception_train": GENMANIP_conception_train,
     "GENMANIP_vla_task_dropturn_train": GENMANIP_vla_task_dropturn_train,
     "GENMANIP_vla_task_one_train": GENMANIP_vla_task_one_train,
     "GENMANIP_vla_task_train": GENMANIP_vla_task_train,
     "GENMANIP_vla_task_onlytgt_train": GENMANIP_vla_task_onlytgt_train,
     "GENMANIP_vla_task_1by1_train": GENMANIP_vla_task_1by1_train,
-    
     # downstream bench
     "GENMANIP_vla_onetask_Kichen": GENMANIP_vla_onetask_Kichen,
     "GENMANIP_vla_onlytgt_Kichen": GENMANIP_vla_onlytgt_Kichen,
@@ -166,13 +162,11 @@ data_dict = {
     "GENMANIP_vla_onetask_Kichen_More_train": GENMANIP_vla_onetask_Kichen_More_train,
     "GENMANIP_vla_onlytgt_Kichen_More_train": GENMANIP_vla_onlytgt_Kichen_More_train,
     "GENMANIP_vla_1by1_Kichen_More_train": GENMANIP_vla_1by1_Kichen_More_train,
-    
-    "all": None
+    "all": None,
 }
 
-    # "magpie_pro_l3_80b_mt": MAGPIE_PRO_L3_80B_MT,
-    # "magpie_pro_l3_80b_st": MAGPIE_PRO_L3_80B_ST,
-
+# "magpie_pro_l3_80b_mt": MAGPIE_PRO_L3_80B_MT,
+# "magpie_pro_l3_80b_st": MAGPIE_PRO_L3_80B_ST,
 
 
 def parse_sampling_rate(dataset_name):
@@ -184,7 +178,7 @@ def parse_sampling_rate(dataset_name):
 
 def data_list(dataset_names):
     if dataset_names == ["all"]:
-        dataset_names= list(data_dict.keys())
+        dataset_names = list(data_dict.keys())
     config_list = []
     for dataset_name in dataset_names:
         sampling_rate = parse_sampling_rate(dataset_name)
@@ -196,6 +190,7 @@ def data_list(dataset_names):
         else:
             raise ValueError(f"do not find {dataset_name}")
     return config_list
+
 
 # Kitchen Eval - Banana Plate
 genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/banana_plate"
@@ -240,8 +235,6 @@ GENMANIP_vla_onlytgt_Sandwich = {
 }
 
 
-
-
 # Kitchen Eval - All All
 genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/all_all"
 genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/all_all"
@@ -279,7 +272,7 @@ GENMANIP_vla_onetask_Genmanip20 = {
     "data_path": f"{genmanip_image_root}",
 }
 
-data_dict.update({"GENMANIP_vla_onetask_Genmanip20": GENMANIP_vla_onetask_Genmanip20})  
+data_dict.update({"GENMANIP_vla_onetask_Genmanip20": GENMANIP_vla_onetask_Genmanip20})
 
 # Object Container
 genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/object_container"
@@ -297,24 +290,28 @@ GENMANIP_vla_onlytgt_ObjectContainer = {
 }
 
 # register new datasets to data_dict
-data_dict.update({
-    "GENMANIP_vla_onetask_Banana": GENMANIP_vla_onetask_Banana,
-    "GENMANIP_vla_onlytgt_Banana": GENMANIP_vla_onlytgt_Banana,
-    "GENMANIP_vla_onetask_Lemon": GENMANIP_vla_onetask_Lemon,
-    "GENMANIP_vla_onlytgt_Lemon": GENMANIP_vla_onlytgt_Lemon,
-    "GENMANIP_vla_onetask_Sandwich": GENMANIP_vla_onetask_Sandwich,
-    "GENMANIP_vla_onlytgt_Sandwich": GENMANIP_vla_onlytgt_Sandwich,
-})
+data_dict.update(
+    {
+        "GENMANIP_vla_onetask_Banana": GENMANIP_vla_onetask_Banana,
+        "GENMANIP_vla_onlytgt_Banana": GENMANIP_vla_onlytgt_Banana,
+        "GENMANIP_vla_onetask_Lemon": GENMANIP_vla_onetask_Lemon,
+        "GENMANIP_vla_onlytgt_Lemon": GENMANIP_vla_onlytgt_Lemon,
+        "GENMANIP_vla_onetask_Sandwich": GENMANIP_vla_onetask_Sandwich,
+        "GENMANIP_vla_onlytgt_Sandwich": GENMANIP_vla_onlytgt_Sandwich,
+    }
+)
 
 # register new datasets to data_dict
-data_dict.update({
-    "GENMANIP_vla_onetask_AllAll": GENMANIP_vla_onetask_AllAll,
-    "GENMANIP_vla_onlytgt_AllAll": GENMANIP_vla_onlytgt_AllAll,
-    "GENMANIP_vla_onetask_AllAllMore": GENMANIP_vla_onetask_AllAllMore,
-    "GENMANIP_vla_onlytgt_AllAllMore": GENMANIP_vla_onlytgt_AllAllMore,
-    "GENMANIP_vla_onetask_ObjectContainer": GENMANIP_vla_onetask_ObjectContainer,
-    "GENMANIP_vla_onlytgt_ObjectContainer": GENMANIP_vla_onlytgt_ObjectContainer,
-})
+data_dict.update(
+    {
+        "GENMANIP_vla_onetask_AllAll": GENMANIP_vla_onetask_AllAll,
+        "GENMANIP_vla_onlytgt_AllAll": GENMANIP_vla_onlytgt_AllAll,
+        "GENMANIP_vla_onetask_AllAllMore": GENMANIP_vla_onetask_AllAllMore,
+        "GENMANIP_vla_onlytgt_AllAllMore": GENMANIP_vla_onlytgt_AllAllMore,
+        "GENMANIP_vla_onetask_ObjectContainer": GENMANIP_vla_onetask_ObjectContainer,
+        "GENMANIP_vla_onlytgt_ObjectContainer": GENMANIP_vla_onlytgt_ObjectContainer,
+    }
+)
 
 # Object Object
 genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/object_object"
@@ -341,14 +338,14 @@ GENMANIP_vla_task_dropturn_ObjectObject = {
 }
 
 # register new datasets to data_dict
-data_dict.update({
-    "GENMANIP_vla_onetask_ObjectObject": GENMANIP_vla_onetask_ObjectObject,
-    "GENMANIP_vla_onlytgt_ObjectObject": GENMANIP_vla_onlytgt_ObjectObject,
-    "GENMANIP_vla_task_ObjectObject": GENMANIP_vla_task_ObjectObject,
-    "GENMANIP_vla_task_dropturn_ObjectObject": GENMANIP_vla_task_dropturn_ObjectObject,
-})
-
-
+data_dict.update(
+    {
+        "GENMANIP_vla_onetask_ObjectObject": GENMANIP_vla_onetask_ObjectObject,
+        "GENMANIP_vla_onlytgt_ObjectObject": GENMANIP_vla_onlytgt_ObjectObject,
+        "GENMANIP_vla_task_ObjectObject": GENMANIP_vla_task_ObjectObject,
+        "GENMANIP_vla_task_dropturn_ObjectObject": GENMANIP_vla_task_dropturn_ObjectObject,
+    }
+)
 
 
 # V5
@@ -371,7 +368,7 @@ GENMANIP_v5_object_object = {
     "data_path": f"{genmanip_object_object_root}",
 }
 
-# 5*5 
+# 5*5
 genmanip_kitchen_5plus5 = f"{genmanip_json_root}/Kitchen/5x5"
 GENMANIP_v5_kitchen_5plus5 = {
     "annotation_path": f"{genmanip_kitchen_5plus5}/Manipu_CoT.json",
@@ -415,17 +412,18 @@ GENMANIP_v5_kitchen_sandwich = {
 }
 
 # register to data_dict
-data_dict.update({
-    "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
-    "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
-    "GENMANIP_v5_kitchen_5plus5": GENMANIP_v5_kitchen_5plus5,
-    "GENMANIP_v5_kitchen_5plus5_more": GENMANIP_v5_kitchen_5plus5_more,
-    "GENMANIP_v5_kitchen_apple": GENMANIP_v5_kitchen_apple,
-    "GENMANIP_v5_kitchen_banana": GENMANIP_v5_kitchen_banana,
-    "GENMANIP_v5_kitchen_lemon": GENMANIP_v5_kitchen_lemon,
-    "GENMANIP_v5_kitchen_sandwich": GENMANIP_v5_kitchen_sandwich,
-})
-
+data_dict.update(
+    {
+        "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
+        "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
+        "GENMANIP_v5_kitchen_5plus5": GENMANIP_v5_kitchen_5plus5,
+        "GENMANIP_v5_kitchen_5plus5_more": GENMANIP_v5_kitchen_5plus5_more,
+        "GENMANIP_v5_kitchen_apple": GENMANIP_v5_kitchen_apple,
+        "GENMANIP_v5_kitchen_banana": GENMANIP_v5_kitchen_banana,
+        "GENMANIP_v5_kitchen_lemon": GENMANIP_v5_kitchen_lemon,
+        "GENMANIP_v5_kitchen_sandwich": GENMANIP_v5_kitchen_sandwich,
+    }
+)
 
 
 # V6
@@ -448,7 +446,7 @@ GENMANIP_v5_object_object = {
     "data_path": f"{genmanip_object_object_root}",
 }
 
-# 5*5 
+# 5*5
 genmanip_kitchen_5plus5 = f"{genmanip_json_root}/Kitchen/5x5"
 GENMANIP_v5_kitchen_5plus5 = {
     "annotation_path": f"{genmanip_kitchen_5plus5}/Manipu_CoT.json",
@@ -492,17 +490,18 @@ GENMANIP_v5_kitchen_sandwich = {
 }
 
 # register to data_dict
-data_dict.update({
-    "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
-    "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
-    "GENMANIP_v5_kitchen_5plus5": GENMANIP_v5_kitchen_5plus5,
-    "GENMANIP_v5_kitchen_5plus5_more": GENMANIP_v5_kitchen_5plus5_more,
-    "GENMANIP_v5_kitchen_apple": GENMANIP_v5_kitchen_apple,
-    "GENMANIP_v5_kitchen_banana": GENMANIP_v5_kitchen_banana,
-    "GENMANIP_v5_kitchen_lemon": GENMANIP_v5_kitchen_lemon,
-    "GENMANIP_v5_kitchen_sandwich": GENMANIP_v5_kitchen_sandwich,
-})
-
+data_dict.update(
+    {
+        "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
+        "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
+        "GENMANIP_v5_kitchen_5plus5": GENMANIP_v5_kitchen_5plus5,
+        "GENMANIP_v5_kitchen_5plus5_more": GENMANIP_v5_kitchen_5plus5_more,
+        "GENMANIP_v5_kitchen_apple": GENMANIP_v5_kitchen_apple,
+        "GENMANIP_v5_kitchen_banana": GENMANIP_v5_kitchen_banana,
+        "GENMANIP_v5_kitchen_lemon": GENMANIP_v5_kitchen_lemon,
+        "GENMANIP_v5_kitchen_sandwich": GENMANIP_v5_kitchen_sandwich,
+    }
+)
 
 
 # Grounding data
@@ -565,10 +564,7 @@ cocotextv2_gpt4o_en = {
     "data_path": f"{data_root}",
 }
 
-okvqa_en = {
-    "annotation_path": f"{llava_format_root}/okvqa_en.jsonl",
-    "data_path": f"{data_root}"
-}
+okvqa_en = {"annotation_path": f"{llava_format_root}/okvqa_en.jsonl", "data_path": f"{data_root}"}
 
 refcoco_grounding_aug_en = {
     "annotation_path": f"{llava_format_root}/refcoco_grounding_aug_en.jsonl",
@@ -601,26 +597,28 @@ vsr_en = {
 }
 
 # register to data_dict
-data_dict.update({
-    "asv2_conversation_en": asv2_conversation_en,
-    "asv2_detailed_description_en": asv2_detailed_description_en,
-    "asv2_region_captioning_en": asv2_region_captioning_en,
-    "coco_internvl_longcap_en": coco_internvl_longcap_en,
-    "coco_karpathy_train_567_en": coco_karpathy_train_567_en,
-    "coco_negative_gpt4o_en": coco_negative_gpt4o_en,
-    "coco_poetry_zh": coco_poetry_zh,
-    "coco_rem_en_zh": coco_rem_en_zh,
-    "cocorem_exist_yorn_en": cocorem_exist_yorn_en,
-    "cocotextv2_en": cocotextv2_en,
-    "cocotextv2_gpt4o_en": cocotextv2_gpt4o_en,
-    "okvqa_en": okvqa_en,
-    "refcoco_grounding_aug_en": refcoco_grounding_aug_en,
-    "refcoco_grounding_en": refcoco_grounding_en,
-    "tallyqa_coco_en": tallyqa_coco_en,
-    "toloka_grounding_aug_en": toloka_grounding_aug_en,
-    "vqav2_en": vqav2_en,
-    "vsr_en": vsr_en,
-})
+data_dict.update(
+    {
+        "asv2_conversation_en": asv2_conversation_en,
+        "asv2_detailed_description_en": asv2_detailed_description_en,
+        "asv2_region_captioning_en": asv2_region_captioning_en,
+        "coco_internvl_longcap_en": coco_internvl_longcap_en,
+        "coco_karpathy_train_567_en": coco_karpathy_train_567_en,
+        "coco_negative_gpt4o_en": coco_negative_gpt4o_en,
+        "coco_poetry_zh": coco_poetry_zh,
+        "coco_rem_en_zh": coco_rem_en_zh,
+        "cocorem_exist_yorn_en": cocorem_exist_yorn_en,
+        "cocotextv2_en": cocotextv2_en,
+        "cocotextv2_gpt4o_en": cocotextv2_gpt4o_en,
+        "okvqa_en": okvqa_en,
+        "refcoco_grounding_aug_en": refcoco_grounding_aug_en,
+        "refcoco_grounding_en": refcoco_grounding_en,
+        "tallyqa_coco_en": tallyqa_coco_en,
+        "toloka_grounding_aug_en": toloka_grounding_aug_en,
+        "vqav2_en": vqav2_en,
+        "vsr_en": vsr_en,
+    }
+)
 
 
 # V7 long horizon
@@ -637,53 +635,73 @@ GENMANIP_v7_r2s_task2_eval = {
 }
 
 
-data_dict.update({
-    "GENMANIP_v7_r2s_task2_train": GENMANIP_v7_r2s_task2_train,
-    "GENMANIP_v7_r2s_task2_eval": GENMANIP_v7_r2s_task2_eval,
-})
+data_dict.update(
+    {
+        "GENMANIP_v7_r2s_task2_train": GENMANIP_v7_r2s_task2_train,
+        "GENMANIP_v7_r2s_task2_eval": GENMANIP_v7_r2s_task2_eval,
+    }
+)
 
 # official version system2
 # add these datasets to data_dict
 
 genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056_224"
-genmanip_sys2_14k_v2_image_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627"
+genmanip_sys2_14k_v2_image_root = (
+    "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627"
+)
 genmanip_sys2_14k_v2_action_plan = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_action_plan_rule+llm_1obj_action_plan_gpt4o-mini.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_action_plan_rule+llm_1obj_action_plan_gpt4o-mini.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
 genmanip_sys2_14k_v2_grounding_rule_coco = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_grounding_rule_coco_en_reftype_jsontype_.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_grounding_rule_coco_en_reftype_jsontype_.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
 genmanip_sys2_14k_v2_img_caption_rule = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_img_caption_rule_img_cap_.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_img_caption_rule_img_cap_.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
 genmanip_sys2_14k_v2_obj_caption_rule = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_obj_caption_rule_obj_cap_.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_obj_caption_rule_obj_cap_.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
 genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_attr_gpt4o-mini.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_attr_gpt4o-mini.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
 genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_nearby_gpt4o-mini.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_nearby_gpt4o-mini.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
 genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic = {
-    "annotation_path": f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_senmatic_gpt4o-mini.jsonl",
+    "annotation_path": (
+        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_senmatic_gpt4o-mini.jsonl"
+    ),
     "data_path": f"{genmanip_sys2_14k_v2_image_root}",
 }
-data_dict.update({
-    "genmanip_sys2_14k_v2_action_plan": genmanip_sys2_14k_v2_action_plan,
-    "genmanip_sys2_14k_v2_grounding_rule_coco": genmanip_sys2_14k_v2_grounding_rule_coco,
-    "genmanip_sys2_14k_v2_img_caption_rule": genmanip_sys2_14k_v2_img_caption_rule,
-    "genmanip_sys2_14k_v2_obj_caption_rule": genmanip_sys2_14k_v2_obj_caption_rule,
-    "genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr": genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr,
-    "genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby": genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby,
-    "genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic": genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic,
-})
+data_dict.update(
+    {
+        "genmanip_sys2_14k_v2_action_plan": genmanip_sys2_14k_v2_action_plan,
+        "genmanip_sys2_14k_v2_grounding_rule_coco": genmanip_sys2_14k_v2_grounding_rule_coco,
+        "genmanip_sys2_14k_v2_img_caption_rule": genmanip_sys2_14k_v2_img_caption_rule,
+        "genmanip_sys2_14k_v2_obj_caption_rule": genmanip_sys2_14k_v2_obj_caption_rule,
+        "genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr": genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr,
+        "genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby": genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby,
+        "genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic": genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic,
+    }
+)
 if __name__ == "__main__":
     dataset_names = ["cambrian_737k"]
     configs = data_list(dataset_names)

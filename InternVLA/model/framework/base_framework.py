@@ -27,8 +27,6 @@ from InternVLA.model.framework.share_tools import read_mode_config
 from InternVLA.training.trainer_utils import initialize_overwatch
 from InternVLA.model.framework.share_tools import dict_to_namespace
 
-
-
 logger = initialize_overwatch(__name__)
 
 
@@ -40,6 +38,7 @@ class baseframework(nn.Module):
       - Register components in __init__
       - Use provided helpers for action normalization handling
     """
+
     def __init__(
         self,
     ) -> None:
@@ -47,7 +46,7 @@ class baseframework(nn.Module):
         Initialize base nn.Module. Subclasses add components.
         """
         super().__init__()
-    
+
     @classmethod
     def from_pretrained(
         cls,
@@ -76,21 +75,21 @@ class baseframework(nn.Module):
             FileNotFoundError: If underlying files are missing (surfaced earlier).
         """
         pretrained_checkpoint = Path(pretrained_checkpoint)
-        model_config, norm_stats = read_mode_config(pretrained_checkpoint) # read config and norm_stats
+        model_config, norm_stats = read_mode_config(pretrained_checkpoint)  # read config and norm_stats
 
         config = dict_to_namespace(model_config)
         model_config = config
-        model_config.trainer.pretrained_checkpoint = None 
+        model_config.trainer.pretrained_checkpoint = None
         FrameworkModel = cls(config=model_config, **kwargs)
         # set for action un-norm
         FrameworkModel.norm_stats = norm_stats
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
-        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu") 
+        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")
         # logger.info(f"Loading model weights from `{pretrained_checkpoint}`")
         model_keys = set(FrameworkModel.state_dict().keys())
         checkpoint_keys = set(model_state_dict.keys())
         try:
-           FrameworkModel.load_state_dict(model_state_dict, strict=True)
+            FrameworkModel.load_state_dict(model_state_dict, strict=True)
         except RuntimeError as e:
             # must keep all keys matched
             common_keys = model_keys.intersection(checkpoint_keys)
@@ -148,7 +147,7 @@ class baseframework(nn.Module):
             dict: Stats structure (e.g. q01, q99, mask).
         """
         unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
-        return self.norm_stats[unnorm_key]["action"] 
+        return self.norm_stats[unnorm_key]["action"]
 
     @property
     def trainable_module_keys(self, max_depth=1) -> List[str]:
@@ -161,9 +160,9 @@ class baseframework(nn.Module):
         Returns:
             List[str]: Module path names considered trainable.
         """
-        keys = auto_get_trainable_modules(self, max_depth=max_depth) # auto check which modules are trainable
+        keys = auto_get_trainable_modules(self, max_depth=max_depth)  # auto check which modules are trainable
         return keys
-    
+
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
         """
@@ -188,13 +187,13 @@ class baseframework(nn.Module):
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
         normalized_actions = np.clip(normalized_actions, -1, 1)
-        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1)
         actions = np.where(
             mask,
             0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
             normalized_actions,
         )
-        
+
         return actions
 
     @staticmethod

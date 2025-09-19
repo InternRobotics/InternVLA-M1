@@ -1,4 +1,4 @@
-def auto_get_module_keys(module, max_depth=0, prefix_list=None, current_depth=0, current_prefix=''):
+def auto_get_module_keys(module, max_depth=0, prefix_list=None, current_depth=0, current_prefix=""):
     """
     get all submodule keys of a module, support setting recursion depth and prefix list.
 
@@ -23,6 +23,7 @@ def auto_get_module_keys(module, max_depth=0, prefix_list=None, current_depth=0,
 
 import torch.nn as nn
 
+
 def is_module_trainable(module):
     """
     check if a module is trainable: if the module itself has parameters, then all its parameters require_grad must be True;
@@ -35,26 +36,27 @@ def is_module_trainable(module):
         # for container modules with no direct parameters, consider them trainable (the final result depends on their submodules)
         return True
 
-def auto_get_trainable_modules(module, prefix='', max_depth=None):
+
+def auto_get_trainable_modules(module, prefix="", max_depth=None):
     """
     recursively traverse the module, return the list of all trainable module names.
     if all submodules of a module are trainable, then only return the name of the parent module, no longer recursively output the names of its submodules.
-    
+
     parameters:
       - module: the module to traverse.
       - prefix: the name prefix of the current module (internal use).
       - max_depth: the maximum recursion depth, None means infinite recursion.
-      
+
     return:
       a list of module names.
     """
     # get all direct submodules of the current module
     children = list(module.named_children())
-    
+
     # if the maximum depth is reached or there are no submodules, return the current module (if trainable and prefix is not empty)
     if (max_depth is not None and max_depth <= 0) or not children:
         return [prefix] if prefix and is_module_trainable(module) else []
-    
+
     child_keys = []
     all_children_trainable = True
     for name, child in children:
@@ -72,13 +74,12 @@ def auto_get_trainable_modules(module, prefix='', max_depth=None):
             if len(keys) > 1:
                 all_children_trainable = False
         child_keys.extend(keys)
-    
+
     # if the current module is trainable and all submodules are trainable, return the name of the current module
     if is_module_trainable(module) and all_children_trainable and child_keys:
         return [prefix] if prefix else child_keys
     else:
         return child_keys
-
 
 
 def print_freeze_status(self):

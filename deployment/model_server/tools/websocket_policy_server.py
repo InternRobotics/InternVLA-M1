@@ -4,9 +4,11 @@ import traceback
 
 import websockets.asyncio.server
 import websockets.frames
+
 # from openpi_client import base_policy as _base_policy
 from . import msgpack_numpy
 from tools.model_interface import QwenpiPolicyInterfence
+
 
 class WebsocketPolicyServer:
     """Serves a policy using the websocket protocol. See websocket_client_policy.py for a client implementation.
@@ -21,7 +23,7 @@ class WebsocketPolicyServer:
         port: int = 8000,
         metadata: dict | None = None,
     ) -> None:
-        self._policy = policy # 
+        self._policy = policy  #
         self._host = host
         self._port = port
         self._metadata = metadata or {}
@@ -61,6 +63,7 @@ class WebsocketPolicyServer:
                     reason="Internal server error. Traceback included in previous frame.",
                 )
                 raise
+
     # route logic: recognize request from client
     def _route_message(self, msg: dict) -> dict:
         """
@@ -82,8 +85,13 @@ class WebsocketPolicyServer:
             ok = bool(self._policy.init_infer(payload))
             if ok:
                 return {"status": "ok", "ok": True, "type": "init_result", "request_id": req_id}
-            return {"status": "error", "ok": False, "type": "init_result", "request_id": req_id,
-                    "message": "Failed to initialize device"}
+            return {
+                "status": "error",
+                "ok": False,
+                "type": "init_result",
+                "request_id": req_id,
+                "message": "Failed to initialize device",
+            }
 
         if mtype == "reset":
             # compatible with different field names
@@ -100,8 +108,13 @@ class WebsocketPolicyServer:
             ok = bool(self._policy.init_infer(msg))
             if ok:
                 return {"status": "ok", "ok": True, "type": "init_result", "request_id": req_id}
-            return {"status": "error", "ok": False, "type": "init_result", "request_id": req_id,
-                    "message": "Failed to initialize device"}
+            return {
+                "status": "error",
+                "ok": False,
+                "type": "init_result",
+                "request_id": req_id,
+                "message": "Failed to initialize device",
+            }
 
         if "reset" in msg:
             instr = msg.get("instruction") or msg.get("task_description")

@@ -83,11 +83,15 @@ class RotationTransform:
         return x
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert isinstance(x, torch.Tensor), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
+        assert isinstance(
+            x, torch.Tensor
+        ), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
         return self._apply_funcs(x, self.forward_funcs)
 
     def inverse(self, x: torch.Tensor) -> torch.Tensor:
-        assert isinstance(x, torch.Tensor), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
+        assert isinstance(
+            x, torch.Tensor
+        ), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
         return self._apply_funcs(x, self.inverse_funcs)
 
 
@@ -101,7 +105,9 @@ class Normalizer:
             self.statistics[key] = torch.tensor(value)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert isinstance(x, torch.Tensor), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
+        assert isinstance(
+            x, torch.Tensor
+        ), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
 
         # Normalize the tensor
         if self.mode == "q99":
@@ -116,7 +122,9 @@ class Normalizer:
 
             # Normalize the values where q01 != q99
             # Formula: 2 * (x - q01) / (q99 - q01) - 1
-            normalized[..., mask] = (x[..., mask] - q01[..., mask]) / (q99[..., mask] - q01[..., mask])
+            normalized[..., mask] = (x[..., mask] - q01[..., mask]) / (
+                q99[..., mask] - q01[..., mask]
+            )
             normalized[..., mask] = 2 * normalized[..., mask] - 1
 
             # Set the normalized values to the original values where q01 == q99
@@ -154,7 +162,9 @@ class Normalizer:
 
             # Normalize the values where min != max
             # Formula: 2 * (x - min) / (max - min) - 1
-            normalized[..., mask] = (x[..., mask] - min[..., mask]) / (max[..., mask] - min[..., mask])
+            normalized[..., mask] = (x[..., mask] - min[..., mask]) / (
+                max[..., mask] - min[..., mask]
+            )
             normalized[..., mask] = 2 * normalized[..., mask] - 1
 
             # Set the normalized values to the original values where min == max
@@ -181,7 +191,9 @@ class Normalizer:
         return normalized
 
     def inverse(self, x: torch.Tensor) -> torch.Tensor:
-        assert isinstance(x, torch.Tensor), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
+        assert isinstance(
+            x, torch.Tensor
+        ), f"Unexpected input type: {type(x)}. Expected type: {torch.Tensor}"
         if self.mode == "q99":
             q01 = self.statistics["q01"].to(x.dtype)
             q99 = self.statistics["q99"].to(x.dtype)
@@ -205,7 +217,9 @@ class StateActionToTensor(InvertibleModalityTransform):
     Transforms states and actions to tensors.
     """
 
-    input_dtypes: dict[str, np.dtype] = Field(default_factory=dict, description="The input dtypes for each state key.")
+    input_dtypes: dict[str, np.dtype] = Field(
+        default_factory=dict, description="The input dtypes for each state key."
+    )
     output_dtypes: dict[str, torch.dtype] = Field(
         default_factory=dict, description="The output dtypes for each state key."
     )
@@ -237,7 +251,9 @@ class StateActionToTensor(InvertibleModalityTransform):
             if key not in data:
                 continue
             value = data[key]
-            assert isinstance(value, np.ndarray), f"Unexpected input type: {type(value)}. Expected type: {np.ndarray}"
+            assert isinstance(
+                value, np.ndarray
+            ), f"Unexpected input type: {type(value)}. Expected type: {np.ndarray}"
             data[key] = torch.from_numpy(value)
             if key in self.output_dtypes:
                 data[key] = data[key].to(self.output_dtypes[key])
@@ -323,7 +339,9 @@ class StateActionTransform(InvertibleModalityTransform):
             if isinstance(config, dict):
                 config = StateActionMetadata.model_validate(config)
             else:
-                assert isinstance(config, StateActionMetadata), f"Invalid source rotation config: {config}"
+                assert isinstance(
+                    config, StateActionMetadata
+                ), f"Invalid source rotation config: {config}"
             v[modality_key] = config
         return v
 
@@ -376,7 +394,9 @@ class StateActionTransform(InvertibleModalityTransform):
             if key not in self.modality_metadata:
                 modality, state_key = split_key
                 assert hasattr(modality_metadata, modality), f"{modality} config not found"
-                assert state_key in getattr(modality_metadata, modality), f"{state_key} config not found"
+                assert state_key in getattr(
+                    modality_metadata, modality
+                ), f"{state_key} config not found"
                 self.modality_metadata[key] = getattr(modality_metadata, modality)[state_key]
 
         # Check that all state keys specified in normalization_modes have their statistics in state_statistics
@@ -385,11 +405,15 @@ class StateActionTransform(InvertibleModalityTransform):
             assert len(split_key) == 2, "State keys should have two parts: 'modality.key'"
             modality, state_key = split_key
             assert hasattr(dataset_statistics, modality), f"{modality} statistics not found"
-            assert state_key in getattr(dataset_statistics, modality), f"{state_key} statistics not found"
+            assert state_key in getattr(
+                dataset_statistics, modality
+            ), f"{state_key} statistics not found"
             assert (
                 len(getattr(modality_metadata, modality)[state_key].shape) == 1
             ), f"{getattr(modality_metadata, modality)[state_key].shape=}"
-            self.normalization_statistics[key] = getattr(dataset_statistics, modality)[state_key].model_dump()
+            self.normalization_statistics[key] = getattr(dataset_statistics, modality)[
+                state_key
+            ].model_dump()
 
         # Initialize the rotation transformers
         for key in self.target_rotations:
@@ -402,7 +426,9 @@ class StateActionTransform(InvertibleModalityTransform):
 
             # If the original representation is not the same as the target representation, initialize the rotation transformer
             if from_rep != to_rep:
-                self._rotation_transformers[key] = RotationTransform(from_rep=from_rep.value, to_rep=to_rep.value)
+                self._rotation_transformers[key] = RotationTransform(
+                    from_rep=from_rep.value, to_rep=to_rep.value
+                )
 
         # Initialize the normalizers
         for key in self.normalization_modes:
@@ -430,12 +456,19 @@ class StateActionTransform(InvertibleModalityTransform):
                         f"Cannot normalize relative rotations: {key} that's converted to {self.target_rotations[key]}"
                     )
             # If the state is not continuous, we should not use normalization modes other than binary
-            elif not self.modality_metadata[key].continuous and self.normalization_modes[key] != "binary":
-                raise ValueError(f"{key} is not continuous, so it should be normalized using `binary` mode")
+            elif (
+                not self.modality_metadata[key].continuous
+                and self.normalization_modes[key] != "binary"
+            ):
+                raise ValueError(
+                    f"{key} is not continuous, so it should be normalized using `binary` mode"
+                )
             # Initialize the normalizer
             else:
                 statistics = self.normalization_statistics[key]
-            self._normalizers[key] = Normalizer(mode=self.normalization_modes[key], statistics=statistics)
+            self._normalizers[key] = Normalizer(
+                mode=self.normalization_modes[key], statistics=statistics
+            )
 
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         for key in self.apply_to:
@@ -503,7 +536,9 @@ class StateActionPerturbation(ModalityTransform):
     """
 
     # Configurable attributes
-    std: float = Field(..., description="Standard deviation of the noise to be added to the state or action.")
+    std: float = Field(
+        ..., description="Standard deviation of the noise to be added to the state or action."
+    )
 
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         if not self.training:
@@ -542,6 +577,7 @@ class StateActionDropout(ModalityTransform):
             # Don't drop out the data in eval mode
             return data
         if self.dropout_prob < 0:
+            # If the dropout probability is negative, we don't drop out any states
             return data
         if self.dropout_prob > 1e-9 and random.random() < self.dropout_prob:
             for key in self.apply_to:

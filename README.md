@@ -1,6 +1,6 @@
 # InternVLA-M1
 
-**InternVLA-M1** is an open-source, end-to-end **vision–language–action (VLA) framework** for building and researching generalist robot policies.
+**InternVLA-M1** is a Open-source Spatially Grounded Foundation Model for Generalist Robot Policy
 
 https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
@@ -29,9 +29,9 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 ## 📊 Experimental Results
 |             | WindowX | Google Robot(VA) | Google Robot(VM) | LIBERO |
 |-------------|---------|------------------|------------------|--------|
-| pi0         | 27.1    | 54.8             | 58.8             | 94.2   |
-| gr00t       | 61.9    | 44.5             | 35.2             | 93.9   |
-| InternVLA-M1|**71.7** |**76.0**          |**80.7**          |**95.9**|
+| $\pi_0$         | 27.1    | 54.8             | 58.8             | 94.2   |
+| GR00t       | 61.9    | 44.5             | 35.2             | 93.9   |
+| InternVLA-M1 |**71.7** |**76.0**          |**80.7**          |**95.9**|
 
 
 
@@ -60,36 +60,12 @@ pip install flash-attn --no-build-isolation
 pip install -e .
 ```
 
-## 📘 Examples
 
-We provide several end-to-end examples for reference:
+## ⚡ Quick Interactive M1 Demo
 
-* **Reproduce InternVLA-M1 in simplerEnv**
-  [Example](/examples/simplerEnv/setup.md)
+Below are two collapsible examples: InternVLA-M1 chat and action prediction.
 
-* **Training/Deployment on real robots**
-  [Example](/examples/real_robot/setup.md)
-
-* **Extending InternVLA-M1**
-  [Example](examples/extending_m1/README.md)
-
-## 📈 Model Zoo
-We will release a series of pretrained models and checkpoints to facilitate reproduction and downstream use.
-
-- Full list and download links: assets/MODEL_ZOO.md
-
-⚠️⚠️⚠️ **Note on Hugging Face availability**  
-Due to Hugging Face Hub storage restrictions, some model weights are not yet uploaded there.  
-This is a temporary limitation and not related to the training or upload scripts. We are in contact with Hugging Face to unlock more storage.  
-
-Status: rolling release. If you need early access or encounter broken links, please open an issue.
-
-
-# ⚡ Quick Interactive M1 Demo
-
-Below are two collapsible examples: System2 chat and action prediction.
-
-<details>
+<details open>
 <summary><b>InternVLA-M1 Chat Demo (image Q&A / Spatial Grounding)</b></summary>
 
 ```python
@@ -158,6 +134,32 @@ normalized_actions = pred["normalized_actions"]  # [B, T, action_dim]
 print(normalized_actions.shape, type(normalized_actions))
 ```
 </details>
+
+
+## 📘 Examples
+
+We provide several end-to-end examples for reference:
+
+* **Reproduce InternVLA-M1 in simplerEnv**
+  [Example](/examples/simplerEnv/setup.md)
+
+* **Training/Deployment on real robots**
+  [Example](/examples/real_robot/setup.md)
+
+* **Extending InternVLA-M1**
+  [Example](examples/extending_m1/README.md)
+
+## 📈 Model Zoo
+We will release a series of pretrained models and checkpoints to facilitate reproduction and downstream use.
+
+- Full list and download links: assets/MODEL_ZOO.md
+
+⚠️⚠️⚠️ **Note on Hugging Face availability**  
+Due to Hugging Face Hub storage restrictions, some model weights are not yet uploaded there.  
+This is a temporary limitation and not related to the training or upload scripts. We are in contact with Hugging Face to unlock more storage.  
+
+Status: rolling release. If you need early access or encounter broken links, please open an issue.
+
 
 
 # 🗺️ Roadmap

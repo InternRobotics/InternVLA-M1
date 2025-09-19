@@ -1,6 +1,3 @@
-
-# @Jinhui TODO 不要写这样的方式， 请直接 import from datasets.py
-
 import json
 import os
 from accelerate.logging import get_logger
@@ -13,7 +10,6 @@ from InternVLA.dataloader.vlm_datasets import make_vlm_dataloader
 
 logger = get_logger(__name__)
 
-# TODO 工具类，注意后续的 重构, 应该写到dataloader class 内部
 def save_dataset_statistics(dataset_statistics, run_dir):
     """Saves a `dataset_statistics.json` file."""
     out_path = run_dir / "dataset_statistics.json"
@@ -37,10 +33,10 @@ def save_dataset_statistics(dataset_statistics, run_dir):
 
 
 
-def build_dataloader(cfg, dataset_py="lerobot_datasets_oxe"): # TODO now here only is get dataset, we need mv dataloader to here
+def build_dataloader(cfg, dataset_py="lerobot_datasets"): # TODO now here only is get dataset, we need mv dataloader to here
 
-    if dataset_py == "lerobot_datasets_oxe":
-        from InternVLA.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
+    if dataset_py == "lerobot_datasets":
+        from InternVLA.dataloader.lerobot_datasets import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data
 
         data_root_dir = vla_dataset_cfg.data_root_dir
@@ -53,34 +49,15 @@ def build_dataloader(cfg, dataset_py="lerobot_datasets_oxe"): # TODO now here on
             batch_size=cfg.datasets.vla_data.per_device_batch_size,
             collate_fn=collate_fn,
             num_workers=8,
-            # shuffle=True # RLSD 不能做这个事情, leberot 也不需要， 但是在考虑中
+            # shuffle=True
         )        
         if dist.get_rank() == 0: 
             
             output_dir = Path(cfg.output_dir)
             vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
         return vla_train_dataloader
-    
-    elif dataset_py == "lerobot_datasets_libero":
-        from InternVLA.dataloader.lerobot_datasets_libero import get_vla_dataset, collate_fn
-        vla_dataset_cfg = cfg.datasets.vla_data
-
-        vla_dataset = get_vla_dataset(vla_dataset_cfg) # TODO 要将config 传输融合进去
-        vla_train_dataloader = DataLoader(
-            vla_dataset,
-            batch_size=cfg.datasets.vla_data.per_device_batch_size,
-            collate_fn=collate_fn,
-            num_workers=8,
-            # shuffle=True # RLSD 不能做这个事情, leberot 也不需要， 但是在考虑中
-        )        
-        if dist.get_rank() == 0:
-            
-            output_dir = Path(cfg.output_dir)
-            vla_dataset.save_dataset_statistics(output_dir / "dataset_statistics.json")
-        return vla_train_dataloader
 
     elif dataset_py == "vlm_datasets":
-        # VLM 数据加载器
         vlm_data_module = make_vlm_dataloader(cfg)
         vlm_train_dataloader = vlm_data_module["train_dataloader"]
         

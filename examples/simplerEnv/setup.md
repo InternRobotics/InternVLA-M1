@@ -104,3 +104,10 @@ This script will automatically launch the WidowX Robot evaluation tasks, reprodu
 
 ⚠️ **Note:** Please ensure that you specify the correct rgb_overlay_path in  
 `examples/simplerEnv/start_simpler_env.sh`  
+
+
+
+🚀 Training on OXE
+
+We are finalizing the OXE training readme. A straightforward guide and scripts will be released soon (this week). If you already have OXE-lerobot-formatted data and need early access.
+

@@ -84,7 +84,7 @@ def get_vla_dataset(
 
 if __name__ == "__main__":
 
-    config_yaml = "InternVLA/config/training/qwenvla_cotrain_oxe.yaml"
+    config_yaml = "InternVLA/config/training/internvla_cotrain_sim_demo.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     vla_dataset_cfg = cfg.datasets.vla_data
@@ -100,5 +100,5 @@ if __name__ == "__main__":
 
     from tqdm import tqdm
     for batch in tqdm(train_dataloader, desc="Processing Batches"):
-        # print(batch)
+        print(batch)
         pass

@@ -80,15 +80,21 @@ You can run the following scripts to fine-tune the model with your own data:
 
 ```bash
 # Fine-tune the model with only your action data
-python InternVLA/training/train_internvla.py --config_yaml InternVLA/config/training/internvla_cotrain_custom.yaml
+accelerate launch --config_file InternVLA/config/deepseeds/deepspeed_zero2.yaml   --num_processes 8 InternVLA/training/train_internvla.py --config_yaml InternVLA/config/training/internvla_cotrain_custom.yaml
 
 # Fine-tune the model with your action and vision-language data
-python InternVLA/training/train_internvla_cotrain.py --config_yaml InternVLA/config/training/internvla_cotrain_custom.yaml
+accelerate launch --config_file InternVLA/config/deepseeds/deepspeed_zero2.yaml   --num_processes 8 InternVLA/training/train_internvla_cotrain.py --config_yaml InternVLA/config/training/internvla_cotrain_custom.yaml
 ```
 
 Hardware Requirements
 
 We use two A100 80GB GPUs for model fine-tuning. Other devices (such as RTX 4090) may also work but will require longer convergence time. We recommend using our default configuration parameters, though you can adjust the batch size to fit your GPU memory for optimal performance.
+
+### Simulation Data Demo
+We also provide simulation data demo playground/demo_data/sim_pick_place as training samples. You can use the following command to quickly train the model:
+```
+accelerate launch --config_file InternVLA/config/deepseeds/deepspeed_zero2.yaml   --num_processes 8 InternVLA/training/train_internvla.py   --config_yaml InternVLA/config/training/internvla_cotrain_sim_demo.yaml 
+```
 
 ## Deploy and Inference
 Coming soon

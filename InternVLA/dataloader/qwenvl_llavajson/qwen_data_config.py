@@ -2,9 +2,12 @@ import re
 
 from pathlib import Path
 
-system2_root = "/mnt/petrelfs/yejinhui/Projects/System2VLA"
-json_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/llava_format"
-image_root = f"{system2_root}/playground/Datasets/LLaVA-OneVision-Data/decoders/visualData"
+# You can add multimodal datasets here and register a short nickname to ${data_dict}.
+# The data format should follow the general multimodal VLM format, for example:
+# https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-finetune/README.md
+
+json_root = f"./playground/Datasets/LLaVA-OneVision-Data/decoders/llava_format"
+image_root = f"./playground/Datasets/LLaVA-OneVision-Data/decoders/visualData"
 MAPQA_MATHV360K = {
     "annotation_path": f"{json_root}/MapQA_MathV360K.json",
     "data_path": f"{image_root}/",
@@ -65,78 +68,6 @@ VSR_CCAULDRON_LLAVA = {
     "data_path": f"{image_root}/",
 }
 
-# Genmanip objcet in container Dataset
-
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v3/object_container"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v3/object_container"
-GENMANIP_conception_train = {
-    "annotation_path": f"{genmanip_json_root}/genmanip_conception_train.json",
-    "data_path": f"{genmanip_image_root}/",
-}
-
-GENMANIP_vla_task_dropturn_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_dropturn_train.json",
-    "data_path": f"{genmanip_image_root}/",
-}
-
-# ECoT
-GENMANIP_vla_task_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_train.json",
-    "data_path": f"{genmanip_image_root}/",
-}
-
-# final task train
-# /fs-computility/efm/yejinhui/Projects/System2VLA/playground/Datasets/Genmanip_vlm_v2/object_container/vla_task_one_eval_onlypick.json
-GENMANIP_vla_task_one_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train.json",
-    "data_path": f"{genmanip_image_root}/",
-}
-
-GENMANIP_vla_task_onlytgt_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train_onlytgt.json",
-    "data_path": f"{genmanip_image_root}/",
-}
-
-GENMANIP_vla_task_1by1_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train_1by1.json",
-    "data_path": f"{genmanip_image_root}/",
-}
-
-# Kitchen More Train
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v3/Kitchen/all_all_more"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v3/Kitchen/all_all_more"
-
-GENMANIP_vla_onetask_Kichen_More_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_Kichen_More_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_1by1_Kichen_More_train = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train_1by1.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# Kitchen Eval
-
-# vla_task_one_eval
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v3/Kitchen/all_all"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v3/Kitchen/all_all"
-
-GENMANIP_vla_onetask_Kichen = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_Kichen = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
 
 data_dict = {
     "MapQA_MathV360K": MAPQA_MATHV360K,
@@ -149,24 +80,7 @@ data_dict = {
     "visual7w_cauldron_llava_format": VISUAL7W_CCAULDRON_LLAVA,
     "visualmrc_cauldron": VISUALMRC_CCAULDRON,
     "vsr_cauldron_llava_format": VSR_CCAULDRON_LLAVA,
-    "GENMANIP_conception_train": GENMANIP_conception_train,
-    "GENMANIP_vla_task_dropturn_train": GENMANIP_vla_task_dropturn_train,
-    "GENMANIP_vla_task_one_train": GENMANIP_vla_task_one_train,
-    "GENMANIP_vla_task_train": GENMANIP_vla_task_train,
-    "GENMANIP_vla_task_onlytgt_train": GENMANIP_vla_task_onlytgt_train,
-    "GENMANIP_vla_task_1by1_train": GENMANIP_vla_task_1by1_train,
-    # downstream bench
-    "GENMANIP_vla_onetask_Kichen": GENMANIP_vla_onetask_Kichen,
-    "GENMANIP_vla_onlytgt_Kichen": GENMANIP_vla_onlytgt_Kichen,
-    # Kitchen More  Train
-    "GENMANIP_vla_onetask_Kichen_More_train": GENMANIP_vla_onetask_Kichen_More_train,
-    "GENMANIP_vla_onlytgt_Kichen_More_train": GENMANIP_vla_onlytgt_Kichen_More_train,
-    "GENMANIP_vla_1by1_Kichen_More_train": GENMANIP_vla_1by1_Kichen_More_train,
-    "all": None,
 }
-
-# "magpie_pro_l3_80b_mt": MAGPIE_PRO_L3_80B_MT,
-# "magpie_pro_l3_80b_st": MAGPIE_PRO_L3_80B_ST,
 
 
 def parse_sampling_rate(dataset_name):
@@ -192,167 +106,10 @@ def data_list(dataset_names):
     return config_list
 
 
-# Kitchen Eval - Banana Plate
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/banana_plate"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/banana_plate"
-
-GENMANIP_vla_onetask_Banana = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_Banana = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# Kitchen Eval - Lemon Plate
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/lemon_plate"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/lemon_plate"
-
-GENMANIP_vla_onetask_Lemon = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train_rewritten.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_Lemon = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# Kitchen Eval - Sandwich Plate
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/sandwich_plate"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/sandwich_plate"
-
-GENMANIP_vla_onetask_Sandwich = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train_rewritten.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_Sandwich = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-
-# Kitchen Eval - All All
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/all_all"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/all_all"
-
-GENMANIP_vla_onetask_AllAll = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_AllAll = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# Kitchen Eval - All All More
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/all_all_more"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Kitchen/all_all_more"
-
-GENMANIP_vla_onetask_AllAllMore = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_AllAllMore = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# Genmanip20
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Genmanip20"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/Genmanip20"
-
-GENMANIP_vla_onetask_Genmanip20 = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-data_dict.update({"GENMANIP_vla_onetask_Genmanip20": GENMANIP_vla_onetask_Genmanip20})
-
-# Object Container
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/object_container"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/object_container"
-
-GENMANIP_vla_onetask_ObjectContainer = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-
-GENMANIP_vla_onlytgt_ObjectContainer = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval_onlytgt.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# register new datasets to data_dict
-data_dict.update(
-    {
-        "GENMANIP_vla_onetask_Banana": GENMANIP_vla_onetask_Banana,
-        "GENMANIP_vla_onlytgt_Banana": GENMANIP_vla_onlytgt_Banana,
-        "GENMANIP_vla_onetask_Lemon": GENMANIP_vla_onetask_Lemon,
-        "GENMANIP_vla_onlytgt_Lemon": GENMANIP_vla_onlytgt_Lemon,
-        "GENMANIP_vla_onetask_Sandwich": GENMANIP_vla_onetask_Sandwich,
-        "GENMANIP_vla_onlytgt_Sandwich": GENMANIP_vla_onlytgt_Sandwich,
-    }
-)
-
-# register new datasets to data_dict
-data_dict.update(
-    {
-        "GENMANIP_vla_onetask_AllAll": GENMANIP_vla_onetask_AllAll,
-        "GENMANIP_vla_onlytgt_AllAll": GENMANIP_vla_onlytgt_AllAll,
-        "GENMANIP_vla_onetask_AllAllMore": GENMANIP_vla_onetask_AllAllMore,
-        "GENMANIP_vla_onlytgt_AllAllMore": GENMANIP_vla_onlytgt_AllAllMore,
-        "GENMANIP_vla_onetask_ObjectContainer": GENMANIP_vla_onetask_ObjectContainer,
-        "GENMANIP_vla_onlytgt_ObjectContainer": GENMANIP_vla_onlytgt_ObjectContainer,
-    }
-)
-
-# Object Object
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/object_object"
-genmanip_image_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v4/object_object"
-
-GENMANIP_vla_onetask_ObjectObject = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_train.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_onlytgt_ObjectObject = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_one_eval.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_task_ObjectObject = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_train.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-GENMANIP_vla_task_dropturn_ObjectObject = {
-    "annotation_path": f"{genmanip_json_root}/vla_task_dropturn_train.json",
-    "data_path": f"{genmanip_image_root}",
-}
-
-# register new datasets to data_dict
-data_dict.update(
-    {
-        "GENMANIP_vla_onetask_ObjectObject": GENMANIP_vla_onetask_ObjectObject,
-        "GENMANIP_vla_onlytgt_ObjectObject": GENMANIP_vla_onlytgt_ObjectObject,
-        "GENMANIP_vla_task_ObjectObject": GENMANIP_vla_task_ObjectObject,
-        "GENMANIP_vla_task_dropturn_ObjectObject": GENMANIP_vla_task_dropturn_ObjectObject,
-    }
-)
-
-
-# V5
-
+# Kitchen
 # register new Genmanip_vlm_v5 datasets
 
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v5"
+genmanip_json_root = f"./playground/Datasets/Genmanip_vlm_v5"
 
 # Object-container
 # /fs-computility/efm/yejinhui/Projects/System2VLA/playground/Datasets/Genmanip_vlm_v5/object_container
@@ -425,83 +182,6 @@ data_dict.update(
     }
 )
 
-
-# V6
-
-# register new Genmanip_vlm_v5 datasets
-
-genmanip_json_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v6"
-
-# Object-container
-# /fs-computility/efm/yejinhui/Projects/System2VLA/playground/Datasets/Genmanip_vlm_v5/object_container
-genmanip_object_object_root = f"{genmanip_json_root}/object_container"
-GENMANIP_v5_object_container = {
-    "annotation_path": f"{genmanip_object_object_root}/Manipu_CoT.json",
-    "data_path": f"{genmanip_object_object_root}",
-}
-
-genmanip_object_object_root = f"{genmanip_json_root}/object_object"
-GENMANIP_v5_object_object = {
-    "annotation_path": f"{genmanip_object_object_root}/Manipu_CoT.json",
-    "data_path": f"{genmanip_object_object_root}",
-}
-
-# 5*5
-genmanip_kitchen_5plus5 = f"{genmanip_json_root}/Kitchen/5x5"
-GENMANIP_v5_kitchen_5plus5 = {
-    "annotation_path": f"{genmanip_kitchen_5plus5}/Manipu_CoT.json",
-    "data_path": f"{genmanip_kitchen_5plus5}",
-}
-
-# 5*5 more
-genmanip_kitchen_5plus5_more = f"{genmanip_json_root}/Kitchen/5x5_more"
-GENMANIP_v5_kitchen_5plus5_more = {
-    "annotation_path": f"{genmanip_kitchen_5plus5_more}/Manipu_CoT.json",
-    "data_path": f"{genmanip_kitchen_5plus5_more}",
-}
-
-
-# Kitchen - Apple Plate
-genmanip_kitchen_apple_root = f"{genmanip_json_root}/Kitchen/apple_plate"
-GENMANIP_v5_kitchen_apple = {
-    "annotation_path": f"{genmanip_kitchen_apple_root}/Manipu_CoT.json",
-    "data_path": f"{genmanip_kitchen_apple_root}",
-}
-
-# Kitchen - Banana Plate
-genmanip_kitchen_banana_root = f"{genmanip_json_root}/Kitchen/banana_plate"
-GENMANIP_v5_kitchen_banana = {
-    "annotation_path": f"{genmanip_kitchen_banana_root}/Manipu_CoT.json",
-    "data_path": f"{genmanip_kitchen_banana_root}",
-}
-
-# Kitchen - Lemon Plate
-genmanip_kitchen_lemon_root = f"{genmanip_json_root}/Kitchen/lemon_plate"
-GENMANIP_v5_kitchen_lemon = {
-    "annotation_path": f"{genmanip_kitchen_lemon_root}/Manipu_CoT.json",
-    "data_path": f"{genmanip_kitchen_lemon_root}",
-}
-
-# Kitchen - Sandwich Plate
-genmanip_kitchen_sandwich_root = f"{genmanip_json_root}/Kitchen/sandwich_plate"
-GENMANIP_v5_kitchen_sandwich = {
-    "annotation_path": f"{genmanip_kitchen_sandwich_root}/Manipu_CoT.json",
-    "data_path": f"{genmanip_kitchen_sandwich_root}",
-}
-
-# register to data_dict
-data_dict.update(
-    {
-        "GENMANIP_v5_object_object": GENMANIP_v5_object_object,
-        "GENMANIP_v5_object_container": GENMANIP_v5_object_container,
-        "GENMANIP_v5_kitchen_5plus5": GENMANIP_v5_kitchen_5plus5,
-        "GENMANIP_v5_kitchen_5plus5_more": GENMANIP_v5_kitchen_5plus5_more,
-        "GENMANIP_v5_kitchen_apple": GENMANIP_v5_kitchen_apple,
-        "GENMANIP_v5_kitchen_banana": GENMANIP_v5_kitchen_banana,
-        "GENMANIP_v5_kitchen_lemon": GENMANIP_v5_kitchen_lemon,
-        "GENMANIP_v5_kitchen_sandwich": GENMANIP_v5_kitchen_sandwich,
-    }
-)
 
 
 # Grounding data
@@ -621,89 +301,7 @@ data_dict.update(
 )
 
 
-# V7 long horizon
-genmanip_r2s_task2_root = f"{system2_root}/playground/Datasets/Genmanip_vlm_v7/r2s_task2"
 
-GENMANIP_v7_r2s_task2_train = {
-    "annotation_path": f"{genmanip_r2s_task2_root}/Manipu_CoT_train.json",
-    "data_path": genmanip_r2s_task2_root,
-}
-
-GENMANIP_v7_r2s_task2_eval = {
-    "annotation_path": f"{genmanip_r2s_task2_root}/Manipu_CoT_eval.json",
-    "data_path": genmanip_r2s_task2_root,
-}
-
-
-data_dict.update(
-    {
-        "GENMANIP_v7_r2s_task2_train": GENMANIP_v7_r2s_task2_train,
-        "GENMANIP_v7_r2s_task2_eval": GENMANIP_v7_r2s_task2_eval,
-    }
-)
-
-# official version system2
-# add these datasets to data_dict
-
-genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056_224"
-genmanip_sys2_14k_v2_image_root = (
-    "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627"
-)
-genmanip_sys2_14k_v2_action_plan = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_action_plan_rule+llm_1obj_action_plan_gpt4o-mini.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-genmanip_sys2_14k_v2_grounding_rule_coco = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_grounding_rule_coco_en_reftype_jsontype_.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-genmanip_sys2_14k_v2_img_caption_rule = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_img_caption_rule_img_cap_.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-genmanip_sys2_14k_v2_obj_caption_rule = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_obj_caption_rule_obj_cap_.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_attr_gpt4o-mini.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_nearby_gpt4o-mini.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic = {
-    "annotation_path": (
-        f"{genmanip_sys2_14k_v2_json_root}/sys2_obj14k_pertaskobj5_10_num1M_0624_qa_rule+llm_1obj_senmatic_gpt4o-mini.jsonl"
-    ),
-    "data_path": f"{genmanip_sys2_14k_v2_image_root}",
-}
-data_dict.update(
-    {
-        "genmanip_sys2_14k_v2_action_plan": genmanip_sys2_14k_v2_action_plan,
-        "genmanip_sys2_14k_v2_grounding_rule_coco": genmanip_sys2_14k_v2_grounding_rule_coco,
-        "genmanip_sys2_14k_v2_img_caption_rule": genmanip_sys2_14k_v2_img_caption_rule,
-        "genmanip_sys2_14k_v2_obj_caption_rule": genmanip_sys2_14k_v2_obj_caption_rule,
-        "genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr": genmanip_sys2_14k_v2_qa_rule_llm_1obj_attr,
-        "genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby": genmanip_sys2_14k_v2_qa_rule_llm_1obj_nearby,
-        "genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic": genmanip_sys2_14k_v2_qa_rule_llm_1obj_senmatic,
-    }
-)
 if __name__ == "__main__":
-    dataset_names = ["cambrian_737k"]
-    configs = data_list(dataset_names)
-    for config in configs:
-        print(config)
+    print(data_list)
+    

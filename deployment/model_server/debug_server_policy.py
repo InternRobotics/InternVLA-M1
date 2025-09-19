@@ -92,11 +92,11 @@ def _main():
     client = WebsocketClientPolicy(host=args.host, port=args.port, api_key=(args.api_key or None))
     logging.info("Connected. Server metadata: %s", client.get_server_metadata())
 
-    # 1) device initialization (will not trigger model inference, suitable for health check)
+    # 1) device initialization
     init_ret = client.init_device(args.device) # here to set some things on the server
     logging.info("Init device resp: %s", init_ret)
 
-    # 2) optional: try one simple inference (if the server policy.infer needs specific fields, it may return an error, which also proves the link is ok)
+    # 2) optional: try one simple inference
     if args.test == "infer":
         try:
             # build observation aligned with model API
@@ -119,7 +119,7 @@ def _main():
                 "task_description": observation["instruction"][0],  # assume only one task description
             }
 
-            infer_ret = client.infer(obs) # this is the model interface, just transferred through socket here
+            infer_ret = client.infer(obs)
             logging.info("Infer resp: %s", infer_ret)
         except Exception as e:
             logging.error("Infer error (this still proves transport OK): %s", e)

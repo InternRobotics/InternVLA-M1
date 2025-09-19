@@ -77,7 +77,7 @@ class baseframework(nn.Module):
         """
         pretrained_checkpoint = Path(pretrained_checkpoint)
         model_config, norm_stats = read_mode_config(pretrained_checkpoint) # read config and norm_stats
-        # TODO 
+
         config = dict_to_namespace(model_config)
         model_config = config
         model_config.trainer.pretrained_checkpoint = None 
@@ -85,7 +85,7 @@ class baseframework(nn.Module):
         # set for action un-norm
         FrameworkModel.norm_stats = norm_stats
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
-        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu") #["model"]
+        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu") 
         # logger.info(f"Loading model weights from `{pretrained_checkpoint}`")
         model_keys = set(FrameworkModel.state_dict().keys())
         checkpoint_keys = set(model_state_dict.keys())

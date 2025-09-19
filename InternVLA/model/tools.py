@@ -1,9 +1,3 @@
-"""
-TODO  waiting to move # 全部tools 应该是要在一个位置的
-
-"""
-
-
 def auto_get_module_keys(module, max_depth=0, prefix_list=None, current_depth=0, current_prefix=''):
     """
     get all submodule keys of a module, support setting recursion depth and prefix list.
@@ -110,13 +104,13 @@ def print_freeze_status(self):
 
         if frozen_count > 0 and trainable_count == 0:
             # all frozen
-            print(f"{top_module:40s}  |  全部 Frozen ({frozen_count} 参数)")
+            print(f"{top_module:40s}  |  all Frozen ({frozen_count} parameters)")
         elif trainable_count > 0 and frozen_count == 0:
             # all trainable
-            print(f"{top_module:40s}  |  全部 Trainable ({trainable_count} 参数)")
+            print(f"{top_module:40s}  |  all Trainable ({trainable_count} parameters)")
         else:
             # mixed state, first print the module name summary, then list the state of each parameter
-            print(f"{top_module:40s}  |  混合状态 → Frozen: {frozen_count}, Trainable: {trainable_count}")
+            print(f"{top_module:40s}  |  mixed state → Frozen: {frozen_count}, Trainable: {trainable_count}")
             for pname, pstate in info["params"]:
                 print(f"    {pname:60s}  |  {pstate}")
     print("=========================\n")

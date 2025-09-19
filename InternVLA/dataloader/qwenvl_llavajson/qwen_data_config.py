@@ -642,7 +642,7 @@ data_dict.update({
     "GENMANIP_v7_r2s_task2_eval": GENMANIP_v7_r2s_task2_eval,
 })
 
-# official version system2 from @kun
+# official version system2
 # add these datasets to data_dict
 
 genmanip_sys2_14k_v2_json_root = "/mnt/petrelfs/share/efm_p/sys2_data/genmanip_sim_data/sys2_obj14k_pertaskobj5_10_picnum10w_qa2M_0627/json/qwen_format_minp_3136_maxp_12845056_224"

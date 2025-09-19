@@ -22,7 +22,6 @@ from tqdm import tqdm
 from transformers import AutoProcessor, get_scheduler
 
 # Local Modules
-# 这里的变化需要📦封装 Dataloader
 from InternVLA.dataloader import build_dataloader
 from InternVLA.training.trainer_utils.metrics import normalize_dotlist_args
 from InternVLA.model.framework import build_framework
@@ -72,9 +71,8 @@ def setup_directories(cfg) -> Path:
 
 def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     """prepare training data"""
-    # TODO @JinhuiYE could be more general, use dict to pass parameters  # TODO still cannot merge cotrain this mode
     logger.info(f"Creating VLA Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
-    vla_train_dataloader = build_dataloader( # this is written inside dataload.py,
+    vla_train_dataloader = build_dataloader(
         cfg=cfg,
         dataset_py=cfg.datasets.vla_data.dataset_py)
     
@@ -149,19 +147,19 @@ class VLAMTrainer(TrainerUtils):
             self.model = self.load_pretrained_backbones(self.model, pretrained_checkpoint, reload_modules=reload_modules)
         
         # freeze parameters
-        freeze_modules = ( # I think there should be only one config, using relative path is not necessary
+        freeze_modules = (
             self.config.trainer.freeze_modules
             if (self.config and hasattr(self.config.trainer, "freeze_modules"))
             else None
         )
-        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules) # TODO think about self.config is global or relative path?
+        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules)
 
-        #  print trainable parameters of the model: --> TODO it should be summarized at the end, consider centralized management
+        #  print trainable parameters of the model
         self.print_trainable_parameters(self.model)
 
         # initialize distributed training components
         self.model, self.optimizer, self.vla_train_dataloader, self.vlm_train_dataloader = self.setup_distributed_training(
-            self.accelerator, # must be the first param
+            self.accelerator,
             self.model,
             self.optimizer,
             self.vla_train_dataloader,
@@ -201,15 +199,13 @@ class VLAMTrainer(TrainerUtils):
         is_resume = getattr(self.config.trainer, "is_resume", False)
 
         # resume training state
-        # need to check if there is self.config.trainer.pretrained_checkpoint
-        if pretrained_checkpoint and is_resume: # TODO here we haven't saved state, think about whether it is necessary (state storage is too large, need to implement keep last/best logic, including ckpt)
+        if pretrained_checkpoint and is_resume:
             self._load_checkpoint(self.config.resume_from_checkpoint)
     
     def _load_checkpoint(self, checkpoint_path):
         """load checkpoint"""
         self.accelerator.load_state(checkpoint_path)
         self.accelerator.print(f"Resumed from checkpoint: {checkpoint_path}")
-        # TODO: resume training steps and other states
     
     def _save_checkpoint(self):
         """save current training state"""
@@ -224,7 +220,6 @@ class VLAMTrainer(TrainerUtils):
             # save training metadata
             summary_data = {
                 "steps": self.completed_steps,
-                # TODO: add other training states to save
             }
             with open(os.path.join(self.config.output_dir, "summary.jsonl"), "a") as f:
                 f.write(json.dumps(summary_data) + "\n")
@@ -235,7 +230,7 @@ class VLAMTrainer(TrainerUtils):
         """record training metrics"""
         if self.completed_steps % self.config.trainer.logging_frequency == 0: # some parameters should be initialized for the class
             if dist.get_rank() == 0:
-                # calculate gradient norm # TODO check any way to get norm in accelerator
+                # calculate gradient norm
                 # total_norm = 0.0
                 # for p in self.model.parameters():
                 #     if p.grad is not None:
@@ -243,7 +238,7 @@ class VLAMTrainer(TrainerUtils):
                 # metrics["grad_norm"] = total_norm ** 0.5
                 
                 # add learning rate
-                metrics["learning_rate"] = self.lr_scheduler.get_last_lr()[0] # TODO check whether there is lr group
+                metrics["learning_rate"] = self.lr_scheduler.get_last_lr()[0]
                 
                 # add epoch information
                 metrics["epoch"] = round(self.completed_steps / len(self.vla_train_dataloader), 2)
@@ -272,7 +267,7 @@ class VLAMTrainer(TrainerUtils):
             batch_vla = next(self.vla_iter)
         
         try:
-            batch_vlm = next(self.vlm_iter) # TODO first and last loop should be dataset's own function, here considering many datasets don't have this function
+            batch_vlm = next(self.vlm_iter) 
         except StopIteration: 
             if not hasattr(self, 'vlm_epoch_count'):
                 self.vlm_epoch_count = 0
@@ -284,7 +279,7 @@ class VLAMTrainer(TrainerUtils):
         return batch_vla, batch_vlm
     
     def train(self):
-        """执行训练循环"""
+        """execute training loop"""
         # print training config
         self._log_training_config()
         
@@ -344,16 +339,15 @@ class VLAMTrainer(TrainerUtils):
             
             examples, vlm_data = self._get_next_batch()
             
-            score = 0.0 # TODO try to prove batch inference
+            score = 0.0
             num_samples = len(examples)
 
-            # @Jinhui TBD TODO 
-            batch_images = [example["image"] for example in examples]  #  TODO check what is it
+            batch_images = [example["image"] for example in examples]
             instructions = [example["lang"] for example in examples]  # [B, str]
             actions = [example["action"] for example in examples] #label
 
             # Predict actions using the model
-            output_dict = self.model.predict_action( # TODO here is model method dependency, if you want to keep trainer's independence, how to design here?
+            output_dict = self.model.predict_action(
                 batch_images=batch_images,
                 instructions=instructions,
                 use_ddim=True,
@@ -361,7 +355,7 @@ class VLAMTrainer(TrainerUtils):
 
             normalized_actions = output_dict["normalized_actions"] #B, T, D
             
-            actions = np.array(actions)  # 将 actions 转换为 numpy.ndarray
+            actions = np.array(actions) # convert actions to numpy.ndarray
             # B, Chunk, dim = actions.shape
             num_pots = np.prod(actions.shape)
             # Compute the metric score
@@ -369,7 +363,7 @@ class VLAMTrainer(TrainerUtils):
             average_score = score / num_pots
             step_metrics["mse_score"] = average_score
 
-        dist.barrier()  # ensure all processes are synchronized TODO check if other processes need to wait
+        dist.barrier()
         return step_metrics
 
 
@@ -382,12 +376,10 @@ class VLAMTrainer(TrainerUtils):
             logger.info(f"  Gradient accumulation steps = {self.config.trainer.gradient_accumulation_steps}")
             logger.info(f"  Total batch size = {self.total_batch_size}")
 
-        # TODO here should print all training critical information: model size, freeze, lr group and so on.
     
     def _train_step(self, batch_vla, batch_vlm):
         """execute single training step"""
         log_dict = {}
-        # TODO: implement gradient accumulation @Yioutpi
         with self.accelerator.accumulate(self.model):
             self.optimizer.zero_grad()
             

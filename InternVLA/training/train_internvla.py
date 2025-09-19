@@ -82,11 +82,11 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     """prepare training data"""
     # VLA data loader
     logger.info(f"Creating VLA Open-X Dataset with Mixture `{cfg.datasets.vla_data.data_mix}`")
-    vla_train_dataloader = build_dataloader( # this is written in dataload.py internally
+    vla_train_dataloader = build_dataloader(
         cfg=cfg)
     
     
-    accelerator.dataloader_config.dispatch_batches =  False # TODO check if it can be moved to internal
+    accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
     
     return vla_train_dataloader
@@ -124,7 +124,7 @@ def setup_optimizer_and_scheduler(
     return optimizer, lr_scheduler
 
 class VLATrainer(TrainerUtils):
-    def __init__(self, cfg, model, vla_train_dataloader, optimizer, lr_scheduler, accelerator): # TODO @JinhuiYE consider merging with VLAM
+    def __init__(self, cfg, model, vla_train_dataloader, optimizer, lr_scheduler, accelerator):
         self.config = cfg
         self.model = model
         self.vla_train_dataloader = vla_train_dataloader
@@ -154,13 +154,12 @@ class VLATrainer(TrainerUtils):
             if (self.config and hasattr(self.config.trainer, "freeze_modules"))
             else None
         )
-        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules) # TODO think about self.config is global or relative parameter passing?
+        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules)
 
-        #  print model trainable parameters: --> TODO it should be summarized at the end, consider centralized management
+        #  print model trainable parameters:
         self.print_trainable_parameters(self.model)
 
         # initialize distributed training components
-        # self.accelerator.gradient_accumulation_steps = self.config.trainer.gradient_accumulation_steps
         self.model, self.optimizer, self.vla_train_dataloader = self.setup_distributed_training(
             self.accelerator, # must be the first param
             self.model,
@@ -202,7 +201,6 @@ class VLATrainer(TrainerUtils):
         is_resume = getattr(self.config.trainer, "is_resume", False)
 
         # resume training state
-        # need to check if there is self.config.trainer.pretrained_checkpoint
         if pretrained_checkpoint and is_resume:
             self._load_checkpoint(self.config.resume_from_checkpoint)
     
@@ -210,7 +208,6 @@ class VLATrainer(TrainerUtils):
         """load checkpoint"""
         self.accelerator.load_state(checkpoint_path)
         self.accelerator.print(f"Resumed from checkpoint: {checkpoint_path}")
-        # TODO: resume training steps and other states
     
     def _save_checkpoint(self):
         """save current training state"""
@@ -225,7 +222,6 @@ class VLATrainer(TrainerUtils):
             # save training metadata
             summary_data = {
                 "steps": self.completed_steps,
-                # TODO: add other training states to save
             }
             with open(os.path.join(self.config.output_dir, "summary.jsonl"), "a") as f:
                 f.write(json.dumps(summary_data) + "\n")
@@ -249,7 +245,6 @@ class VLATrainer(TrainerUtils):
     
     def _create_data_iterators(self):
         """create data iterators"""
-        # TODO consider how to compatible with different modes
         self.vla_iter = iter(self.vla_train_dataloader)
         # self.vlm_iter = iter(self.vlm_train_dataloader)
     
@@ -260,7 +255,6 @@ class VLATrainer(TrainerUtils):
         except StopIteration:
             if not hasattr(self, 'vla_epoch_count'):
                 self.vla_epoch_count = 0
-            # TODO need to check if it is effective
             self.vla_iter, self.vla_epoch_count = TrainerUtils._reset_dataloader(
                 self.vla_train_dataloader, self.vla_epoch_count
             )
@@ -333,16 +327,15 @@ class VLATrainer(TrainerUtils):
             
             examples = self._get_next_batch()
             
-            score = 0.0 # TODO try to prove batch inference
+            score = 0.0 
             num_samples = len(examples)
 
-            # @Jinhui TBD TODO 
-            batch_images = [example["image"] for example in examples]  #  TODO check what is it
+            batch_images = [example["image"] for example in examples] 
             instructions = [example["lang"] for example in examples]  # [B, str]
             actions = [example["action"] for example in examples] #label
 
             # Predict actions using the model
-            output_dict  = self.model.predict_action( # TODO here is model method dependency, if you want to keep trainer's independence, how to design here?
+            output_dict  = self.model.predict_action( 
                 batch_images=batch_images,
                 instructions=instructions,
                 use_ddim=True,
@@ -358,7 +351,7 @@ class VLATrainer(TrainerUtils):
             average_score = score / num_pots
             step_metrics["mse_score"] = average_score
         pass
-        dist.barrier()  # ensure all processes are synchronized TODO check if other processes need to wait
+        dist.barrier()  # ensure all processes are synchronized
         return step_metrics
 
 

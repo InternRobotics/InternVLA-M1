@@ -99,7 +99,6 @@ def dict_to_namespace(d):
 
 
 
-# TODO use this for much good config handling in model code
 def _to_omegaconf(x: Any):
     """
     Convert diverse input types into an OmegaConf object.
@@ -241,8 +240,7 @@ def read_model_config(pretrained_checkpoint):
         assert config_json.exists(), f"Missing `config.json` for `{run_dir = }`"
         assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir = }`"
 
-    # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
-
+        # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
         # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
         with open(config_json, "r") as f:
             global_cfg = json.load(f)
@@ -280,8 +278,7 @@ def read_mode_config(pretrained_checkpoint):
         assert config_yaml.exists(), f"Missing `config.yaml` for `{run_dir = }`"
         assert dataset_statistics_json.exists(), f"Missing `dataset_statistics.json` for `{run_dir = }`"
 
-    # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
-
+        # Otherwise =>> try looking for a match on `model_id_or_path` on the HF Hub (`model_id_or_path`)
         # Load VLA Config (and corresponding base VLM `ModelConfig`) from `config.json`
         try:
             ocfg = OmegaConf.load(str(config_yaml))

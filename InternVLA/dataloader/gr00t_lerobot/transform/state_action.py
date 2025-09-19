@@ -577,7 +577,6 @@ class StateActionDropout(ModalityTransform):
             # Don't drop out the data in eval mode
             return data
         if self.dropout_prob < 0:
-            # If the dropout probability is negative, we don't drop out any states
             return data
         if self.dropout_prob > 1e-9 and random.random() < self.dropout_prob:
             for key in self.apply_to:

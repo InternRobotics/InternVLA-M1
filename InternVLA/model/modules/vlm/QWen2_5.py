@@ -21,10 +21,7 @@ VIDEO_TOKEN_INDEX = 151656
 DEFAULT_IMAGE_TOKEN = "<image>"
 DEFAULT_VIDEO_TOKEN = "<video>"
 
-# add by jinhui
-
 import torch.nn as nn
-#@TODO emergency fix @Jinhui more readable and flexible way for VLM interface
 class _QWen_VL_Interface(nn.Module):
     """
     This exists because of the diversity of VLMs, so we encapsulate the changes here.
@@ -89,7 +86,7 @@ class _QWen_VL_Interface(nn.Module):
             device_map="cuda",
         )
         processor = AutoProcessor.from_pretrained(model_id) 
-        processor.tokenizer.padding_side  = 'left' #TODO Check  Flash Attention version of Qwen2_5_VL. Make sure to  call `tokenizer.padding_side  = 'left'` before tokenizing the input. 
+        processor.tokenizer.padding_side  = 'left'
         
         self.model = model
         self.processor = processor

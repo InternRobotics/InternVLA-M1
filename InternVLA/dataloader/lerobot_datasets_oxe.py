@@ -27,9 +27,7 @@ def make_LeRobotSingleDataset(
     """
     data_config = DATA_CONFIG_MAP[data_name]
     modality_config = data_config.modality_config()
-    # TODO: wait for test transforms
     transforms = data_config.transform()
-    # transforms = None
     dataset_path = data_root_dir / data_name
     embodiment_tag = DATASET_NAME_TO_EMBODIMENT_TAG[data_name]
     return LeRobotSingleDataset(

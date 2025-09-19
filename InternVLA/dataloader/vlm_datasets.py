@@ -721,7 +721,7 @@ if __name__ == "__main__":
     image_processor.size["shortest_edge"] = data_args.min_pixels
     data_args.model_type = "qwen2.5vl"
     data_args_ns = SimpleNamespace(**OmegaConf.to_container(data_args, resolve=True))
-    data_args_ns.image_processor = image_processor # TODO later remove the logic bound to model                         
+    data_args_ns.image_processor = image_processor
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args_ns)
     
     #
@@ -734,7 +734,7 @@ if __name__ == "__main__":
         collate_fn=data_collator, 
     )
     batchs = iter(train_dataloader)
-    batch_samples = next(batchs) #for debug
+    batch_samples = next(batchs)
     # skip the first 99 batches, get the 100th batch
     from itertools import islice
     # batch_samples = next(islice(batchs, 99, 100))

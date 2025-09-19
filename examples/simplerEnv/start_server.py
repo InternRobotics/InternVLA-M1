@@ -19,7 +19,7 @@ def main(args) -> None:
     local_ip = socket.gethostbyname(hostname)
     logging.info("Creating server (host: %s, ip: %s)", hostname, local_ip)
 
-    # 启动 websocket server
+    # start websocket server
     server = WebsocketPolicyServer(
         policy=vla,
         host="0.0.0.0",
@@ -39,7 +39,7 @@ def build_argparser():
 
 
 def start_debugpy_once():
-    """只启动一次 debugpy"""
+    """start debugpy once"""
     import debugpy
     if getattr(start_debugpy_once, "_started", False):
         return

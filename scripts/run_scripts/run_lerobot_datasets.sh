@@ -26,9 +26,9 @@ cp $0 ${output_dir}/
 
 
 accelerate launch \
-  --config_file scripts/run_scripts/deepspeed_zero2.yaml \
+  --config_file InternVLA/config/deepseeds/deepspeed_zero2.yaml \
   --num_processes 8 \
-  InternVLA/training/train_qwenvla.py \
+  InternVLA/training/train_internvla.py \
   --config_yaml ./InternVLA/config/training/internvla_cotrain_oxe.yaml \
   --framework.framework_py ${Framework_name} \
   --framework.qwenvl.base_vlm ${base_vlm} \

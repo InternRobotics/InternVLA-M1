@@ -84,11 +84,86 @@ This is a temporary limitation and not related to the training or upload scripts
 
 Status: rolling release. If you need early access or encounter broken links, please open an issue.
 
+
+# ⚡ Quick Interactive M1 Demo
+
+Below are two collapsible examples: System2 chat and action prediction.
+
+<details>
+<summary><b>InternVLA-M1 Chat Demo (image Q&A / Spatial Grounding)</b></summary>
+
+```python
+from InternVLA.model.framework.M1 import InternVLA_M1
+from PIL import Image
+import requests
+from io import BytesIO
+import torch
+
+def load_image_from_url(url: str) -> Image.Image:
+    resp = requests.get(url, timeout=15)
+    resp.raise_for_status()
+    img = Image.open(BytesIO(resp.content)).convert("RGB")
+    return img
+
+saved_model_path = "/PATH/checkpoints/steps_50000_pytorch_model.pt"
+internVLA_M1 = InternVLA_M1.from_pretrained(saved_model_path)
+
+# Use the raw image link for direct download
+image_url = "https://raw.githubusercontent.com/InternRobotics/InternVLA-M1/InternVLA-M1/assets/table.jpeg"
+image = load_image_from_url(image_url)
+question = "Give the bounding box for the apple."
+response = internVLA_M1.chat_with_M1(image, question)
+print(response)
+```
+</details>
+
+<details>
+<summary><b>InternVLA-M1 Action Prediction Demo (two views)</b></summary>
+
+```python
+from InternVLA.model.framework.M1 import InternVLA_M1
+from PIL import Image
+import requests
+from io import BytesIO
+import torch
+
+def load_image_from_url(url: str) -> Image.Image:
+    resp = requests.get(url, timeout=15)
+    resp.raise_for_status()
+    img = Image.open(BytesIO(resp.content)).convert("RGB")
+    return img
+
+saved_model_path = "/PATH/checkpoints/steps_50000_pytorch_model.pt"
+internVLA_M1 = InternVLA_M1.from_pretrained(saved_model_path)
+
+image_url = "https://raw.githubusercontent.com/InternRobotics/InternVLA-M1/InternVLA-M1/assets/table.jpeg"
+view1 = load_image_from_url(image_url)
+view2 = view1.copy()
+
+# Construct input: batch size = 1, two views
+batch_images = [[view1, view2]]  # List[List[PIL.Image]]
+instructions = ["Pick up the apple and place it on the plate."]
+
+if torch.cuda.is_available():
+    internVLA_M1 = internVLA_M1.to("cuda")
+
+pred = internVLA_M1.predict_action(
+    batch_images=batch_images,
+    instructions=instructions,
+    cfg_scale=1.5,
+    use_ddim=True,
+    num_ddim_steps=10,
+)
+normalized_actions = pred["normalized_actions"]  # [B, T, action_dim]
+print(normalized_actions.shape, type(normalized_actions))
+```
+</details>
+
+
 # 🗺️ Roadmap
 
-* [ ] Release model weights (Stay tuned, coming soon)
+* [x] Release model weights
 * [ ] Add multi-task mixed training examples
-* [ ] Release real-robot demo
 * [ ] Unify evaluation scripts and metrics
 
 # 🤝 Contributing

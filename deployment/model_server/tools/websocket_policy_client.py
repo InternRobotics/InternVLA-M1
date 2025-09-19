@@ -57,12 +57,11 @@ class WebsocketClientPolicy:
         return msgpack_numpy.unpackb(resp)
 
     @override
-    def infer(self, obs: Dict) -> Dict:  # noqa: UP006
+    def infer(self, obs: Dict) -> Dict:
         data = self._packer.pack(obs)
         self._ws.send(data)
         response = self._ws.recv()
         if isinstance(response, str):
-            # we're expecting bytes; if the server sends a string, it's an error.
             raise RuntimeError(f"Error in inference server:\n{response}")
         return msgpack_numpy.unpackb(response)
 
@@ -98,11 +97,11 @@ def _main():
     client = WebsocketClientPolicy(host=args.host, port=args.port, api_key=(args.api_key or None))
     logging.info("Connected. Server metadata: %s", client.get_server_metadata())
 
-    # 1) device initialization (will not trigger model inference, suitable for health check)
+    # 1) device initialization
     init_ret = client.init_device(args.device)
     logging.info("Init device resp: %s", init_ret)
 
-    # 2) optional: try one simple inference (if the server policy.infer needs specific fields, it may return an error, which also proves the link is ok)
+    # 2) optional: try one simple inference
     if args.test == "infer":
         try:
             obs = {"request_id": "smoke-test", "ping": True} # give your model inputs

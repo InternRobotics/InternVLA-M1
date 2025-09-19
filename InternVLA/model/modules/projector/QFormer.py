@@ -117,8 +117,6 @@ class LayerwiseQFormer(nn.Module):
             - Excessive hook registrations can hurt speed; kept lazy by default.
         """
         # --- 1. Register gradient scaling hooks on input hidden_states_list ---
-        # TODO @Jinhui If it affects speed, use lr to implement indirectly --> Seems to conflict with Deepspeed acceleration. lr implementation may not solve steepness issues.
-        # TODO @Jinhui: If implemented, it should be written in QFormer.
         if self.config and hasattr(self.config.vla, 'layer_qformer') and hasattr(self.config.vla.layer_qformer, 'grad_scale') \
         and self.config.vla.layer_qformer.grad_scale != 1:
             scale_factor = self.config.vla.layer_qformer.grad_scale

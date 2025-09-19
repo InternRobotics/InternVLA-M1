@@ -35,9 +35,9 @@ if __name__ == "__main__":
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     import debugpy 
 
-    # debugpy.listen(("0.0.0.0", 10092))  # 监听端口 
+    # debugpy.listen(("0.0.0.0", 10092))  # listen port 
     # print("Waiting for debugger to attach...")
-    # debugpy.wait_for_client()  # 等待 VS Code 附加
+    # debugpy.wait_for_client()  # wait for VS Code attach
 
 
 

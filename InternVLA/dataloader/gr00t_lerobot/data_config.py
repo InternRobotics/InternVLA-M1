@@ -1457,7 +1457,6 @@ DATA_CONFIG_MAP = {
     "bench_v6_all_longrange_split3_h264": SinglePandaHandDataConfig(),
     "bench_v6_all_longrange_split4_h264": SinglePandaHandDataConfig(),
 
-    # add by @JinhuiYE
     # libero bench config
     "libero_10_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
     "libero_goal_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),

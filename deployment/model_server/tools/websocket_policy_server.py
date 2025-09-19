@@ -65,7 +65,7 @@ class WebsocketPolicyServer:
     def _route_message(self, msg: dict) -> dict:
         """
         route rules:
-        - 兼容两种风格：
+        - compatible with two styles:
           1) explicit type: msg = {"type": "ping|init|infer|reset", "request_id": "...", "payload": {...}}
           2) old version implicit key: contains "device" as init, contains "reset" as reset, otherwise infer
         return: unified dictionary, at least contains {"status": "ok"|"error"}, and include "ok"/"type"/"request_id"
@@ -108,9 +108,6 @@ class WebsocketPolicyServer:
             self._policy.reset(instr)
             return {"status": "ok", "ok": True, "type": "reset_result", "request_id": req_id}
 
-        # default: inference --> message forwarding should not change any key-value
-        # interface will change because of model and other differences
-        # message cannot be changed here
         raw_action = self._policy.step(**msg)
         data = {"raw_action": raw_action}
         return {"status": "ok", "ok": True, "type": "inference_result", "request_id": req_id, "data": data}

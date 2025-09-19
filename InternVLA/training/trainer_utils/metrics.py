@@ -224,7 +224,7 @@ class TrainerUtils:
                         print(f"⚠️ parameters not found in checkpoint '{path}'")
                 except AttributeError:
                     print(f"❌ cannot find module path: {path}")
-        else:  # 全部加载
+        else: # full load
             try:
                 model.load_state_dict(checkpoint, strict=True)
                 if dist.get_rank() == 0:
@@ -284,7 +284,6 @@ class TrainerUtils:
         """
         angle_degs = []
         
-        # TODO how to see this angle is reasonable?
         # compute the cosine angle between each gradient block grads_a[0].shape = 1280, 3, 14, 14
         # grads_1 = grads_a[0][0]  # [3, 14, 14]
         # grads_2 = grads_v[0][0]
@@ -298,7 +297,6 @@ class TrainerUtils:
         grads_action = grads_action[:32, :7] # only take the first 7 elements, avoid cosim failure in high-dimensional space
         grads_vl = grads_v[0]  # [2048, 11008]
         grads_vl = grads_vl[:32, :7] # only take the first 32 elements, 7 dimensions, avoid cosim failure in high-dimensional space
-        # PCA 在看？FVD full rank
         for g_a, g_v in zip(grads_action, grads_vl):
             dot = torch.sum(g_a * g_v)
             norm_a_sq = torch.sum(g_a * g_a)
@@ -318,7 +316,7 @@ class TrainerUtils:
         angle_degs_tensor = torch.tensor(angle_degs)
         mean_angle_deg = torch.mean(angle_degs_tensor).item()
         angle_variance = torch.sqrt(torch.var(angle_degs_tensor)).item()
-        # dist.barrier() # @DEBUG
+        # dist.barrier() 
         return mean_angle_deg, angle_variance
 
     @staticmethod
@@ -345,7 +343,7 @@ class TrainerUtils:
         return grads_v
 
     @staticmethod
-    def eval_qwenpi(qwenpi, dataloader, num_batches=20):  # TODO this method is not good enough
+    def eval_qwenpi(qwenpi, dataloader, num_batches=20):
         """
         evaluate QwenQFormerDiT model, compute IoU and action distance.
         
@@ -416,7 +414,7 @@ class TrainerUtils:
         }
 
     @staticmethod
-    def extract_json_from_string(input_string): # TODO this method is not good enough
+    def extract_json_from_string(input_string):
         """
         extract valid JSON part from string and convert to dictionary.
         
@@ -439,6 +437,6 @@ class TrainerUtils:
             return None
 import os
 
-def is_main_process(): # TODO make it a decorator function, but can it be like if you want to decorate? that is, decorate each logic?
+def is_main_process():
     rank = int(os.environ.get("RANK", 0))  # if RANK is not set, default to 0
     return rank == 0

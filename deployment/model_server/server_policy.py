@@ -30,7 +30,6 @@ def main(args) -> None:
     logging.info("server running")
     server.serve_forever()
 
-# TODO merge with tools inside?
 import argparse
 def build_argparser():
     parser = argparse.ArgumentParser()

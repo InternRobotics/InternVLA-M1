@@ -55,7 +55,7 @@ class DistributedOverwatch:
         #   =>> However, might be worth actually figuring out if we need the `accelerate` dependency at all!
         self.logger, self.distributed_state = ContextAdapter(logging.getLogger(name), extra={}), PartialState()
 
-        # Logger Delegation (for convenience; would be nice to just compose & dynamic dispatch eventually)
+        # Logger Delegation
         self.debug = self.logger.debug
         self.info = self.logger.info
         self.warning = self.logger.warning
@@ -99,7 +99,7 @@ class PureOverwatch:
         """Initializer for an Overwatch object that just wraps logging."""
         self.logger = ContextAdapter(logging.getLogger(name), extra={})
 
-        # Logger Delegation (for convenience; would be nice to just compose & dynamic dispatch eventually)
+        # Logger Delegation
         self.debug = self.logger.debug
         self.info = self.logger.info
         self.warning = self.logger.warning

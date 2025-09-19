@@ -133,7 +133,7 @@ class InternVLA_M1(baseframework):
             layer_features = torch.cat([layer_features, dino_encoded_features], dim=1)  # [B, n_qformer_token + num_view * token, D] 
             cat_conditions.append(layer_features)
 
-        action_condition = self.layer_qformer(cat_conditions) # --> [B, 64, D_action]
+        action_condition = self.layer_qformer(cat_conditions) # [B, 64, D_action]
 
 
         # Step 4: Action Expert Forward and Loss
@@ -194,7 +194,7 @@ class InternVLA_M1(baseframework):
             batch_images = resize_images(batch_images, target_size=train_obs_image_size)
         instructions = [instruction.lower()  for instruction in instructions]
         
-        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions) # @Jinhui TODO add instruction to qwenvl inputs
+        inferface_inputs =  self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
         qwen_inputs = inferface_inputs
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -210,7 +210,7 @@ class InternVLA_M1(baseframework):
 
             B = dino_features.shape[0]
             dino_encoded_features = dino_features.view(B, -1,dino_features.shape[-1])  # [B, num_view * token, dim]
-            dino_encoded_features = self.dino_pro(dino_encoded_features) # B, 256, D
+            dino_encoded_features = self.dino_pro(dino_encoded_features) # [B, 256, D]
 
         with torch.autocast("cuda", dtype=torch.float32):
 
@@ -223,7 +223,7 @@ class InternVLA_M1(baseframework):
                 layer_features = torch.cat([layer_features, dino_encoded_features], dim=1)  # [B, n_qformer_token + num_view * token, D] 
                 cat_conditions.append(layer_features)
 
-            action_condition_feature = self.layer_qformer(cat_conditions) # --> [B, 64, D_action]
+            action_condition_feature = self.layer_qformer(cat_conditions) # [B, 64, D_action]
     
             using_cfg = cfg_scale > 1.0
 
@@ -239,7 +239,7 @@ class InternVLA_M1(baseframework):
                 uncondition = self.action_model.net.z_embedder.uncondition # [64, 768]
                 uncondition_shape = uncondition.shape
                 uncondition = uncondition.unsqueeze(0)  #[1, 64, D]
-                uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] # 
+                uncondition = uncondition.expand(B, uncondition_shape[0], uncondition_shape[1]) #[B, n_qformer_token, D] 
                 z = torch.cat([action_condition_feature, uncondition], 0) # [2, 64, 768] 
                 cfg_scale = cfg_scale
                 model_kwargs = dict(z=z, cfg_scale=cfg_scale)
@@ -276,9 +276,6 @@ class InternVLA_M1(baseframework):
         max_new_tokens: int = 128,
         device: Optional[str] = "cuda",
     ) -> List[str]:
-        """
-        批量对话推理：输入 batched messages（每项为一段对话列表），返回各自文本答案。
-        """
         processor = getattr(self.qwen_vl_interface, "processor", None)
         model = getattr(self.qwen_vl_interface, "model", None)
         # if processor is None or model is None:
@@ -358,14 +355,13 @@ if __name__ == "__main__":
     model = build_model_framework(cfg)
     print(model)
 
-    # 
     model_path="/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0906_bestvla_retrain_sota2/checkpoints/steps_50000_pytorch_model.pt"
     state_dict = torch.load(model_path, map_location="cpu")
 
     model.load_state_dict(state_dict, strict=True)
+
     # try forward model
     # can be fake sample， but here get from dataloader for simpler
-
     from InternVLA.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
 
     vla_dataset_cfg = cfg.datasets.vla_data

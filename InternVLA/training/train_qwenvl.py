@@ -109,7 +109,7 @@ def prepare_data(cfg, accelerator, output_dir) -> Tuple[DataLoader, DataLoader]:
     if accelerator.is_main_process:
         save_dataset_statistics(vla_dataset.dataset_statistics, output_dir)
     
-    # reject automatic dispatch # TODO should write to accelerator config
+    # reject automatic dispatch
     accelerator.dataloader_config.dispatch_batches =  False
     dist.barrier()
 
@@ -144,12 +144,6 @@ def setup_optimizer_and_scheduler(
         num_training_steps=cfg.trainer.max_train_steps
     )
     
-    # TODO mv to trainer
-    # # prepare all components
-    # (model, optimizer, vla_train_dataloader, vlm_train_dataloader) = accelerator.prepare(
-    #     model, optimizer, vla_train_dataloader, vlm_train_dataloader
-    # )
-    
     return optimizer, lr_scheduler
 
 class VLAMTrainer(TrainerUtils):
@@ -182,7 +176,7 @@ class VLAMTrainer(TrainerUtils):
             if (self.config and hasattr(self.config.trainer, "freeze_modules"))
             else None
         )
-        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules) # TODO think about self.config is global parameter or relative parameter?
+        self.model = self.freeze_backbones(self.model, freeze_modules=freeze_modules)
 
         #  print trainable parameters of model --> TODO he should be the last one to summarize the check, consider centralized management
         self.print_trainable_parameters(self.model)
@@ -236,7 +230,6 @@ class VLAMTrainer(TrainerUtils):
         """load checkpoint"""
         self.accelerator.load_state(checkpoint_path)
         self.accelerator.print(f"Resumed from checkpoint: {checkpoint_path}")
-        # TODO: resume training steps and other states
     
     def _save_checkpoint(self):
         """save current training state"""
@@ -251,7 +244,6 @@ class VLAMTrainer(TrainerUtils):
             # save training metadata
             summary_data = {
                 "steps": self.completed_steps,
-                # TODO: add other training states to save
             }
             with open(os.path.join(self.config.output_dir, "summary.jsonl"), "a") as f:
                 f.write(json.dumps(summary_data) + "\n")
@@ -294,7 +286,7 @@ class VLAMTrainer(TrainerUtils):
             batch_vla = next(self.vla_iter)
         
         try:
-            batch_vlm = next(self.vlm_iter) # TODO first and last loop should be the function of dataset, here is considering that many datasets don't have this function
+            batch_vlm = next(self.vlm_iter)
         except StopIteration:
             self.vlm_iter = iter(self.vlm_train_dataloader)
             batch_vlm = next(self.vlm_iter)
@@ -334,8 +326,6 @@ class VLAMTrainer(TrainerUtils):
             # save checkpoint
             if self.completed_steps % self.config.trainer.save_interval == 0 and self.completed_steps > 0:
                 self._save_checkpoint()
-
-                # TODO add eval logic @MichaelYu781
                 dist.barrier()  # ensure all processes have saved
             # check termination condition
             if self.completed_steps >= self.config.trainer.max_train_steps:
@@ -353,7 +343,6 @@ class VLAMTrainer(TrainerUtils):
             logger.info(f"  Gradient accumulation steps = {self.config.trainer.gradient_accumulation_steps}")
             logger.info(f"  Total batch size = {self.total_batch_size}")
 
-        # TODO here should print all key information in training: model size, freeze, lr group and so on.
     
     def _train_step(self, batch_vla, batch_vlm):
         """execute single training step"""
@@ -464,5 +453,4 @@ if __name__ == "__main__":
         print("🔍 Rank 0 waiting for debugger attach on port 10092...")
         debugpy.wait_for_client()
 
-    # TODO consider whether to merge trainer? --> users initially thought it was better to integrate more
     main(cfg)

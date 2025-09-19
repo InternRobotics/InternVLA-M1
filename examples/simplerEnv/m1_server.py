@@ -38,7 +38,7 @@ class M1Inference:
         
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         if policy_setup == "widowx_bridge":
-            unnorm_key = "bridge_dataset" if unnorm_key is None else unnorm_key #@Jinhui bridge_orig
+            unnorm_key = "bridge_dataset" if unnorm_key is None else unnorm_key
             action_ensemble = action_ensemble
             adaptive_ensemble_alpha = adaptive_ensemble_alpha
             if action_ensemble_horizon is None:
@@ -147,7 +147,6 @@ class M1Inference:
         normalized_actions = normalized_actions[0]
         
         
-        # 是否要用通讯的方式获取 unnorm 的 stats
         response_norm = self.client.get_unnorm_stats(self.unnorm_key)
         action_norm_stats = response_norm["data"]
         

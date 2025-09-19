@@ -28,16 +28,21 @@ class ConcatTransform(InvertibleModalityTransform):
     Concatenate the keys according to specified order.
     """
 
-    apply_to: list[str] = Field(default_factory=list, description="Not used in this transform, kept for compatibility.")
+    # -- We inherit from ModalityTransform, so we keep apply_to as well --
+    apply_to: list[str] = Field(
+        default_factory=list, description="Not used in this transform, kept for compatibility."
+    )
 
     video_concat_order: list[str] = Field(
         ...,
-        description="Concatenation order for each video modality. " "Format: ['video.ego_view_pad_res224_freq20', ...]",
+        description="Concatenation order for each video modality. "
+        "Format: ['video.ego_view_pad_res224_freq20', ...]",
     )
 
     state_concat_order: Optional[list[str]] = Field(
         default=None,
-        description="Concatenation order for each state modality. " "Format: ['state.position', 'state.velocity', ...].",
+        description="Concatenation order for each state modality. "
+        "Format: ['state.position', 'state.velocity', ...].",
     )
 
     action_concat_order: Optional[list[str]] = Field(
@@ -73,7 +78,7 @@ class ConcatTransform(InvertibleModalityTransform):
         for key in data.keys():
             try:
                 modality, _ = key.split(".")
-            except:
+            except:  # noqa: E722
                 ### Handle language annotation special case
                 if "annotation" in key:
                     modality = "language"
@@ -84,6 +89,8 @@ class ConcatTransform(InvertibleModalityTransform):
             grouped_keys[modality].append(key)
 
         if "video" in grouped_keys:
+            # Check if keys in video_concat_order, state_concat_order, action_concat_order are
+            # ineed contained in the data. If not, then the keys are misspecified
             video_keys = grouped_keys["video"]
             assert self.video_concat_order is not None, f"{self.video_concat_order=}, {video_keys=}"
             assert all(
@@ -94,7 +101,9 @@ class ConcatTransform(InvertibleModalityTransform):
             unsqueezed_videos = []
             for video_key in self.video_concat_order:
                 video_data = data.pop(video_key)
-                unsqueezed_video = np.expand_dims(video_data, axis=-4)  # [..., H, W, C] -> [..., 1, H, W, C]
+                unsqueezed_video = np.expand_dims(
+                    video_data, axis=-4
+                )  # [..., H, W, C] -> [..., 1, H, W, C]
                 unsqueezed_videos.append(unsqueezed_video)
             # Concatenate along the new axis
             unsqueezed_video = np.concatenate(unsqueezed_videos, axis=-4)  # [..., V, H, W, C]
@@ -120,11 +129,15 @@ class ConcatTransform(InvertibleModalityTransform):
                     data[key].shape[-1] in target_shapes
                 ), f"State dim mismatch for {key=}, {data[key].shape[-1]=}, {target_shapes=}"
             # Concatenate the state keys
-            data["state"] = torch.cat([data.pop(key) for key in self.state_concat_order], dim=-1)  # [T, D_state]
+            # We'll have StateActionToTensor before this transform, so here we use torch.cat
+            data["state"] = torch.cat(
+                [data.pop(key) for key in self.state_concat_order], dim=-1
+            )  # [T, D_state]
 
         if "action" in grouped_keys:
             action_keys = grouped_keys["action"]
             assert self.action_concat_order is not None, f"{self.action_concat_order=}"
+            # Check if all keys in concat_order are present
             assert set(self.action_concat_order) == set(
                 action_keys
             ), f"{set(self.action_concat_order)=}, {set(action_keys)=}"
@@ -137,13 +150,17 @@ class ConcatTransform(InvertibleModalityTransform):
                     self.action_dims[key] == data[key].shape[-1]
                 ), f"Action dim mismatch for {key=}, {self.action_dims[key]=}, {data[key].shape[-1]=}"
             # Concatenate the action keys
-            data["action"] = torch.cat([data.pop(key) for key in self.action_concat_order], dim=-1)  # [T, D_action]
+            # We'll have StateActionToTensor before this transform, so here we use torch.cat
+            data["action"] = torch.cat(
+                [data.pop(key) for key in self.action_concat_order], dim=-1
+            )  # [T, D_action]
 
         return data
 
     def unapply(self, data: dict) -> dict:
         start_dim = 0
         assert "action" in data, f"{data.keys()=}"
+        # For those dataset without actions (LAPA), we'll never run unapply
         assert self.action_concat_order is not None, f"{self.action_concat_order=}"
         action_tensor = data.pop("action")
         for key in self.action_concat_order:

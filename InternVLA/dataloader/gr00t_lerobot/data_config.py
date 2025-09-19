@@ -30,6 +30,7 @@ from InternVLA.dataloader.gr00t_lerobot.transform.video import (
     VideoToNumpy,
     VideoToTensor,
 )
+
 # from gr00t.model.transforms import GR00TTransform
 
 
@@ -875,7 +876,6 @@ class AgibotGenie1DataConfig:
         ]
 
         return ComposedModalityTransform(transforms=transforms)
-    
 
 
 ###########################################################################################
@@ -993,6 +993,7 @@ class OxeBridgeDataConfig:
 
 
 ###########################################################################################
+
 
 class OxeRT1DataConfig:
     video_keys = [
@@ -1207,14 +1208,16 @@ class SinglePandaHandDataConfig:
 
         return ComposedModalityTransform(transforms=transforms)
 
+
 ###########################################################################################
+
 
 class Libero4in1DataConfig:
     video_keys = [
         "video.primary_image",
         "video.wrist_image",
     ]
-    
+
     state_keys = [
         "state.x",
         "state.y",
@@ -1234,7 +1237,7 @@ class Libero4in1DataConfig:
         "action.yaw",
         "action.gripper",
     ]
-    
+
     language_keys = ["annotation.human.action.task_description"]
 
     observation_indices = [0]
@@ -1297,17 +1300,17 @@ class Libero4in1DataConfig:
             # action transforms
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
-            apply_to=self.action_keys,
-            normalization_modes={
-                "action.x": "q99",
-                "action.y": "q99",
-                "action.z": "q99",
-                "action.roll": "q99",
-                "action.pitch": "q99",
-                "action.yaw": "q99",
-                # "action.gripper": "q99",
-            },
-        ),
+                apply_to=self.action_keys,
+                normalization_modes={
+                    "action.x": "q99",
+                    "action.y": "q99",
+                    "action.z": "q99",
+                    "action.roll": "q99",
+                    "action.pitch": "q99",
+                    "action.yaw": "q99",
+                    # "action.gripper": "q99",
+                },
+            ),
             # concat transforms
             # ConcatTransform(
             #     # video_concat_order=self.video_keys,
@@ -1324,8 +1327,8 @@ class Libero4in1DataConfig:
 
         return ComposedModalityTransform(transforms=transforms)
 
-###########################################################################################
 
+###########################################################################################
 
 
 class SingleFrankaRobotiqDataConfig:
@@ -1456,12 +1459,10 @@ DATA_CONFIG_MAP = {
     "bench_v6_all_longrange_split2_h264": SinglePandaHandDataConfig(),
     "bench_v6_all_longrange_split3_h264": SinglePandaHandDataConfig(),
     "bench_v6_all_longrange_split4_h264": SinglePandaHandDataConfig(),
-
     # libero bench config
     "libero_10_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
     "libero_goal_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
     "libero_spatial_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
     "libero_90_no_noops_lerobot": Libero4in1DataConfig(),
     "libero_object_no_noops_1.0.0_lerobot": Libero4in1DataConfig(),
-
 }

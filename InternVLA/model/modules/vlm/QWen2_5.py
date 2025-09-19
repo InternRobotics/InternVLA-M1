@@ -13,6 +13,7 @@ from qwen_vl_utils import process_vision_info
 
 
 from accelerate.logging import get_logger
+
 logger = get_logger(__name__)
 
 IGNORE_INDEX = -100
@@ -22,6 +23,8 @@ DEFAULT_IMAGE_TOKEN = "<image>"
 DEFAULT_VIDEO_TOKEN = "<video>"
 
 import torch.nn as nn
+
+
 class _QWen_VL_Interface(nn.Module):
     """
     This exists because of the diversity of VLMs, so we encapsulate the changes here.
@@ -38,12 +41,7 @@ class _QWen_VL_Interface(nn.Module):
         - Adaptation layer can be extended for future multi-modal routing if needed.
     """
 
-
-    def __init__(
-        self,
-        config: Optional[dict] = None,
-        **kwargs
-    ):  
+    def __init__(self, config: Optional[dict] = None, **kwargs):
         """
         Initialize the Qwen2.5-VL wrapper.
 
@@ -75,7 +73,7 @@ class _QWen_VL_Interface(nn.Module):
             - tokenizer padding_side forced to 'left' (important for generation + KV caching alignment).
         """
         super().__init__()
-        
+
         qwenvl_config = config.framework.get("qwenvl", {})
         model_id = qwenvl_config.get("base_vlm", "Qwen/Qwen2.5-VL-3B-Instruct")
 
@@ -85,9 +83,9 @@ class _QWen_VL_Interface(nn.Module):
             torch_dtype="auto",
             device_map="cuda",
         )
-        processor = AutoProcessor.from_pretrained(model_id) 
-        processor.tokenizer.padding_side  = 'left'
-        
+        processor = AutoProcessor.from_pretrained(model_id)
+        processor.tokenizer.padding_side = "left"
+
         self.model = model
         self.processor = processor
         self.config = config
@@ -105,7 +103,7 @@ class _QWen_VL_Interface(nn.Module):
         output_attentions: Optional[bool] = False,
         output_hidden_states: Optional[bool] = True,
         return_dict: Optional[bool] = True,
-        **kwargs
+        **kwargs,
     ) -> CausalLMOutputWithPast:
         """
         Forward pass delegating to underlying Qwen2.5-VL backbone.
@@ -132,13 +130,13 @@ class _QWen_VL_Interface(nn.Module):
             - padding_side already set to 'left' in tokenizer at init.
             - Hidden states required for auxiliary alignment or feature extraction modules.
         """
-        
+
         with torch.autocast("cuda", dtype=torch.bfloat16):
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 pixel_values=pixel_values,
-                image_grid_thw =image_grid_thw,
+                image_grid_thw=image_grid_thw,
                 labels=labels,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
@@ -146,9 +144,9 @@ class _QWen_VL_Interface(nn.Module):
                 return_dict=return_dict,
                 past_key_values=past_key_values,
                 inputs_embeds=inputs_embeds,
-                **kwargs
+                **kwargs,
             )
-        
+
         return outputs
 
     def generate(
@@ -159,7 +157,7 @@ class _QWen_VL_Interface(nn.Module):
         max_new_tokens: int = 128,
         output_hidden_states: bool = True,
         return_dict_in_generate: bool = True,
-        **kwargs
+        **kwargs,
     ):
         """
         High-level generation interface (auto-regressive decoding), optionally vision-conditioned.
@@ -188,10 +186,10 @@ class _QWen_VL_Interface(nn.Module):
                 max_new_tokens=max_new_tokens,
                 output_hidden_states=output_hidden_states,
                 return_dict_in_generate=return_dict_in_generate,
-                **kwargs
+                **kwargs,
             )
         return generation_output
-    
+
     def build_qwenvl_inputs(self, images, instructions, **kwargs):
         """
         Construct and tokenize multimodal chat-style inputs for Qwen2.5-VL (batched).
@@ -256,38 +254,29 @@ class _QWen_VL_Interface(nn.Module):
         # Create messages: one message per sample
         messages = []
         assert len(images) == len(instructions), "Images and instructions must have the same length"
-        for imgs, instruction in zip(images, instructions): 
+        for imgs, instruction in zip(images, instructions):
             content = [{"type": "image", "image": img} for img in imgs]
-            
-            if "CoT_prompt" in self.config.datasets.vla_data: # If using a grounding prompt to task
+
+            if "CoT_prompt" in self.config.datasets.vla_data:  # If using a grounding prompt to task
                 CoT_prompt = self.config.datasets.vla_data.get("CoT_prompt", "")
                 prompt = CoT_prompt.replace("{instruction}", instruction)
             else:
                 prompt = instruction
-            
+
             content.append({"type": "text", "text": prompt})
             msg = [{"role": "user", "content": content}]
             messages.append(msg)
 
         # Prepare text prompts using processor
         # default process is json --> message --> texts --> input_ids
-        texts = [
-            self.processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
-            for m in messages
-        ]
+        texts = [self.processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True) for m in messages]
 
         # image_inputs = list of PIL
         image_inputs, video_inputs = process_vision_info(messages)
-        inputs = self.processor(
-            text=texts,
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt"
-        )
+        inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt")
 
         return inputs.to(self.model.device)
-    
+
 
 def get_qwen2_5_interface(config=None, **kwargs):
     """
@@ -317,9 +306,10 @@ def get_qwen2_5_interface(config=None, **kwargs):
         - Device placement handled by underlying from_pretrained (device_map='cuda').
 
     """
-    model = _QWen_VL_Interface(config=config) 
+    model = _QWen_VL_Interface(config=config)
 
     return model
+
 
 if __name__ == "__main__":
     model_id = "./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct"

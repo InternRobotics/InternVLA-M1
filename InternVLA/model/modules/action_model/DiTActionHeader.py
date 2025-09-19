@@ -13,6 +13,7 @@ from .DiT_modules import gaussian_diffusion as gd
 import torch
 from torch import nn
 
+
 # Create model sizes of ActionModels
 def DiT_S(**kwargs):  # TODO move to config for reproducibility
     """
@@ -26,6 +27,7 @@ def DiT_S(**kwargs):  # TODO move to config for reproducibility
     """
     return DiT(depth=6, token_size=384, num_heads=4, **kwargs)
 
+
 def DiT_B(**kwargs):
     """
     Base DiT variant.
@@ -37,6 +39,7 @@ def DiT_B(**kwargs):
         DiT: Initialized base model.
     """
     return DiT(depth=12, token_size=768, num_heads=12, **kwargs)
+
 
 def DiT_L(**kwargs):
     """
@@ -50,8 +53,10 @@ def DiT_L(**kwargs):
     """
     return DiT(depth=24, token_size=1024, num_heads=16, **kwargs)
 
+
 # Model size
-DiT_models = {'DiT-S': DiT_S, 'DiT-B': DiT_B, 'DiT-L': DiT_L}
+DiT_models = {"DiT-S": DiT_S, "DiT-B": DiT_B, "DiT-L": DiT_L}
+
 
 # Create ActionModel
 class ActionModel(nn.Module):
@@ -68,15 +73,17 @@ class ActionModel(nn.Module):
         - loss(): simple MSE on noise prediction
         - create_ddim(): build deterministic sampler
     """
-    def __init__(self, 
-                 action_hidden_dim, 
-                 model_type, 
-                 in_channels, 
-                 future_action_window_size, 
-                 past_action_window_size,
-                 diffusion_steps = 100,
-                 noise_schedule = 'squaredcos_cap_v2'
-                 ):
+
+    def __init__(
+        self,
+        action_hidden_dim,
+        model_type,
+        in_channels,
+        future_action_window_size,
+        past_action_window_size,
+        diffusion_steps=100,
+        noise_schedule="squaredcos_cap_v2",
+    ):
         """
         Initialize diffusion model and backbone.
 
@@ -94,7 +101,13 @@ class ActionModel(nn.Module):
         self.noise_schedule = noise_schedule
         # GaussianDiffusion offers forward and backward functions q_sample and p_sample.
         self.diffusion_steps = diffusion_steps
-        self.diffusion = create_diffusion(timestep_respacing="", noise_schedule = noise_schedule, diffusion_steps=self.diffusion_steps, sigma_small=True, learn_sigma = False)
+        self.diffusion = create_diffusion(
+            timestep_respacing="",
+            noise_schedule=noise_schedule,
+            diffusion_steps=self.diffusion_steps,
+            sigma_small=True,
+            learn_sigma=False,
+        )
         self.ddim_diffusion = None
         if self.diffusion.model_var_type in [gd.ModelVarType.LEARNED, gd.ModelVarType.LEARNED_RANGE]:
             learn_sigma = True
@@ -102,14 +115,14 @@ class ActionModel(nn.Module):
             learn_sigma = False
         self.past_action_window_size = past_action_window_size
         self.future_action_window_size = future_action_window_size
-        self.token_size = action_hidden_dim # QFormer output size
+        self.token_size = action_hidden_dim  # QFormer output size
         self.net = DiT_models[model_type](
-                                        in_channels=in_channels, 
-                                        class_dropout_prob = 0.1, 
-                                        learn_sigma = learn_sigma, 
-                                        future_action_window_size = future_action_window_size, 
-                                        past_action_window_size = past_action_window_size
-                                        )
+            in_channels=in_channels,
+            class_dropout_prob=0.1,
+            learn_sigma=learn_sigma,
+            future_action_window_size=future_action_window_size,
+            past_action_window_size=past_action_window_size,
+        )
 
     def forward(self, gt_action, condition, **kwargs):
         """
@@ -127,8 +140,8 @@ class ActionModel(nn.Module):
                 timestep: Timesteps used per batch element.
         """
         # sample random noise and timestep
-        noise = torch.randn_like(gt_action) # [B, T, C]
-        timestep = torch.randint(0, self.diffusion.num_timesteps, (gt_action.size(0),), device= gt_action.device)
+        noise = torch.randn_like(gt_action)  # [B, T, C]
+        timestep = torch.randint(0, self.diffusion.num_timesteps, (gt_action.size(0),), device=gt_action.device)
 
         # sample x_t from x
         x_t = self.diffusion.q_sample(gt_action, timestep, noise)
@@ -167,14 +180,16 @@ class ActionModel(nn.Module):
         Returns:
             Diffusion: DDIM diffusion object.
         """
-        self.ddim_diffusion = create_diffusion(timestep_respacing = "ddim"+str(ddim_step), 
-                                               noise_schedule = self.noise_schedule,
-                                               diffusion_steps = self.diffusion_steps, 
-                                               sigma_small = True, 
-                                               learn_sigma = False
-                                               )
+        self.ddim_diffusion = create_diffusion(
+            timestep_respacing="ddim" + str(ddim_step),
+            noise_schedule=self.noise_schedule,
+            diffusion_steps=self.diffusion_steps,
+            sigma_small=True,
+            learn_sigma=False,
+        )
         return self.ddim_diffusion
-    
+
+
 def get_action_model(model_typ="DiT-B", config=None):
     """
     Factory: build ActionModel from global framework config.
@@ -192,8 +207,8 @@ def get_action_model(model_typ="DiT-B", config=None):
     action_hidden_dim = action_model_cfg.action_hidden_dim
     action_dim = action_model_cfg.action_dim
     future_action_window_size = action_model_cfg.future_action_window_size
-    past_action_window_size =  action_model_cfg.past_action_window_size
-    
+    past_action_window_size = action_model_cfg.past_action_window_size
+
     return ActionModel(
         model_type=model_type,  # Model type, e.g., 'DiT-B'
         action_hidden_dim=action_hidden_dim,  # Hidden size of action tokens

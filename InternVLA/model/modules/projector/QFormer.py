@@ -3,11 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
+
 class CrossAttentionBlock(nn.Module):
     def __init__(self, hidden_dim, num_heads, mlp_ratio=4.0, dropout=0.1):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_dim)
-        self.cross_attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True, dropout=dropout)
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads, batch_first=True, dropout=dropout
+        )
 
         self.norm2 = nn.LayerNorm(hidden_dim)
         self.mlp = nn.Sequential(
@@ -46,7 +49,9 @@ class CrossAttentionBlock(nn.Module):
 
 
 class LayerwiseQFormer(nn.Module):
-    def __init__(self, input_hidden_dim=2048, output_hidden_dim=768, num_query_tokens=64, num_layers=37, num_heads=8, config=None):
+    def __init__(
+        self, input_hidden_dim=2048, output_hidden_dim=768, num_query_tokens=64, num_layers=37, num_heads=8, config=None
+    ):
         super().__init__()
         self.input_hidden_dim = input_hidden_dim
         self.output_hidden_dim = output_hidden_dim
@@ -59,9 +64,7 @@ class LayerwiseQFormer(nn.Module):
         self.query_tokens = nn.Parameter(torch.randn(num_query_tokens, output_hidden_dim))
 
         # Independent cross-attention blocks (one per encoder layer)
-        self.layers = nn.ModuleList([
-            CrossAttentionBlock(output_hidden_dim, num_heads) for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList([CrossAttentionBlock(output_hidden_dim, num_heads) for _ in range(num_layers)])
 
     def forward(self, hidden_states_list, encoder_attention_mask=None):
         """
@@ -81,7 +84,9 @@ class LayerwiseQFormer(nn.Module):
         """
         # hidden_states_list = self.scale_hook(hidden_states_list)
 
-        assert len(hidden_states_list) == self.num_layers, f"Expected {self.num_layers} layers, got {len(hidden_states_list)}"
+        assert (
+            len(hidden_states_list) == self.num_layers
+        ), f"Expected {self.num_layers} layers, got {len(hidden_states_list)}"
 
         B = hidden_states_list[0].size(0)
         # Project input hidden states to output dimension
@@ -100,7 +105,7 @@ class LayerwiseQFormer(nn.Module):
             query = layer(query, hidden_states_list[i], encoder_attention_mask)
 
         return query
-    
+
     def scale_hook(self, hidden_states_list, scale_factor=0.1):
         """
         (Experimental / optional) Register gradient scaling hooks on each layer's hidden states.
@@ -117,8 +122,12 @@ class LayerwiseQFormer(nn.Module):
             - Excessive hook registrations can hurt speed; kept lazy by default.
         """
         # --- 1. Register gradient scaling hooks on input hidden_states_list ---
-        if self.config and hasattr(self.config.vla, 'layer_qformer') and hasattr(self.config.vla.layer_qformer, 'grad_scale') \
-        and self.config.vla.layer_qformer.grad_scale != 1:
+        if (
+            self.config
+            and hasattr(self.config.vla, "layer_qformer")
+            and hasattr(self.config.vla.layer_qformer, "grad_scale")
+            and self.config.vla.layer_qformer.grad_scale != 1
+        ):
             scale_factor = self.config.vla.layer_qformer.grad_scale
         else:
             return hidden_states_list  # If grad_scale is not configured, return the original list
@@ -127,7 +136,7 @@ class LayerwiseQFormer(nn.Module):
         for hidden_states in hidden_states_list:
             if hidden_states.requires_grad:
                 # Ensure gradient scaling is executed only once in distributed settings
-                if not hasattr(hidden_states, '_scaled_hook'):  # Prevent duplicate registration --> Seems to accelerate
+                if not hasattr(hidden_states, "_scaled_hook"):  # Prevent duplicate registration --> Seems to accelerate
                     hook = lambda grad: grad * scale_factor
                     hidden_states.register_hook(hook)
                     hidden_states._scaled_hook = True  # Mark as processed
@@ -139,11 +148,8 @@ class LayerwiseQFormer(nn.Module):
 import torch
 import torch.nn as nn
 
-def get_layerwise_qformer(
-    num_heads=8,
-    config=None,
-    **kwargs
-):
+
+def get_layerwise_qformer(num_heads=8, config=None, **kwargs):
     """
     Build a LayerwiseQFormer instance.
     Args:
@@ -162,11 +168,18 @@ def get_layerwise_qformer(
     """
     # dist.barrier()
     qformer_cfg = config.framework.layer_qformer
-    num_layers = qformer_cfg.qformer_end_layer - qformer_cfg.qformer_start_layer  if config else num_layers
+    num_layers = qformer_cfg.qformer_end_layer - qformer_cfg.qformer_start_layer if config else num_layers
     num_query_tokens = qformer_cfg.num_query_tokens
-    input_hidden_dim=config.framework.layer_qformer.input_dim
-    output_hidden_dim=config.framework.layer_qformer.ouptput_dim
-    num_query_tokens=qformer_cfg.num_query_tokens
+    input_hidden_dim = config.framework.layer_qformer.input_dim
+    output_hidden_dim = config.framework.layer_qformer.ouptput_dim
+    num_query_tokens = qformer_cfg.num_query_tokens
 
-    qformer = LayerwiseQFormer(input_hidden_dim=input_hidden_dim, output_hidden_dim=output_hidden_dim, num_query_tokens=num_query_tokens, num_layers=num_layers, num_heads=num_heads, config=config) 
+    qformer = LayerwiseQFormer(
+        input_hidden_dim=input_hidden_dim,
+        output_hidden_dim=output_hidden_dim,
+        num_query_tokens=num_query_tokens,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        config=config,
+    )
     return qformer

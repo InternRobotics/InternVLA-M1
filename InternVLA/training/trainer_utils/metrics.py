@@ -5,9 +5,6 @@ Utility classes defining a Metrics container and multiple Trackers to enable mod
 endpoints (e.g., JSONL local logs, Weights & Biases).
 """
 
-
-
-
 from typing import Tuple
 import re
 import json
@@ -15,13 +12,15 @@ import numpy as np
 import torch
 
 from accelerate.logging import get_logger
+
 logger = get_logger(__name__)
 
 
 # === Define Tracker Interface ===
-# 
+#
 
 # utils/cli_parser.py
+
 
 def normalize_dotlist_args(args):
     """
@@ -49,11 +48,11 @@ def normalize_dotlist_args(args):
     return normalized
 
 
-def build_param_lr_groups(model, cfg): 
+def build_param_lr_groups(model, cfg):
     """
     build multiple param groups based on cfg.trainer.learning_rate.
     support specifying different learning rates for different modules, the rest use base.
-    
+
     Args:
         vla: nn.Module model object
         cfg: config object, requires cfg.trainer.learning_rate dictionary
@@ -92,23 +91,28 @@ def build_param_lr_groups(model, cfg):
 
 import torch.distributed as dist
 
+
 def only_main_process(func):
     """
     decorator: only run in main process (rank=0)
     """
+
     def wrapper(*args, **kwargs):
         if dist.is_initialized() and dist.get_rank() != 0:
             return None  # non-main process does not execute
         return func(*args, **kwargs)
+
     return wrapper
 
 
 from torchvision.ops import box_iou
 from PIL import Image
+
+
 def resize_images(images, target_size=(224, 224)):
     """
     recursively resize all images in the nested list.
-    
+
     :param images: nested list of images or single image.
     :param target_size: target size (width, height) after resizing.
     :return: resized images list, keeping the original nested structure.
@@ -120,7 +124,9 @@ def resize_images(images, target_size=(224, 224)):
     else:
         raise ValueError("Unsupported image type or structure.")
 
+
 import torch.distributed as dist
+
 
 class TrainerUtils:
     @staticmethod
@@ -130,15 +136,15 @@ class TrainerUtils:
           - patterns: read from config.trainer.freeze_modules, separated by commas to get the "relative path" list
             for example "qwen_vl_interface, action_model.net",
             it means to freeze model.qwen_vl_interface and model.action_model.net.
-            
+
         Args:
             model: nn.Module model object
             freeze_modules: relative module path list (patterns)
-            
+
         Returns:
             model: nn.Module model object
         return:
-          - model: 
+          - model:
         """
         frozen = []
         if freeze_modules:
@@ -165,8 +171,8 @@ class TrainerUtils:
         if dist.get_rank == 0:
             print(f"🔒 Frozen modules with re pattern: {frozen}")
         return model
-    
-    @staticmethod 
+
+    @staticmethod
     def print_trainable_parameters(model):
         """
         print the total number of parameters and trainable parameters of the model
@@ -177,9 +183,11 @@ class TrainerUtils:
         print("📊 model parameter statistics:")
         num_params = sum(p.numel() for p in model.parameters())
         num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"# Parameters (in millions): {num_params / 10**6:.3f} Total, {num_trainable_params / 10**6:.3f} Trainable")
+        print(
+            f"# Parameters (in millions): {num_params / 10**6:.3f} Total, {num_trainable_params / 10**6:.3f} Trainable"
+        )
         return num_params, num_trainable_params
-    
+
     @staticmethod
     def load_pretrained_backbones(model, checkpoint_path=None, reload_modules=None):
         """
@@ -191,7 +199,7 @@ class TrainerUtils:
             replace, loaded_modules: list of module paths that successfully loaded parameters; if global load, then ["<full_model>"]
         """
         if not checkpoint_path:
-            return []  
+            return []
         if dist.get_rank() == 0:
             print(f"📦 loading checkpoint: {checkpoint_path}")
         try:
@@ -210,11 +218,7 @@ class TrainerUtils:
                     for module_name in reload_modules:  # find the module to modify level by level
                         module = getattr(module, module_name)
                     prefix = path + "."
-                    sub_state_dict = {
-                        k[len(prefix):]: v
-                        for k, v in checkpoint.items()
-                        if k.startswith(prefix)
-                    }
+                    sub_state_dict = {k[len(prefix) :]: v for k, v in checkpoint.items() if k.startswith(prefix)}
                     if sub_state_dict:
                         module.load_state_dict(sub_state_dict, strict=True)
                         if dist.get_rank() == 0:
@@ -224,7 +228,7 @@ class TrainerUtils:
                         print(f"⚠️ parameters not found in checkpoint '{path}'")
                 except AttributeError:
                     print(f"❌ cannot find module path: {path}")
-        else: # full load
+        else:  # full load
             try:
                 model.load_state_dict(checkpoint, strict=True)
                 if dist.get_rank() == 0:
@@ -233,7 +237,7 @@ class TrainerUtils:
             except Exception as e:
                 raise RuntimeError(f"❌ loading full model failed: {e}")
         return model
-    
+
     @staticmethod
     def print_freeze_status(model):
         """
@@ -256,6 +260,7 @@ class TrainerUtils:
         # use accelerator.prepare method to wrap components
         prepared_components = accelerator.prepare(*components)
         return prepared_components
+
     @staticmethod
     def euclidean_distance(predicted: np.ndarray, ground_truth: np.ndarray) -> float:
         return np.linalg.norm(predicted - ground_truth)
@@ -265,14 +270,14 @@ class TrainerUtils:
         """safe reset dataloader iterator"""
         # 1. update epoch counter
         epoch_counter += 1
-        
+
         # 2. set new epoch (distributed core)
         if hasattr(dataloader, "sampler") and callable(getattr(dataloader.sampler, "set_epoch", None)):
             dataloader.sampler.set_epoch(epoch_counter)
-        
+
         # 3. create new iterator
         return iter(dataloader), epoch_counter
-    
+
     @staticmethod
     def compute_grad_angle_with_stats(grads_a: list[torch.Tensor], grads_v: list[torch.Tensor]) -> Tuple[float, float]:
         """
@@ -283,7 +288,7 @@ class TrainerUtils:
             angle_variance: angle variance
         """
         angle_degs = []
-        
+
         # compute the cosine angle between each gradient block grads_a[0].shape = 1280, 3, 14, 14
         # grads_1 = grads_a[0][0]  # [3, 14, 14]
         # grads_2 = grads_v[0][0]
@@ -294,9 +299,13 @@ class TrainerUtils:
         # reshape to 14*14, 3
         # layer
         grads_action = grads_a[0]  # [2048, 11008]
-        grads_action = grads_action[:32, :7] # only take the first 7 elements, avoid cosim failure in high-dimensional space
+        grads_action = grads_action[
+            :32, :7
+        ]  # only take the first 7 elements, avoid cosim failure in high-dimensional space
         grads_vl = grads_v[0]  # [2048, 11008]
-        grads_vl = grads_vl[:32, :7] # only take the first 32 elements, 7 dimensions, avoid cosim failure in high-dimensional space
+        grads_vl = grads_vl[
+            :32, :7
+        ]  # only take the first 32 elements, 7 dimensions, avoid cosim failure in high-dimensional space
         for g_a, g_v in zip(grads_action, grads_vl):
             dot = torch.sum(g_a * g_v)
             norm_a_sq = torch.sum(g_a * g_a)
@@ -316,13 +325,11 @@ class TrainerUtils:
         angle_degs_tensor = torch.tensor(angle_degs)
         mean_angle_deg = torch.mean(angle_degs_tensor).item()
         angle_variance = torch.sqrt(torch.var(angle_degs_tensor)).item()
-        # dist.barrier() 
+        # dist.barrier()
         return mean_angle_deg, angle_variance
 
     @staticmethod
-    def pcgrad_project(grads_a: list[torch.Tensor],
-                    grads_v: list[torch.Tensor]
-                    ) -> list[torch.Tensor]:
+    def pcgrad_project(grads_a: list[torch.Tensor], grads_v: list[torch.Tensor]) -> list[torch.Tensor]:
         """
         apply PCGrad projection to the second group of gradients grads_v, suppress negative transfer between grads_a and grads_v
         if the dot product of two groups of gradients < 0, then:
@@ -332,7 +339,7 @@ class TrainerUtils:
         # first compute dot and ||grads_a||^2
         dot, norm_a_sq = 0.0, 0.0
         for g_a, g_v in zip(grads_a, grads_v):
-            dot       += torch.sum(g_a * g_v)
+            dot += torch.sum(g_a * g_v)
             norm_a_sq += torch.sum(g_a * g_a)
 
         if dot < 0:
@@ -346,12 +353,12 @@ class TrainerUtils:
     def eval_qwenpi(qwenpi, dataloader, num_batches=20):
         """
         evaluate QwenQFormerDiT model, compute IoU and action distance.
-        
+
         Args:
             qwenpi: QwenQFormerDiT model instance.
             dataloader: data loader.
             num_batches: number of batches to evaluate.
-        
+
         Returns:
             dict: contains IoU and action distance evaluation results.
         """
@@ -375,10 +382,7 @@ class TrainerUtils:
 
             # model prediction
             predicted_solutions, normalized_actions = qwenpi.predict_action_withCoT(
-                images=images,
-                instructions=instructions,
-                use_ddim=False,
-                num_ddim_steps=20
+                images=images, instructions=instructions, use_ddim=False, num_ddim_steps=20
             )
 
             # extract and convert predicted results
@@ -408,19 +412,16 @@ class TrainerUtils:
 
         # summarize results
         avg_action_distance = np.mean(action_distances)
-        return {
-            "iou_scores": iou_scores,
-            "average_action_distance": avg_action_distance
-        }
+        return {"iou_scores": iou_scores, "average_action_distance": avg_action_distance}
 
     @staticmethod
     def extract_json_from_string(input_string):
         """
         extract valid JSON part from string and convert to dictionary.
-        
+
         Args:
             input_string (str): string containing extra characters.
-        
+
         Returns:
             dict: dictionary extracted and parsed.
         """
@@ -435,7 +436,10 @@ class TrainerUtils:
         else:
             print("No valid JSON part found")
             return None
+
+
 import os
+
 
 def is_main_process():
     rank = int(os.environ.get("RANK", 0))  # if RANK is not set, default to 0

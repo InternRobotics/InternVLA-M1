@@ -7,6 +7,7 @@ from InternVLA.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag, DA
 from InternVLA.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, LeRobotMixtureDataset
 from InternVLA.dataloader.gr00t_lerobot.libero.mixtures import LIBERO_NAMED_MIXTURES
 
+
 def collate_fn(batch):
     return batch
 
@@ -35,6 +36,7 @@ def make_LeRobotSingleDataset(
         video_backend="torchvision_av",
     )
 
+
 def get_vla_dataset(
     data_cfg: dict,
     mode: str = "train",
@@ -62,7 +64,7 @@ def get_vla_dataset(
         filtered_mixture_spec.append((d_name, d_weight))
 
     dataset_mixture = []  # Changed from Sequence type annotation to actual list
-    
+
     for d_name, d_weight in filtered_mixture_spec:
         dataset_mixture.append((make_LeRobotSingleDataset(data_root_dir, d_name), d_weight))
 
@@ -72,18 +74,19 @@ def get_vla_dataset(
         balance_dataset_weights=balance_dataset_weights,
         balance_trajectory_weights=balance_trajectory_weights,
         seed=42,
-        **kwargs
+        **kwargs,
     )
 
 
 if __name__ == "__main__":
     data_root_dir = Path("/mnt/petrelfs/yejinhui/Projects/llavavla/playground/Datasets/OXE_LEROBOT_DATASET")
-    data_mix = "bridge" # bridge_rt_1
+    data_mix = "bridge"  # bridge_rt_1
     import debugpy
+
     debugpy.listen(("0.0.0.0", 10092))
     print("Waiting for client to attach 10092...")
     debugpy.wait_for_client()
-    
+
     # Load YAML config & Convert CLI overrides to dotlist config
     config_yaml = "llavavla/config/lerobot_data/qwenvla_cotrain_oxe.yaml"
     config_yaml = "llavavla/config/lerobot_data/qwenvla_cotrain_libero.yaml"
@@ -91,20 +94,20 @@ if __name__ == "__main__":
 
     vla_dataset_cfg = cfg.datasets.vla_data
 
-
     dataset = get_vla_dataset(data_cfg=vla_dataset_cfg)
-    
+
     # for i in range(len(dataset)):
     #     print(dataset[i])
 
     from torch.utils.data import DataLoader
+
     train_dataloader = DataLoader(
         dataset,
         batch_size=16,
-        num_workers=1, # For Debug
+        num_workers=1,  # For Debug
         collate_fn=collate_fn,
     )
-    
+
     from tqdm import tqdm
 
     for batch in tqdm(train_dataloader, desc="Processing Batches"):

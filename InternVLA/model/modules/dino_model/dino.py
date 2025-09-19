@@ -20,10 +20,14 @@ from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List
 from torchvision import transforms
+
+
 def apply_transform(view, transform):
     return transform(view)
 
+
 # from llavavla.model.modules.dino_model.dino_transforms import make_classification_train_transform
+
 
 class DINOv2BackBone(nn.Module):
     """
@@ -38,6 +42,7 @@ class DINOv2BackBone(nn.Module):
         num_channels: Feature dimension of patch tokens.
         dino_transform: Preprocessing pipeline (resize + tensor + normalize).
     """
+
     def __init__(self, backone_name="dinov2_vits14", output_channels=1024) -> None:
         super().__init__()
         try:
@@ -48,17 +53,11 @@ class DINOv2BackBone(nn.Module):
             traceback.print_exc()
             print(f"Failed to load dinov2 from torch hub, loading from local")
             TORCH_HOME = os.environ.get("TORCH_HOME", "~/.cache/torch/")
-            weights_path = os.path.expanduser(
-                f"{TORCH_HOME}/hub/checkpoints/{backone_name}_pretrain.pth"
-            )
+            weights_path = os.path.expanduser(f"{TORCH_HOME}/hub/checkpoints/{backone_name}_pretrain.pth")
 
-            code_path = os.path.expanduser(
-                f"{TORCH_HOME}/hub/facebookresearch_dinov2_main"
-            )
+            code_path = os.path.expanduser(f"{TORCH_HOME}/hub/facebookresearch_dinov2_main")
 
-            self.body = torch.hub.load(
-                code_path, backone_name, source="local", pretrained=False
-            )
+            self.body = torch.hub.load(code_path, backone_name, source="local", pretrained=False)
 
             state_dict = torch.load(weights_path)
             self.body.load_state_dict(state_dict)
@@ -72,12 +71,15 @@ class DINOv2BackBone(nn.Module):
             self.num_channels = 1408
         else:
             raise NotImplementedError(f"DINOv2 backbone {backone_name} not implemented")
-        self.dino_transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        self.dino_transform = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
         # self.dino_transform = make_classification_train_transform()
+
     # @torch.no_grad()
     def forward(self, tensor):
         """
@@ -91,9 +93,8 @@ class DINOv2BackBone(nn.Module):
         """
         xs = self.body.forward_features(tensor)["x_norm_patchtokens"]
 
-        return xs # B*views, token, dim
-    
-    
+        return xs  # B*views, token, dim
+
     def prepare_dino_input(self, img_list):
         """
         Preprocess a batch of multi-view PIL image lists into a tensor suitable for DINO.
@@ -109,19 +110,21 @@ class DINOv2BackBone(nn.Module):
 
         # use thread pool to parallel process each view
         with ThreadPoolExecutor() as executor:
-            image_tensors = torch.stack([
-                torch.stack(list(executor.map(lambda view: apply_transform(view, self.dino_transform), views)))
-                for views in img_list
-            ])
-
+            image_tensors = torch.stack(
+                [
+                    torch.stack(list(executor.map(lambda view: apply_transform(view, self.dino_transform), views)))
+                    for views in img_list
+                ]
+            )
 
         # move the tensor to the device of DINO encoder
         B, num_view, C, H, W = image_tensors.shape
         image_tensors = image_tensors.view(B * num_view, C, H, W)
         device = next(self.parameters()).device
         image_tensors = image_tensors.to(device)
-        
+
         return image_tensors
+
 
 def get_dino_model(backone_name="dinov2_vits14") -> DINOv2BackBone:
     """

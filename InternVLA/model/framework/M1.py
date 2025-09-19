@@ -215,8 +215,8 @@ class InternVLA_M1(baseframework):
             image_tensors = self.dino_encoder.prepare_dino_input(batch_images)
             dino_features = self.dino_encoder(image_tensors)
 
-            B = dino_features.shape[0]
-            dino_encoded_features = dino_features.view(B, -1, dino_features.shape[-1])  # [B, num_view * token, dim]
+            B = len(batch_images)
+            dino_encoded_features = dino_features.reshape(B, -1, dino_features.shape[-1])  # [B, num_view * token, dim]
             dino_encoded_features = self.dino_pro(dino_encoded_features)  # [B, 256, D]
 
         with torch.autocast("cuda", dtype=torch.float32):

@@ -143,6 +143,9 @@ We provide several end-to-end examples for reference:
 * **Reproduce InternVLA-M1 in simplerEnv**
   [Example](/examples/simplerEnv/setup.md)
 
+* **Reproduce InternVLA-M1 in LIBERO**
+  [Example](/examples/libero/readme.md)
+
 * **Training/Deployment on real robots**
   [Example](/examples/real_robot/setup.md)
 

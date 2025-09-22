@@ -140,17 +140,14 @@ print(normalized_actions.shape, type(normalized_actions))
 
 We provide several end-to-end examples for reference:
 
-* **Reproduce InternVLA-M1 in simplerEnv**
-  [Example](/examples/simplerEnv/setup.md)
+* **Reproduce InternVLA-M1 in SimplerEnv**
+  [Example](/examples/SimplerEnv/README.md)
 
 * **Reproduce InternVLA-M1 in LIBERO**
-  [Example](/examples/libero/readme.md)
+  [Example](/examples/LIBERO/README.md)
 
 * **Training/Deployment on real robots**
-  [Example](/examples/real_robot/setup.md)
-
-* **Extending InternVLA-M1**
-  [Example](examples/extending_m1/README.md)
+  [Example](/examples/real_robot/README.md)
 
 ## 📈 Model Zoo
 We release a series of pretrained models and checkpoints to facilitate reproduction and downstream use.

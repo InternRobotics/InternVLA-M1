@@ -36,7 +36,7 @@ for i in "${!ENV_NAMES[@]}"; do
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
     echo "▶️ Launching task [${env}] run#${run_idx} on GPU $gpu_id, log → ${task_log}"
 
-    CUDA_VISIBLE_DEVICES=0 python examples/simplerEnv/start_simpler_env.py \
+    CUDA_VISIBLE_DEVICES=0 python examples/SimplerEnv/start_simpler_env.py \
       --ckpt-path ${ckpt_path} \
       --robot ${robot} \
       --policy-setup widowx_bridge \
@@ -72,7 +72,7 @@ for i in "${!ENV_NAMES_V2[@]}"; do
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
     echo "▶️ Launching V2 task [${env}] run#${run_idx} on GPU $gpu_id, log → ${task_log}"
 
-    CUDA_VISIBLE_DEVICES=${gpu_id} python examples/simplerEnv/start_simpler_env.py \
+    CUDA_VISIBLE_DEVICES=${gpu_id} python examples/SimplerEnv/start_simpler_env.py \
       --ckpt-path ${ckpt_path} \
       --robot ${robot} \
       --policy-setup widowx_bridge \

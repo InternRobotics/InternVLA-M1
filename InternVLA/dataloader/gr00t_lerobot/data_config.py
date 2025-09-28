@@ -474,7 +474,8 @@ class Libero4in1DataConfig:
     language_keys = ["annotation.human.action.task_description"]
 
     observation_indices = [0]
-    action_indices = list(range(16))
+    action_indices = list(range(8))
+
 
     def modality_config(self):
         video_modality = ModalityConfig(
@@ -503,33 +504,17 @@ class Libero4in1DataConfig:
 
     def transform(self):
         transforms = [
-            # state transforms
-            StateActionToTensor(apply_to=self.state_keys),
-            StateActionTransform(
-                apply_to=self.state_keys,
-                normalization_modes={
-                    "state.x": "q99",
-                    "state.y": "q99",
-                    "state.z": "q99",
-                    "state.rx": "q99",
-                    "state.ry": "q99",
-                    "state.rz": "q99",
-                    "state.rw": "q99",
-                    "state.gripper": "binary",
-                },
-            ),
             # action transforms
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
             apply_to=self.action_keys,
             normalization_modes={
-                "action.x": "q99",
-                "action.y": "q99",
-                "action.z": "q99",
-                "action.roll": "q99",
-                "action.pitch": "q99",
-                "action.yaw": "q99",
-                # "action.gripper": "binary",
+                "action.x": "min_max",
+                "action.y": "min_max",
+                "action.z": "min_max",
+                "action.roll": "min_max",
+                "action.pitch": "min_max",
+                "action.yaw": "min_max",
             },
         ),
         ]

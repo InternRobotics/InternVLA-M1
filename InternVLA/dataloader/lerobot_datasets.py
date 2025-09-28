@@ -83,8 +83,7 @@ def get_vla_dataset(
     )
 
 if __name__ == "__main__":
-
-    config_yaml = "InternVLA/config/training/internvla_cotrain_sim_demo.yaml"
+    config_yaml = "InternVLA/config/training/internvla_cotrain_libero.yaml"
     cfg = OmegaConf.load(config_yaml)
 
     vla_dataset_cfg = cfg.datasets.vla_data

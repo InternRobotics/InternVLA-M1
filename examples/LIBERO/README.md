@@ -1,4 +1,4 @@
-# 🚀 Eval Libero
+# 🚀 LIBERO Evaluation
 
 This document provides instructions for reproducing our **experimental results** with LIBERO.  
 The evaluation process consists of two main parts:  
@@ -66,3 +66,21 @@ bash examples/LIBERO/eval_libero.sh
 ```
 ⚠️ **Note:** Please ensure that you specify the correct checkpoint path in `examples/LIBERO/eval_libero.sh`  
 
+
+
+---
+
+
+# 🚀 LIBERO Training
+## 📦 Step0: Download the training dataset
+Download the datasets to the playground/Datasets/LEROBOT_LIBERO_DATA directory:
+- [LIBERO-spatial] https://huggingface.co/datasets/IPEC-COMMUNITY/libero_spatial_no_noops_1.0.0_lerobot
+- [LIBERO-object] https://huggingface.co/datasets/IPEC-COMMUNITY/libero_object_no_noops_1.0.0_lerobot
+- [LIBERO-goal] https://huggingface.co/datasets/IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot
+- [LIBERO-10] https://huggingface.co/datasets/IPEC-COMMUNITY/libero_10_no_noops_1.0.0_lerobot
+
+## 🚀 Step1: Start Training
+
+```bash
+bash scripts/run_scripts/run_libero_train.sh
+```

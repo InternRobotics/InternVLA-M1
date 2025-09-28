@@ -19,6 +19,8 @@ framework:
     qformer_end_layer: 37
     qformer_start_layer: 36
     num_query_tokens: 64
+    input_dim: 2048 
+    ouptput_dim: 768
     grad_scale: 0.5
   action_model:
     action_model_type: DiT-B

@@ -25,6 +25,9 @@ DATASET_NAMED_MIXTURES = {
     "libero_spatial": [
         ("libero_spatial_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
     ],
+    "libero_10": [
+        ("libero_10_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
+    ],
     "libero_90": [
         ("libero_90_no_noops_lerobot", 1.0, "libero_franka"),
         ("libero_90_no_noops_lerobot", 1.0, "libero_ur5"),

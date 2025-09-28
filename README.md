@@ -35,9 +35,6 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
 
 
-
-
-
 # 🚀 Quick Start
 
 ## 🛠 Environment Setup
@@ -167,9 +164,10 @@ We release a series of pretrained models and checkpoints to facilitate reproduct
 
 # 🗺️ Roadmap
 
-* [✅] Release model weights
-* [ ] Add multi-task mixed training examples
-* [ ] Unify evaluation scripts and metrics
+* [ ] Add Co-training readme (might at 9/30)
+* [ ] Add training readme on simpler, LIBERO, etc. (might at 9/29)
+* [✅] 0918: Release model weights
+
 
 # 🤝 Contributing
 

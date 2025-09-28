@@ -252,7 +252,7 @@ class TrainerUtils:
     def setup_distributed_training(accelerator, *components):
         """
         use Accelerator to prepare distributed training components
-        :param accelerator: Accelerate 的实例
+        :param accelerator: Accelerate instance
         :param components: any number of components (such as model, optimizer, dataloader, etc.)
         :return: prepared distributed components (in the same order as input)
         """

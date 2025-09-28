@@ -396,6 +396,10 @@ class LeRobotSingleDataset(Dataset):
         
         # Create a unique filename based on config_key
         steps_filename = f"steps_{config_key}.pkl"
+        # @DUG 
+        # fast get static steps @fangjing --> don't use hash to dynamic sample
+        steps_filename =  "steps_7799a3080fbd.pkl"
+
         steps_path = self.dataset_path / "meta" / steps_filename
         
         # Try to load cached steps first
@@ -403,13 +407,13 @@ class LeRobotSingleDataset(Dataset):
             if steps_path.exists():
                 with open(steps_path, "rb") as f:
                     cached_data = pickle.load(f)
-                
-                # Verify the cached data matches current configuration
-                if cached_data.get("config_key") == config_key:
-                    print(f"Loading cached steps from {steps_path}")
-                    return cached_data["steps"]
-                else:
-                    print("Cached steps configuration mismatch, recomputing...")
+                return cached_data["steps"]
+                # # Verify the cached data matches current configuration
+                # if cached_data.get("config_key") == config_key:
+                #     print(f"Loading cached steps from {steps_path}")
+                #     return cached_data["steps"]
+                # else:
+                    # print("Cached steps configuration mismatch, recomputing...")
         except (FileNotFoundError, pickle.PickleError, KeyError) as e:
             print(f"Failed to load cached steps: {e}")
             print("Computing steps from scratch...")

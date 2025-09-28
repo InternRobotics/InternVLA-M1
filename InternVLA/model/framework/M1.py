@@ -219,7 +219,7 @@ class InternVLA_M1(baseframework):
             dino_encoded_features = dino_features.reshape(B, -1, dino_features.shape[-1])  # [B, num_view * token, dim]
             dino_encoded_features = self.dino_pro(dino_encoded_features)  # [B, 256, D]
 
-        with torch.autocast("cuda", dtype=torch.float32):
+        with torch.autocast("cuda", dtype=torch.bfloat16):
 
             start_layer = self.config.framework.layer_qformer.qformer_start_layer
             end_layer = self.config.framework.layer_qformer.qformer_end_layer
@@ -375,7 +375,7 @@ if __name__ == "__main__":
 
     # try forward model
     # can be fake sample， but here get from dataloader for simpler
-    from InternVLA.dataloader.lerobot_datasets_oxe import get_vla_dataset, collate_fn
+    from InternVLA.dataloader.lerobot_datasets import get_vla_dataset, collate_fn
 
     vla_dataset_cfg = cfg.datasets.vla_data
     dataset = get_vla_dataset(data_cfg=vla_dataset_cfg)

@@ -182,7 +182,7 @@ annotated_image.png
 data_processed
 llavavla/conf/qwenvla_lmdb_3Lpretrain.yaml
 extracted_frames
-
+InternVLA/config/deepseeds/*
 **/bar
 llavavla/model/openvla_temp
 real_deployment/upload/push_model_to_hf.py
@@ -202,3 +202,4 @@ test_image.jpg
 test_image.jpg.npy
 test_image.jpg
 scripts/*
+

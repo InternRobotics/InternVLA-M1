@@ -1,6 +1,8 @@
+This document provides instructions for reproducing our **experimental results** with SimplerEnv.  
+
 # 🚀 Eval SimplerEnv
 
-This document provides instructions for reproducing our **experimental results** with SimplerEnv.  
+
 The evaluation process consists of two main parts:  
 
 1. Setting up the `simpler_env` environment and dependencies.  
@@ -75,8 +77,8 @@ You can refer to this link to fix: [Installation Guide – Vulkan Section](https
 
 The evaluation should be run **from the repository root** using **two separate terminals**, one for each environment:  
 
-- **internvla_m1 environment**: runs the inference server.  
-- **simpler_env environment**: runs the simulation.  
+- **internvla_m1 environment**: runs the policy inference server.  
+- **simpler_env environment**: runs the simulation eval code.  
 
 ### Step 1. Start the server (internvla_m1 environment)
 

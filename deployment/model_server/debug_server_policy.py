@@ -1,77 +1,28 @@
+"""
+Debug / smoke-test client for deployment/model_server/server_policy.py.
+
+Purpose:
+  - Establish a WebSocket connection to the policy server.
+  - Initialize device on the server side.
+  - Optionally run a very simple inference request to verify end-to-end transport
+    (serialization + server handling).
+
+Usage example:
+  python debug_server_policy.py --host 127.0.0.1 --port 10093 --device cuda --test infer
+
+Notes:
+  - The random observation is synthetic and only meant to validate the interface.
+  - Adjust keys (e.g. 'images', 'task_description') to match the server's expected schema.
+"""
+
 import argparse
 import logging
-import os
-import time
 from typing import Dict, Optional, Tuple
 import numpy as np
 
 from typing_extensions import override
 
 from tools.websocket_policy_client import WebsocketClientPolicy
-
-# class WebsocketClientPolicy:
-#     """Implements the Policy interface by communicating with a server over websocket."""
-#     def __init__(self, host: str = "127.0.0.1", port: Optional[int] = 10093, api_key: Optional[str] = None) -> None:
-#         # 0.0.0.0 cannot be used as a connection target, here default 127.0.0.1
-#         self._uri = f"ws://{host}"
-#         if port is not None:
-#             self._uri += f":{port}"
-#         self._packer = msgpack_numpy.Packer()
-#         self._api_key = api_key
-#         self._ws, self._server_metadata = self._wait_for_server()
-
-#     def get_server_metadata(self) -> Dict:
-#         return self._server_metadata
-
-#     def _wait_for_server(self) -> Tuple[websockets.sync.client.ClientConnection, Dict]:
-#         logging.info(f"Waiting for server at {self._uri}...")
-#         # avoid any proxy interference
-#         for k in ("HTTP_PROXY","http_proxy","HTTPS_PROXY","https_proxy","ALL_PROXY","all_proxy"):
-#             os.environ.pop(k, None)
-#         while True:
-#             try:
-#                 headers = {"Authorization": f"Api-Key {self._api_key}"} if self._api_key else None
-#                 conn = websockets.sync.client.connect(
-#                     self._uri, compression=None, max_size=None, additional_headers=headers
-#                 )
-#                 # server first send metadata (msgpack binary)
-#                 metadata = msgpack_numpy.unpackb(conn.recv())
-#                 return conn, metadata
-#             except ConnectionRefusedError:
-#                 logging.info("Still waiting for server...")
-#                 time.sleep(2)
-
-#     def init_device(self, device: str = "cuda") -> Dict:
-#         """send one device initialization message, verify protocol and service availability"""
-#         payload = {"device": device}
-#         self._ws.send(self._packer.pack(payload))
-#         resp = self._ws.recv()
-#         if isinstance(resp, str):
-#             raise RuntimeError(f"Server error (init_device):\n{resp}")
-#         return msgpack_numpy.unpackb(resp)
-
-#     @override
-#     def infer(self, obs: Dict) -> Dict:  # noqa: UP006
-#         data = self._packer.pack(obs)
-#         self._ws.send(data)
-#         response = self._ws.recv()
-#         if isinstance(response, str):
-#             # server will send text stack when exception, here directly throw
-#             raise RuntimeError(f"Error in inference server:\n{response}")
-#         return msgpack_numpy.unpackb(response)
-
-#     @override
-#     def reset(self, instruction) -> None:
-#         payload = {"instruction": instruction, "reset": True}
-#         self._ws.send(self._packer.pack(payload))
-#         resp = self._ws.recv()
-#         pass
-
-#     def close(self) -> None:
-#         try:
-#             self._ws.close()
-#         except Exception:
-#             pass
 
 
 def _build_argparser() -> argparse.ArgumentParser:
@@ -115,10 +66,18 @@ def _main():
                 "instruction": ["debug: pick up the red block"],  # single element list
             }
 
+            image_path = "assets/table.jpeg"
+            # read image as PIL
+            from PIL import Image
+            image_primary = Image.open(image_path).convert("RGB")
+            # Convert PIL -> numpy uint8 (H,W,3)
+            image_primary_np = np.asarray(image_primary, dtype=np.uint8)
+
+            instruction_lang="pick up the red block"
             obs = {
                 "request_id": "smoke-test",
-                "images": [observation["observation.primary"][0], observation["observation.wrist_image"][0]],
-                "task_description": observation["instruction"][0],  # assume only one task description
+                "batch_images": [[image_primary_np]],
+                "instructions": [instruction_lang],  # assume batch task description
             }
 
             infer_ret = client.infer(obs)

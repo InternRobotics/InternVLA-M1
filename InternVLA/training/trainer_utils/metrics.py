@@ -147,7 +147,9 @@ class TrainerUtils:
           - model:
         """
         frozen = []
-        if freeze_modules:
+        print("#"*30)
+        print(freeze_modules)
+        if freeze_modules and type(freeze_modules) == str:
             # split and remove whitespace
             patterns = [p.strip() for p in freeze_modules.split(",") if p.strip()] if freeze_modules else []
 

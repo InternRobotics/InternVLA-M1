@@ -7,8 +7,7 @@ import websockets.frames
 
 # from openpi_client import base_policy as _base_policy
 from . import msgpack_numpy
-from tools.model_interface import QwenpiPolicyInterfence
-
+from . import image_tools
 
 class WebsocketPolicyServer:
     """Serves a policy using the websocket protocol. See websocket_client_policy.py for a client implementation.
@@ -18,7 +17,7 @@ class WebsocketPolicyServer:
 
     def __init__(
         self,
-        policy: QwenpiPolicyInterfence,
+        policy,
         host: str = "0.0.0.0",
         port: int = 8000,
         metadata: dict | None = None,
@@ -67,70 +66,81 @@ class WebsocketPolicyServer:
     # route logic: recognize request from client
     def _route_message(self, msg: dict) -> dict:
         """
-        route rules:
-        - compatible with two styles:
-          1) explicit type: msg = {"type": "ping|init|infer|reset", "request_id": "...", "payload": {...}}
-          2) old version implicit key: contains "device" as init, contains "reset" as reset, otherwise infer
-        return: unified dictionary, at least contains {"status": "ok"|"error"}, and include "ok"/"type"/"request_id"
+        Route rules (fault-tolerant):
+        - Supports messages of form:
+            {"type": "ping|init|infer|reset", "request_id": "...", "payload": {...}}
+          or a flat dict (will be treated as payload).
+        - Always returns a dict containing:
+            {
+              "status": "ok" | "error",
+              "ok": bool,
+              "type": <str>,
+              "request_id": <str>,
+              ... (data | error)
+            }
+        - Does NOT raise inside this function: all exceptions are caught and encoded in response.
         """
         req_id = msg.get("request_id", "default")
-        mtype = msg.get("type", "default")  # default is infer
-        payload = msg.get("payload", msg)  # when no payload, use top level
+        mtype = msg.get("type", "infer")          # default = infer
+        payload = msg.get("payload", msg)         # when no explicit payload, treat top-level as payload
 
-        # 1) explicit type routing
+        # ping
         if mtype == "ping":
-            return {"status": "ok", "ok": True, "type": "pong", "request_id": req_id}
+            return {"status": "ok", "ok": True, "type": "ping", "request_id": req_id}
 
-        if mtype == "init":
-            ok = bool(self._policy.init_infer(payload))
-            if ok:
-                return {"status": "ok", "ok": True, "type": "init_result", "request_id": req_id}
+        # infer
+        elif mtype == "infer":
+            # Basic payload sanity
+            if not isinstance(payload, dict):
+                return {
+                    "status": "error",
+                    "ok": False,
+                    "type": "inference_result",
+                    "request_id": req_id,
+                    "error": {"message": "Payload must be a dict", "payload_type": str(type(payload))}
+                }
+            try:
+                payload["batch_images"] = image_tools.to_pil_preserve(payload["batch_images"])
+                raw_action = self._policy.predict_action(**payload)
+            except Exception as e:
+                logging.exception("Policy inference error (request_id=%s)", req_id)
+                logging.exception(e)
+                
+                return {
+                    "status": "error",
+                    "ok": False,
+                    "type": "inference_result",
+                    "request_id": req_id,
+                    "error": {
+                        "message": str(e),
+                        # "traceback": traceback.format_exc(),
+                    },
+                }
+            data = {"raw_action": raw_action}
+            return {
+                "status": "ok",
+                "ok": True,
+                "type": "inference_result",
+                "request_id": req_id,
+                "data": data,
+            }
+
+        # unknow request type
+        else:
             return {
                 "status": "error",
                 "ok": False,
-                "type": "init_result",
+                "type": "unknown",
                 "request_id": req_id,
-                "message": "Failed to initialize device",
+                "error": {"message": f"Unsupported message type '{mtype}'"},
             }
-
-        if mtype == "reset":
-            # compatible with different field names
-            instr = payload.get("instruction") or payload.get("task_description")
-            self._policy.reset(instr)
-            return {"status": "ok", "ok": True, "type": "reset_result", "request_id": req_id}
-
-        if mtype == "infer":
-            data = self._policy.step(payload)
-            return {"status": "ok", "ok": True, "type": "inference_result", "request_id": req_id, "data": data}
-
-        # 2) compatible with old version implicit key routing
-        if "device" in msg:
-            ok = bool(self._policy.init_infer(msg))
-            if ok:
-                return {"status": "ok", "ok": True, "type": "init_result", "request_id": req_id}
-            return {
-                "status": "error",
-                "ok": False,
-                "type": "init_result",
-                "request_id": req_id,
-                "message": "Failed to initialize device",
-            }
-
-        if "reset" in msg:
-            instr = msg.get("instruction") or msg.get("task_description")
-            self._policy.reset(instr)
-            return {"status": "ok", "ok": True, "type": "reset_result", "request_id": req_id}
-
-        raw_action = self._policy.step(**msg)
-        data = {"raw_action": raw_action}
-        return {"status": "ok", "ok": True, "type": "inference_result", "request_id": req_id, "data": data}
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, force=True)
     # Example usage:
     # policy = YourPolicyClass()  # Replace with your actual policy class
-    # server = WebsocketPolicyServer(policy, host="localhost", port=8765)
+    # server = WebsocketPolicyServer(policy, host="localhost", port=10091)
     # server.serve_forever()
     raise NotImplementedError("This module is not intended to be run directly.")
 #

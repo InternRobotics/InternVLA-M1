@@ -1,7 +1,6 @@
 from collections import deque
 from typing import Optional, Sequence
 import os
-from PIL import Image
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,14 +8,21 @@ import numpy as np
 from transforms3d.euler import euler2axangle
 from deployment.model_server.tools.websocket_policy_client import WebsocketClientPolicy
 
-from eval.sim_cogact.adaptive_ensemble import AdaptiveEnsembler
+from examples.SimplerEnv.adaptive_ensemble import AdaptiveEnsembler
 from typing import Dict
+import numpy as np
+from pathlib import Path
 
+
+
+from InternVLA.model.framework.share_tools import read_mode_config
+from InternVLA.model.framework.M1 import InternVLA_M1
 
 
 class M1Inference:
     def __init__(
         self,
+        pretrained_checkpoint,
         unnorm_key: Optional[str] = None,
         policy_setup: str = "widowx_bridge",
         horizon: int = 0,
@@ -32,10 +38,9 @@ class M1Inference:
         port=10093,
     ) -> None:
         
+        # build client to connect server policy
         self.client = WebsocketClientPolicy(host, port)
 
-        
-        
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         if policy_setup == "widowx_bridge":
             unnorm_key = "bridge_dataset" if unnorm_key is None else unnorm_key
@@ -86,6 +91,9 @@ class M1Inference:
             self.action_ensembler = None
         self.num_image_history = 0
 
+        self.action_norm_stats = self.get_action_stats(self.unnorm_key, pretrained_checkpoint=pretrained_checkpoint)
+        
+
     def _add_image_to_history(self, image: np.ndarray) -> None:
         self.image_history.append(image)
         self.num_image_history = min(self.num_image_history + 1, self.horizon)
@@ -124,8 +132,7 @@ class M1Inference:
         assert image.dtype == np.uint8
         self._add_image_to_history(self._resize_image(image))
         # image: Image.Image = Image.fromarray(image)
-        self.unnorm_key = "oxe_bridge"
-        
+
         
         vla_input = {
             "batch_images": [[image]],
@@ -143,17 +150,12 @@ class M1Inference:
         
         
         # unnormalize the action
-        normalized_actions = response["data"]["normalized_actions"]        
+        normalized_actions = response["data"]["normalized_actions"] # B, chunk, D        
         normalized_actions = normalized_actions[0]
         
         
-        response_norm = self.client.get_unnorm_stats(self.unnorm_key)
-        action_norm_stats = response_norm["data"]
+        raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=self.action_norm_stats)
         
-        raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=action_norm_stats)
-        
-        
-
         if self.action_ensemble:
             raw_actions = self.action_ensembler.ensemble_action(raw_actions)[None]
 
@@ -206,11 +208,6 @@ class M1Inference:
         action["terminate_episode"] = np.array([0.0])
         return raw_action, action
 
-
-
-    def get_action_stats(self, unnorm_key: str) -> dict:
-        return self.client.get_action_stats(unnorm_key)
-    
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
@@ -224,6 +221,17 @@ class M1Inference:
         )
         
         return actions
+
+    @staticmethod
+    def get_action_stats(unnorm_key: str, pretrained_checkpoint) -> dict:
+        """
+        Duplicate stats accessor (retained for backward compatibility).
+        """
+        pretrained_checkpoint = Path(pretrained_checkpoint)
+        model_config, norm_stats = read_mode_config(pretrained_checkpoint)  # read config and norm_stats
+
+        unnorm_key = InternVLA_M1._check_unnorm_key(norm_stats, unnorm_key)
+        return norm_stats[unnorm_key]["action"]
 
 
 

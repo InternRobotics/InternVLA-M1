@@ -765,6 +765,7 @@ class LeRobotSingleDataset(Dataset):
         data = {}
         # Get the data for all modalities
         self.curr_traj_data = self.get_trajectory_data(trajectory_id)
+        # TODO @JinhuiYE The logic below is poorly implemented. Data reading should be directly based on curr_traj_data.
         for modality in self.modality_keys:
             # Get the data corresponding to each key in the modality
             for key in self.modality_keys[modality]:

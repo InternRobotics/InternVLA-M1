@@ -11,7 +11,7 @@ export NCCL_TIMEOUT=1000  # timeout set to 1 hour (unit: seconds)
 
 Framework_name=InternVLA-M1
 base_vlm=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # must be a local path, due to simpler will run in other where
-freeze_module_list="qwen_vl_interface,dino_encoder" # just for fast debug, sota is under fully FT, i.g., freeze_module_list=""
+freeze_module_list='' # just for fast debug, sota is under fully FT, i.g., freeze_module_list=""
 
 freeze_module_list="qwen_vl_interface.model.model.visual,dino_encoder" # just for fast debug, sota is under fully FT, i.g., freeze_module_list=""
 
@@ -42,7 +42,7 @@ accelerate launch \
   --datasets.vla_data.data_root_dir ${oxe_data_root}\
   --datasets.vla_data.data_mix ${data_mix} \
   --datasets.vla_data.per_device_batch_size 16 \
-  --trainer.freeze_modules  ${freeze_module_list} \
+  --trainer.freeze_modules ${freeze_module_list} \
   --trainer.max_train_steps 100000 \
   --trainer.save_interval 20000 \
   --trainer.eval_interval 100 \

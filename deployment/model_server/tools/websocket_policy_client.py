@@ -52,7 +52,7 @@ class WebsocketClientPolicy:
 
     def init_device(self, device: str = "cuda") -> Dict:
         """send one device initialization message, verify protocol and service availability"""
-        payload = {"device": device}
+        payload = {"device": device, "type": "ping"}
         self._ws.send(self._packer.pack(payload))
         resp = self._ws.recv()
         if isinstance(resp, str):
@@ -61,7 +61,11 @@ class WebsocketClientPolicy:
 
     @override
     def infer(self, obs: Dict) -> Dict:
-        data = self._packer.pack(obs)
+        query_info = {
+            "payload": obs,
+            "type": "infer",
+        }
+        data = self._packer.pack(query_info)
         self._ws.send(data)
         response = self._ws.recv()
         if isinstance(response, str):
@@ -80,45 +84,3 @@ class WebsocketClientPolicy:
             self._ws.close()
         except Exception:
             pass
-
-
-def _build_argparser():
-    ap = argparse.ArgumentParser(description="WebSocket policy client smoke test (msgpack protocol)")
-    ap.add_argument("--host", default="127.0.0.1", help="server hostname/IP (do not use 0.0.0.0)")
-    ap.add_argument("--port", type=int, default=10093, help="server port")
-    ap.add_argument("--api_key", default="", help="optional: API key for authentication")
-    ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"], help="initialize device")
-    ap.add_argument(
-        "--test", choices=["init", "infer"], default="infer", help="test mode: only initialize, or try simple inference"
-    )
-    ap.add_argument("--log_level", default="INFO")
-    return ap
-
-
-def _main():
-    args = _build_argparser().parse_args()
-    logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO), force=True)
-
-    client = WebsocketClientPolicy(host=args.host, port=args.port, api_key=(args.api_key or None))
-    logging.info("Connected. Server metadata: %s", client.get_server_metadata())
-
-    # 1) device initialization
-    init_ret = client.init_device(args.device)
-    logging.info("Init device resp: %s", init_ret)
-
-    # 2) optional: try one simple inference
-    if args.test == "infer":
-        try:
-            obs = {"request_id": "smoke-test", "ping": True}  # give your model inputs
-
-            infer_ret = client.infer(obs)
-            logging.info("Infer resp: %s", infer_ret)
-        except Exception as e:
-            logging.error("Infer error (this still proves transport OK): %s", e)
-
-    client.close()
-    logging.info("Smoke test done.")
-
-
-if __name__ == "__main__":
-    _main()

@@ -611,7 +611,7 @@ if __name__ == "__main__":
     debugpy.wait_for_client()
 
     # Load YAML config & Convert CLI overrides to dotlist config
-    config_yaml = "./llavavla/conf/qwenvla_lmdb_real.yaml"
+    config_yaml = "path to yaml config"
     cfg = OmegaConf.load(config_yaml)
     data_args = cfg.datasets.vlm_data
     image_processor = AutoProcessor.from_pretrained(

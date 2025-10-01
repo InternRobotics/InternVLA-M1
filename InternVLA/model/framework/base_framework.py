@@ -136,6 +136,7 @@ class baseframework(nn.Module):
         )
         return unnorm_key
 
+    @classmethod
     def get_action_stats(self, unnorm_key=None):
         """
         Retrieve raw action normalization statistics.
@@ -216,9 +217,12 @@ class baseframework(nn.Module):
         )
         return unnorm_key
 
-    def get_action_stats(self, unnorm_key=None):
+    @classmethod
+    def get_action_stats(self, unnorm_key=None, norm_stats=None):
         """
         Duplicate stats accessor (retained for backward compatibility).
         """
-        unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
-        return self.norm_stats[unnorm_key]["action"]
+        if norm_stats ==None:
+            norm_stats = self.norm_stats
+        unnorm_key = self._check_unnorm_key(norm_stats, unnorm_key)
+        return norm_stats[unnorm_key]["action"]

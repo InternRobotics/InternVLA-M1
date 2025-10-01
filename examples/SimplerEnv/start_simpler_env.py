@@ -1,9 +1,10 @@
 import os
 
 # from IPython import embed; embed()
-from simpler_env.evaluation.argparse import get_args
+from examples.SimplerEnv.argparse.py import get_args
+from examples.SimplerEnv.m12simpler_interface import M1Inference
+
 from simpler_env.evaluation.maniskill2_evaluator import maniskill2_evaluator
-from examples.Eval_simplenv_clean.m1_server_simpler_env import M1Inference
 
 import numpy as np
 
@@ -22,11 +23,6 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 
-
-
-
-
-
 if __name__ == "__main__":
     args = get_args()
 
@@ -39,9 +35,8 @@ if __name__ == "__main__":
     # print("Waiting for debugger to attach...")
     # debugpy.wait_for_client()  # wait for VS Code attach
 
-
-
     model = M1Inference(
+        policy_ckpt_path=args.ckpt_path, # to get unnormalization stats
         policy_setup=args.policy_setup,
         action_scale=args.action_scale,
         cfg_scale=1.5                     # cfg from 1.5 to 7 also performs well

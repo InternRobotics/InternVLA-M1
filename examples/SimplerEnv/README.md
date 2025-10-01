@@ -57,7 +57,7 @@ First, download the checkpoints from [[InternVLA-M1-Pretrain-RT-1-Bridge](https:
 
 ## 📦 1. Environment Setup
 
-To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment.  
+To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment.  Note: 你不需要 将SimplerEnv install 到M1 training 环境上， 因为他们通过socket通讯
 
 Afterwards, inside the `simpler_env` environment, install the following dependencies:  
 
@@ -91,7 +91,6 @@ bash examples/SimplerEnv/start_server.sh
 ⚠️ **Note:** Please ensure that you specify the correct checkpoint path in  
 `examples/SimplerEnv/start_server.sh`  
 
-
 ---
 
 ### Step 2. Start the simulation (simpler_env environment)
@@ -99,14 +98,12 @@ bash examples/SimplerEnv/start_server.sh
 In the second terminal, activate the `simpler_env` conda environment and run:  
 
 ```bash
-export PYTHONPATH=$(pwd):$PYTHONPATH
 bash examples/SimplerEnv/start_simpler_env.sh
 ```
 This script will automatically launch the WidowX Robot evaluation tasks, reproducing the benchmark results reported above.
 
 ⚠️ **Note:** Please ensure that you specify the correct rgb_overlay_path in  
 `examples/SimplerEnv/start_simpler_env.sh`  
-
 
 
 🚀 Training on OXE

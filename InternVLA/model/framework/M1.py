@@ -168,8 +168,9 @@ class InternVLA_M1(baseframework):
         batch_images: List[List[Image.Image]],  # B * List of PIL Image as [view1, view2]
         instructions: List[str],
         cfg_scale: float = 1.5,
-        use_ddim: bool = False,
+        use_ddim: bool = True,
         num_ddim_steps: int = 5,
+        resize_image = [224, 224],
         **kwargs: str,
     ) -> np.ndarray:
         """
@@ -195,7 +196,7 @@ class InternVLA_M1(baseframework):
             dict:
                 normalized_actions (np.ndarray): Shape [B, T, action_dim], diffusion-sampled normalized actions.
         """
-        # align obs and lang
+        # align obs and lang # is policy's duty to make sure the image size?
         train_obs_image_size = getattr(self.config.datasets.vla_data, "image_size", None)
         if train_obs_image_size:
             batch_images = resize_images(batch_images, target_size=train_obs_image_size)
@@ -211,7 +212,7 @@ class InternVLA_M1(baseframework):
                 return_dict=True,
             )
 
-            B = len(batch_images)
+            B = len(batch_images) # dino don't have smart resize in processing
             image_tensors = self.dino_encoder.prepare_dino_input(batch_images)
             dino_features = self.dino_encoder(image_tensors)
 
@@ -284,8 +285,11 @@ class InternVLA_M1(baseframework):
             if using_cfg:
                 samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
             normalized_actions = samples.cpu().numpy()
-
+            
+            raw_actions = None
+     
         return {"normalized_actions": normalized_actions}  # [B, T, action_dim]
+
 
     @torch.inference_mode()
     def chat_with_M1(

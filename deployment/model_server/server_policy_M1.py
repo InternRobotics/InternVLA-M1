@@ -7,7 +7,12 @@ import torch
 
 
 def main(args) -> None:
-    vla = InternVLA_M1.from_pretrained(
+    # Example usage:
+    # policy = YourPolicyClass()  # Replace with your actual policy class
+    # server = WebsocketPolicyServer(policy, host="localhost", port=10091)
+    # server.serve_forever()
+
+    vla = InternVLA_M1.from_pretrained( # TODO should auto detect framework from model path
         args.ckpt_path,
     )
 
@@ -53,5 +58,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, force=True)
     parser = build_argparser()
     args = parser.parse_args()
-    # start_debugpy_once()
+    start_debugpy_once()
     main(args)

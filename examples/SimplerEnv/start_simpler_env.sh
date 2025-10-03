@@ -2,12 +2,14 @@
 
 echo `which python`
 
-
+export SimplerEnv_PATH=/mnt/petrelfs/share/yejinhui/Projects/SimplerEnv
+export PYTHONPATH=$(pwd):${PYTHONPATH}
 
 MODEL_PATH=$1
 ckpt_path=${MODEL_PATH}
-
 TSET_NUM=1
+export DEBUG=1
+
 
 
 IFS=',' read -r -a CUDA_DEVICES <<< "$CUDA_VISIBLE_DEVICES"
@@ -29,7 +31,7 @@ declare -a ENV_NAMES=(
   PutSpoonOnTableClothInScene-v0
 )
 
-# export DEBUG=1
+
 
 for i in "${!ENV_NAMES[@]}"; do
   env="${ENV_NAMES[i]}"
@@ -38,6 +40,7 @@ for i in "${!ENV_NAMES[@]}"; do
 
     CUDA_VISIBLE_DEVICES=0 python examples/SimplerEnv/start_simpler_env.py \
       --ckpt-path ${ckpt_path} \
+      --port 10093 \
       --robot ${robot} \
       --policy-setup widowx_bridge \
       --control-freq 5 \
@@ -71,8 +74,9 @@ for i in "${!ENV_NAMES_V2[@]}"; do
   for ((run_idx=1; run_idx<=TSET_NUM; run_idx++)); do
     echo "▶️ Launching V2 task [${env}] run#${run_idx} on GPU $gpu_id, log → ${task_log}"
 
-    CUDA_VISIBLE_DEVICES=${gpu_id} python examples/SimplerEnv/start_simpler_env.py \
+    CUDA_VISIBLE_DEVICES=0 python examples/SimplerEnv/start_simpler_env.py \
       --ckpt-path ${ckpt_path} \
+      --port 10093 \
       --robot ${robot} \
       --policy-setup widowx_bridge \
       --control-freq 5 \
@@ -86,8 +90,8 @@ for i in "${!ENV_NAMES_V2[@]}"; do
       --obj-variation-mode episode \
       --obj-episode-range 0 24 \
       --robot-init-rot-quat-center 0 0 0 1 \
-      --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1 \
+      --robot-init-rot-rpy-range 0 0 1 0 0 1 0 0 1
   done
 done
-wait
-echo "✅ Finished"
+
+# echo "✅ Finished"

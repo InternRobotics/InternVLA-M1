@@ -3,7 +3,7 @@ import socket
 import argparse
 from deployment.model_server.tools.websocket_policy_server import WebsocketPolicyServer
 from InternVLA.model.framework.M1 import InternVLA_M1
-import torch
+import torch, os
 
 
 def main(args) -> None:
@@ -58,5 +58,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, force=True)
     parser = build_argparser()
     args = parser.parse_args()
-    start_debugpy_once()
+    if os.getenv("DEBUG", False):
+        print("🔍 DEBUGPY is enabled")
+        start_debugpy_once()
     main(args)

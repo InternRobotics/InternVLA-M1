@@ -5,7 +5,6 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 
-from transforms3d.euler import euler2axangle
 from deployment.model_server.tools.websocket_policy_client import WebsocketClientPolicy
 
 from examples.SimplerEnv.adaptive_ensemble import AdaptiveEnsembler
@@ -16,64 +15,35 @@ from pathlib import Path
 
 
 from InternVLA.model.framework.share_tools import read_mode_config
-from InternVLA.model.framework.M1 import InternVLA_M1
+
 
 
 class M1Inference:
     def __init__(
         self,
-        pretrained_checkpoint,
+        policy_ckpt_path,
         unnorm_key: Optional[str] = None,
-        policy_setup: str = "widowx_bridge",
+        policy_setup: str = "franka",
         horizon: int = 0,
-        action_ensemble_horizon: Optional[int] = None,
+        action_ensemble = True, # @Jinhui
+        action_ensemble_horizon: Optional[int] = 3, # different cross sim
         image_size: list[int] = [224, 224],
-        action_scale: float = 1.0,
-        cfg_scale: float = 1.5,
         use_ddim: bool = True,
         num_ddim_steps: int = 10,
-        action_ensemble = True,
         adaptive_ensemble_alpha = 0.1,
         host="0.0.0.0",
-        port=10093,
+        port=10095,
     ) -> None:
         
         # build client to connect server policy
         self.client = WebsocketClientPolicy(host, port)
-
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        if policy_setup == "widowx_bridge":
-            unnorm_key = "bridge_dataset" if unnorm_key is None else unnorm_key
-            action_ensemble = action_ensemble
-            adaptive_ensemble_alpha = adaptive_ensemble_alpha
-            if action_ensemble_horizon is None:
-                # Set 7 for widowx_bridge to fix the window size of motion scale between each frame. see appendix in our paper for details
-                action_ensemble_horizon = 7
-            self.sticky_gripper_num_repeat = 1
-        elif policy_setup == "google_robot":
-            unnorm_key = "fractal20220817_data" if unnorm_key is None else unnorm_key
-            action_ensemble = action_ensemble
-            adaptive_ensemble_alpha = adaptive_ensemble_alpha
-            if action_ensemble_horizon is None:
-                # Set 2 for google_robot to fix the window size of motion scale between each frame. see appendix in our paper for details
-                action_ensemble_horizon = 2
-            self.sticky_gripper_num_repeat = 10
-        else:
-            raise NotImplementedError(
-                f"Policy setup {policy_setup} not supported for octo models. The other datasets can be found in the huggingface config.json file."
-            )
         self.policy_setup = policy_setup
         self.unnorm_key = unnorm_key
 
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-
-
-        self.cfg_scale = cfg_scale # 1.5
-
         self.image_size = image_size
-        self.action_scale = action_scale # 1.0
         self.horizon = horizon #0
         self.action_ensemble = action_ensemble
         self.adaptive_ensemble_alpha = adaptive_ensemble_alpha
@@ -91,7 +61,7 @@ class M1Inference:
             self.action_ensembler = None
         self.num_image_history = 0
 
-        self.action_norm_stats = self.get_action_stats(self.unnorm_key, pretrained_checkpoint=pretrained_checkpoint)
+        self.action_norm_stats = self.get_action_stats(self.unnorm_key, policy_ckpt_path=policy_ckpt_path)
         
 
     def _add_image_to_history(self, image: np.ndarray) -> None:
@@ -110,36 +80,32 @@ class M1Inference:
         self.sticky_gripper_action = 0.0
         self.previous_gripper_action = None
 
-    def step(
-        self, image: np.ndarray, task_description: Optional[str] = None, *args, **kwargs
+
+    def step( # 这个写给不够好
+        self, 
+        images, 
+        task_description: Optional[str] = None,
+        **kwargs
     ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
-        Input:
-            image: np.ndarray of shape (H, W, 3), uint8
-            task_description: Optional[str], task description; if different from previous task description, policy state is reset
-        Output:
-            raw_action: dict; raw policy action output
-            action: dict; processed action to be sent to the maniskill2 environment, with the following keys:
-                - 'world_vector': np.ndarray of shape (3,), xyz translation of robot end-effector
-                - 'rot_axangle': np.ndarray of shape (3,), axis-angle representation of end-effector rotation
-                - 'gripper': np.ndarray of shape (1,), gripper action
-                - 'terminate_episode': np.ndarray of shape (1,), 1 if episode should be terminated, 0 otherwise
+        执行一步推理
+        :param image: 输入图像 (H, W, 3) uint8格式
+        :param task_description: 任务描述文本
+        :return: (原始动作, 处理后的动作)
         """
+
         if task_description is not None:
             if task_description != self.task_description:
                 self.reset(task_description)
 
-        assert image.dtype == np.uint8
-        self._add_image_to_history(self._resize_image(image))
         # image: Image.Image = Image.fromarray(image)
 
-        
+        images = [self._resize_image(image) for image in images]
         vla_input = {
-            "batch_images": [[image]],
+            "batch_images": [images],
             "instructions": [self.task_description],
             "unnorm_key": self.unnorm_key,
             "do_sample": False,
-            "cfg_scale": self.cfg_scale,
             "use_ddim": self.use_ddim,
             "num_ddim_steps": self.num_ddim_steps,
         }
@@ -165,48 +131,7 @@ class M1Inference:
             "open_gripper": np.array(raw_actions[0, 6:7]),  # range [0, 1]; 1 = open; 0 = close
         }
 
-        # process raw_action to obtain the action to be sent to the maniskill2 environment
-        action = {}
-        action["world_vector"] = raw_action["world_vector"] * self.action_scale
-        action_rotation_delta = np.asarray(raw_action["rotation_delta"], dtype=np.float64)
-
-        roll, pitch, yaw = action_rotation_delta
-        axes, angles = euler2axangle(roll, pitch, yaw)
-        action_rotation_axangle = axes * angles
-        action["rot_axangle"] = action_rotation_axangle * self.action_scale
-
-        if self.policy_setup == "google_robot":
-            action["gripper"] = 0
-            current_gripper_action = raw_action["open_gripper"]
-            if self.previous_gripper_action is None:
-                relative_gripper_action = np.array([0])
-                self.previous_gripper_action = current_gripper_action
-            else:
-                relative_gripper_action = self.previous_gripper_action - current_gripper_action
-            # fix a bug in the SIMPLER code here
-            # self.previous_gripper_action = current_gripper_action
-
-            if np.abs(relative_gripper_action) > 0.5 and (not self.sticky_action_is_on):
-                self.sticky_action_is_on = True
-                self.sticky_gripper_action = relative_gripper_action
-                self.previous_gripper_action = current_gripper_action
-
-            if self.sticky_action_is_on:
-                self.gripper_action_repeat += 1
-                relative_gripper_action = self.sticky_gripper_action
-
-            if self.gripper_action_repeat == self.sticky_gripper_num_repeat:
-                self.sticky_action_is_on = False
-                self.gripper_action_repeat = 0
-                self.sticky_gripper_action = 0.0
-
-            action["gripper"] = relative_gripper_action
-
-        elif self.policy_setup == "widowx_bridge":
-            action["gripper"] = 2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
-        
-        action["terminate_episode"] = np.array([0.0])
-        return raw_action, action
+        return {"raw_action": raw_action}
 
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
@@ -223,14 +148,14 @@ class M1Inference:
         return actions
 
     @staticmethod
-    def get_action_stats(unnorm_key: str, pretrained_checkpoint) -> dict:
+    def get_action_stats(unnorm_key: str, policy_ckpt_path) -> dict:
         """
         Duplicate stats accessor (retained for backward compatibility).
         """
-        pretrained_checkpoint = Path(pretrained_checkpoint)
-        model_config, norm_stats = read_mode_config(pretrained_checkpoint)  # read config and norm_stats
+        policy_ckpt_path = Path(policy_ckpt_path)
+        model_config, norm_stats = read_mode_config(policy_ckpt_path)  # read config and norm_stats
 
-        unnorm_key = InternVLA_M1._check_unnorm_key(norm_stats, unnorm_key)
+        unnorm_key = M1Inference._check_unnorm_key(norm_stats, unnorm_key)
         return norm_stats[unnorm_key]["action"]
 
 
@@ -270,3 +195,23 @@ class M1Inference:
         axs["image"].set_xlabel("Time in one episode (subsampled)")
         plt.legend()
         plt.savefig(save_path)
+    
+    @staticmethod
+    def _check_unnorm_key(norm_stats, unnorm_key):
+        """
+        Duplicate helper (retained for backward compatibility).
+        See primary _check_unnorm_key above.
+        """
+        if unnorm_key is None:
+            assert len(norm_stats) == 1, (
+                f"Your model was trained on more than one dataset, "
+                f"please pass a `unnorm_key` from the following options to choose the statistics "
+                f"used for un-normalizing actions: {norm_stats.keys()}"
+            )
+            unnorm_key = next(iter(norm_stats.keys()))
+
+        assert unnorm_key in norm_stats, (
+            f"The `unnorm_key` you chose is not in the set of available dataset statistics, "
+            f"please choose from: {norm_stats.keys()}"
+        )
+        return unnorm_key

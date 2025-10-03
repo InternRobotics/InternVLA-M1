@@ -15,8 +15,11 @@ import tqdm
 import tyro
 from libero.libero import benchmark, get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
-from real_deployment.deploy.tools import websocket_policy_client
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+from examples.LIBERO.model2libero_interface import M1Inference
+
 
 LIBERO_DUMMY_ACTION = [0.0] * 6 + [-1.0]
 LIBERO_ENV_RESOLUTION = 256  # resolution used to render training data
@@ -31,18 +34,15 @@ def _binarize_gripper_open(open_val: np.ndarray | float) -> np.ndarray:
 class Args:
     host: str = "127.0.0.1"
     port: int = 10093
-
-    resize_size: int = 224
-    replan_steps: int = 5
+    resize_size = [224,224]
 
     #################################################################################################################
     # LIBERO environment-specific parameters
     #################################################################################################################
     task_suite_name: str = "libero_goal"  # Task suite. Options: libero_spatial, libero_object, libero_goal, libero_10, libero_90
     num_steps_wait: int = 10  # Number of steps to wait for objects to stabilize i n sim
-    num_trials_per_task: int = 10  # Number of rollouts per task
+    num_trials_per_task: int = 50  # Number of rollouts per task
 
-    
     #################################################################################################################
     # Utils
     #################################################################################################################
@@ -56,16 +56,12 @@ class Args:
 
     job_name: str = "test"
 
-    s2_replan_steps: int = 10
-    s2_candidates_num: int = 5
-    noise_temp_lower_bound: float = 1.0
-    noise_temp_upper_bound: float = 2.0
-    time_temp_lower_bound: float = 0.9
-    time_temp_upper_bound: float = 1.0
 
 
 def eval_libero(args: Args) -> None:
     logging.info(f"Arguments: {json.dumps(dataclasses.asdict(args), indent=4)}")
+    if os.getenv("DEBUG", False):
+        start_debugpy_once()
 
     # Set random seed
     np.random.seed(args.seed)
@@ -93,10 +89,15 @@ def eval_libero(args: Args) -> None:
     else:
         raise ValueError(f"Unknown task suite: {args.task_suite_name}")
 
-    client = websocket_policy_client.WebsocketClientPolicy(args.host, args.port)
-    logging.info("Connected. Server metadata: %s", client.get_server_metadata())
-    init_ret = client.init_device()
-    logging.info("Init device resp: %s", init_ret)
+    # client = websocket_policy_client.WebsocketClientPolicy(args.host, args.port)
+
+    model = M1Inference(
+        policy_ckpt_path=args.pretrained_path, # to get unnormalization stats
+        host=args.host,
+        port=args.port,
+        image_size=args.resize_size,
+    )
+
 
     # Start evaluation
     total_episodes, total_successes = 0, 0
@@ -116,7 +117,7 @@ def eval_libero(args: Args) -> None:
             logging.info(f"\nTask: {task_description}")
 
             # Reset environment
-            client.reset(instruction=task_description)  # Reset the client connection
+            model.reset(task_description=task_description)  # Reset the client connection
             env.reset()
 
             # Set initial states
@@ -171,25 +172,23 @@ def eval_libero(args: Args) -> None:
 
                 # align key with model API
                 obs_input = {
-                "request_id": task_episodes,
                 "images": [observation["observation.primary"][0]],
-                # "images": [observation["observation.primary"][0], observation["observation.wrist_image"][0]],
+                # "images": [observation["observation.primary"][0], observation["observation.wrist_image"][0]], #@Junqiu 为什么是单视角？
                 "task_description": observation["instruction"][0],  
-                "step": step,
                 }
 
                 
                 start_time = time.time()
                 
-                response = client.infer(obs_input) 
+                response = model.step(**obs_input) 
                 
                 end_time = time.time()
                 # print(f"time: {end_time - start_time}")
                 
                 # # 
-                raw_action = response["data"]["raw_action"]
+                raw_action = response["raw_action"]
                 
-                world_vector_delta = np.asarray(raw_action.get("xyz_delta"), dtype=np.float32).reshape(-1)
+                world_vector_delta = np.asarray(raw_action.get("world_vector"), dtype=np.float32).reshape(-1)
                 rotation_delta = np.asarray(raw_action.get("rotation_delta"), dtype=np.float32).reshape(-1)
                 open_gripper = np.asarray(raw_action.get("open_gripper"), dtype=np.float32).reshape(-1)
                 gripper = _binarize_gripper_open(open_gripper)
@@ -297,8 +296,8 @@ def start_debugpy_once():
     import debugpy
     if getattr(start_debugpy_once, "_started", False):
         return
-    debugpy.listen(("0.0.0.0", 5678))
-    print("🔍 Waiting for VSCode attach on 0.0.0.0:5678 ...")
+    debugpy.listen(("0.0.0.0", 10092))
+    print("🔍 Waiting for VSCode attach on 0.0.0.0:10092 ...")
     debugpy.wait_for_client()
     start_debugpy_once._started = True
 

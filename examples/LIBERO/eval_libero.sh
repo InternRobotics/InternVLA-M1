@@ -1,20 +1,32 @@
 #!/bin/bash
-ckpt_path=/PATH/TO/CKPT/steps_30000_pytorch_model.pt
-folder_name=$(echo "$ckpt_path" | awk -F'/' '{print $(NF-2)"_"$(NF-1)"_"$NF}')
+
+
+export LIBERO_HOME=/mnt/petrelfs/share/yejinhui/Projects/LIBERO
+export LIBERO_CONFIG_PATH=${LIBERO_HOME}/libero
+
+export PYTHONPATH=$PYTHONPATH:${LIBERO_HOME} # let eval_libero find the LIBERO tools
+export PYTHONPATH=$(pwd):${PYTHONPATH} # let LIBERO find the websocket tools from main repo
+
+
+your_ckpt=playground/Pretrained_models/InternVLA-M1-LIBERO-Goal/checkpoints/steps_30000_pytorch_model.pt
+
+folder_name=$(echo "$your_ckpt" | awk -F'/' '{print $(NF-2)"_"$(NF-1)"_"$NF}')
 
 task_suite_name=libero_goal
 num_trials_per_task=50
 video_out_path="results/${task_suite_name}/${folder_name}"
 
 host="127.0.0.1"
-base_port=10095
+base_port=10093
 unnorm_key="franka"
 
 LOG_DIR="logs/$(date +"%Y%m%d_%H%M%S")"
 mkdir -p ${LOG_DIR}
-export PYTHONPATH=$PYTHONPATH:$PWD/eval/LIBERO
 
-python ./examples/libero/eval_libero.py \
+# export DEBUG=true
+
+python ./examples/LIBERO/eval_libero.py \
+    --args.pretrained-path ${your_ckpt} \
     --args.host "$host" \
     --args.port $base_port \
     --args.task-suite-name "$task_suite_name" \

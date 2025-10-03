@@ -101,7 +101,7 @@ class WebsocketPolicyServer:
                 }
             try:
                 payload["batch_images"] = image_tools.to_pil_preserve(payload["batch_images"])
-                raw_action = self._policy.predict_action(**payload)
+                ouput_dict = self._policy.predict_action(**payload)
             except Exception as e:
                 logging.exception("Policy inference error (request_id=%s)", req_id)
                 logging.exception(e)
@@ -116,7 +116,7 @@ class WebsocketPolicyServer:
                         # "traceback": traceback.format_exc(),
                     },
                 }
-            data = {"raw_action": raw_action}
+            data = ouput_dict
             return {
                 "status": "ok",
                 "ok": True,

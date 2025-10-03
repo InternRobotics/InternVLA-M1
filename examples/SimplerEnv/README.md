@@ -98,11 +98,12 @@ bash examples/SimplerEnv/start_server.sh
 In the second terminal, activate the `simpler_env` conda environment and run:  
 
 ```bash
-bash examples/SimplerEnv/start_simpler_env.sh
+export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0906_bestvla_retrain_sota2/checkpoints/steps_50000_pytorch_model.pt
+bash examples/SimplerEnv/start_simpler_env.sh ${MODEL_PATH} 
 ```
 This script will automatically launch the WidowX Robot evaluation tasks, reproducing the benchmark results reported above.
 
-⚠️ **Note:** Please ensure that you specify the correct rgb_overlay_path in  
+⚠️ **Note:** Please ensure that you specify the correct `SimplerEnv_PATH`
 `examples/SimplerEnv/start_simpler_env.sh`  
 
 

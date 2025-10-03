@@ -61,10 +61,9 @@ bash examples/LIBERO/run_server.sh
 In the second terminal, activate the `LIBERO` conda environment and run:  
 
 ```bash
-export PYTHONPATH=$(pwd):$PYTHONPATH
 bash examples/LIBERO/eval_libero.sh
 ```
-⚠️ **Note:** Please ensure that you specify the correct checkpoint path in `examples/LIBERO/eval_libero.sh`  
+⚠️ **Note:** Please ensure that you specify the correct checkpoint path in `examples/LIBERO/eval_libero.sh` to load action unnormalization stats. 
 
 
 

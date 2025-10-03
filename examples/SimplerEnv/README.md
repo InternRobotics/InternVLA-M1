@@ -107,7 +107,29 @@ This script will automatically launch the WidowX Robot evaluation tasks, reprodu
 `examples/SimplerEnv/start_simpler_env.sh`  
 
 
-🚀 Training on OXE
+# 🚀 Training on OXE
 
-We are finalizing the OXE training readme. A straightforward guide and scripts will be released soon (this week). If you already have OXE-lerobot-formatted data and need early access.
+## Data Preparation
+1. Prepare the OXE data following the GR00T / Open-X Embodiment procedure (download + convert). Keep only the subsets you need (e.g. bridge / rt1, etc.).
+2. YAML parameter snippet (InternVLA/config/training/internvla_cotrain_oxe.yaml):
+```
+datasets:
+  vla_data:
+    dataset_py: lerobot_datasets
+    data_root_dir: playground/Datasets/OXE_LEROBOT_DATASET
+    data_mix: bridge_rt_1   # change or extend if you add more mixture
+```
+3. Make sure you can load batched data:
+```bash
+python InternVLA/dataloader/lerobot_datasets.py --config_yaml InternVLA/config/training/internvla_cotrain_oxe.yaml
+```
+
+## Training
+Run:
+```bash
+bash /mnt/petrelfs/yejinhui/Projects/llavavla/scripts/run_scripts/run_lerobot_datasets.sh
+```
+Make sure the script explicitly uses the validated config path in `run_lerobot_datasets.sh` (add --config_yaml if not already passed).
+
+
 

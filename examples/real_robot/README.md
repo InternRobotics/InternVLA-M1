@@ -97,4 +97,4 @@ accelerate launch --config_file InternVLA/config/deepseeds/deepspeed_zero2.yaml 
 ```
 
 ## Deploy and Inference
-Coming soon
+see examples/SimplerEnv/README.md

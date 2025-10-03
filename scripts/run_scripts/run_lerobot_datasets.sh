@@ -17,7 +17,7 @@ freeze_module_list="qwen_vl_interface.model.model.visual,dino_encoder" # just fo
 
 llavadata="asv2_conversation_en,asv2_detailed_description_en"
 oxe_data_root=playground/Datasets/OXE_LEROBOT_DATASET
-data_mix=bridge
+data_mix=bridge_rt_1
 
 run_root_dir=./playground/Checkpoints
 run_id=internVLA_M1

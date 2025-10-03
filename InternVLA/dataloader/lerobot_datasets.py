@@ -84,13 +84,16 @@ def get_vla_dataset(
 
 if __name__ == "__main__":
     import debugpy
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_yaml", type=str, default="./InternVLA/config/training/internvla_cotrain_oxe.yaml", help="Path to YAML config")
+    args, clipargs = parser.parse_known_args()
 
     debugpy.listen(("0.0.0.0", 10092))
     print("🔍 Rank 0 waiting for debugger attach on port 10092...")
     debugpy.wait_for_client()
 
-    config_yaml = "./InternVLA/config/training/internvla_cotrain_libero.yaml"
-    cfg = OmegaConf.load(config_yaml)
+    cfg = OmegaConf.load(args.config_yaml)
 
     vla_dataset_cfg = cfg.datasets.vla_data
     dataset = get_vla_dataset(data_cfg=vla_dataset_cfg)

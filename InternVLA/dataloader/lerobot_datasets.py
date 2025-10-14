@@ -13,7 +13,7 @@ def collate_fn(batch):
 def make_LeRobotSingleDataset(
     data_root_dir: Path | str,
     data_name: str,
-    robot_type: str,  # 新增参数
+    robot_type: str,
     delete_pause_frame: bool = False,
 ) -> LeRobotSingleDataset:
     """

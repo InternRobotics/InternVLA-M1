@@ -372,11 +372,7 @@ if __name__ == "__main__":
     model = build_model_framework(cfg)
     print(model)
 
-    model_path = "/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0906_bestvla_retrain_sota2/checkpoints/steps_50000_pytorch_model.pt"
-    state_dict = torch.load(model_path, map_location="cpu")
-
-    model.load_state_dict(state_dict, strict=True)
-
+ 
     # try forward model
     # can be fake sample， but here get from dataloader for simpler
     from InternVLA.dataloader.lerobot_datasets import get_vla_dataset, collate_fn

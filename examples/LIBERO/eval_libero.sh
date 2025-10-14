@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-export LIBERO_HOME=/mnt/petrelfs/share/yejinhui/Projects/LIBERO
+export LIBERO_HOME=./Projects/LIBERO
 export LIBERO_CONFIG_PATH=${LIBERO_HOME}/libero
 
 export PYTHONPATH=$PYTHONPATH:${LIBERO_HOME} # let eval_libero find the LIBERO tools

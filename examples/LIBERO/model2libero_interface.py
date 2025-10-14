@@ -25,7 +25,7 @@ class M1Inference:
         unnorm_key: Optional[str] = None,
         policy_setup: str = "franka",
         horizon: int = 0,
-        action_ensemble = True, # @Jinhui
+        action_ensemble = True,
         action_ensemble_horizon: Optional[int] = 3, # different cross sim
         image_size: list[int] = [224, 224],
         use_ddim: bool = True,
@@ -81,17 +81,17 @@ class M1Inference:
         self.previous_gripper_action = None
 
 
-    def step( # 这个写给不够好
+    def step(
         self, 
         images, 
         task_description: Optional[str] = None,
         **kwargs
     ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
-        执行一步推理
-        :param image: 输入图像 (H, W, 3) uint8格式
-        :param task_description: 任务描述文本
-        :return: (原始动作, 处理后的动作)
+        Perform one step of inference
+        :param image: Input image in the format (H, W, 3), type uint8
+        :param task_description: Task description text
+        :return: (raw action, processed action)
         """
 
         if task_description is not None:

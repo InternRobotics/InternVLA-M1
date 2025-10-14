@@ -1,9 +1,9 @@
-run_id: starvla
+run_id: internVLA
 run_root_dir: results/Checkpoints
 seed: 42
 trackers: [jsonl, wandb]
 wandb_entity: your_wandb_entity
-wandb_project: llavavla
+wandb_project: internVLA
 is_debug: false
 
 

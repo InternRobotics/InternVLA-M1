@@ -102,7 +102,7 @@ trainer:
   loss_scale:
     vla: 1.0
     vlm: 0.1
-  # pretrained_checkpoint: /mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
+  # pretrained_checkpoint: ./results/Checkpoints/1_need/0601_qwenact_fixqwen_32gpus_lr_1e-3_qformer_36_37/steps_100000/pytorch_model.pt
   # reload_modules: 'action_model,layer_qformer' # warning: this may cause model to not converge
   repeated_diffusion_steps: 4
   max_grad_norm: 1.0

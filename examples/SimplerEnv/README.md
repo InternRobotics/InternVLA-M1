@@ -57,7 +57,7 @@ First, download the checkpoints from [[InternVLA-M1-Pretrain-RT-1-Bridge](https:
 
 ## 📦 1. Environment Setup
 
-To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment.  Note: 你不需要 将SimplerEnv install 到M1 training 环境上， 因为他们通过socket通讯
+To set up the environment, please first follow the official [SimplerEnv repository](https://github.com/simpler-env/SimplerEnv) to install the base `simpler_env` environment. 
 
 Afterwards, inside the `simpler_env` environment, install the following dependencies:  
 
@@ -98,7 +98,7 @@ bash examples/SimplerEnv/start_server.sh
 In the second terminal, activate the `simpler_env` conda environment and run:  
 
 ```bash
-export MODEL_PATH=/mnt/petrelfs/yejinhui/Projects/llavavla/results/Checkpoints/1_need/0906_bestvla_retrain_sota2/checkpoints/steps_50000_pytorch_model.pt
+export MODEL_PATH=.../checkpoints/steps_50000_pytorch_model.pt
 bash examples/SimplerEnv/start_simpler_env.sh ${MODEL_PATH} 
 ```
 This script will automatically launch the WidowX Robot evaluation tasks, reproducing the benchmark results reported above.
@@ -127,7 +127,7 @@ python InternVLA/dataloader/lerobot_datasets.py --config_yaml InternVLA/config/t
 ## Training
 Run:
 ```bash
-bash /mnt/petrelfs/yejinhui/Projects/llavavla/scripts/run_scripts/run_lerobot_datasets.sh
+bash ./scripts/run_scripts/run_lerobot_datasets.sh
 ```
 Make sure the script explicitly uses the validated config path in `run_lerobot_datasets.sh` (add --config_yaml if not already passed).
 

@@ -26,7 +26,7 @@ def apply_transform(view, transform):
     return transform(view)
 
 
-# from llavavla.model.modules.dino_model.dino_transforms import make_classification_train_transform
+# from internVLAA.model.modules.dino_model.dino_transforms import make_classification_train_transform
 
 
 class DINOv2BackBone(nn.Module):

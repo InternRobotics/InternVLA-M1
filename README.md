@@ -169,8 +169,8 @@ We release a series of pretrained models and checkpoints to facilitate reproduct
 
 # 🗺️ Roadmap
 
-* [ ] Add Co-training readme (might at 9/30)
-* [ ] Add training readme on simpler, LIBERO, etc. (might at 9/29)
+* [ ] Add Co-Training Multimodel Multitask Readme (now co-training code is already here)
+* [x] 0930: Unified Inference Server for Simpler and LIBERO
 * [x] 0918: Release model weights
 
 
@@ -203,7 +203,7 @@ We thank the open-source community for their inspiring work. This project builds
 - [Isaac-GR00T](https://github.com/NVIDIA/Isaac-GR00T): Standardized action data loader (GR00T-LeRobot).
 - [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-finetune/README.md): Multimodal input/output format, data loader, and pretrained VLM backbone.
 - [CogACT](https://github.com/microsoft/CogACT/tree/main/action_model): Reference for a DiT-style action head design.
-- [llavavla](https://github.com/JinhuiYE/llavavla): Baseline code structure and engineering design references.
+- [Llavavla](https://github.com/JinhuiYE/llavavla): Baseline code structure and engineering design references.
 - [GenManip Simulation Platform](https://github.com/InternRobotics/GenManip): Simulation platform for generalizable pick-and-place based on Isaac Sim.
 
 

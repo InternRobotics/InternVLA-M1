@@ -81,7 +81,7 @@ def eval_libero(args: Args) -> None:
     elif args.task_suite_name == "libero_object":
         max_steps = 280  # longest training demo has 254 steps
     elif args.task_suite_name == "libero_goal":
-        max_steps = 300  # longest training demo has 270 steps #TODO: debug
+        max_steps = 300  # longest training demo has 270 steps
     elif args.task_suite_name == "libero_10":
         max_steps = 520  # longest training demo has 505 steps
     elif args.task_suite_name == "libero_90":

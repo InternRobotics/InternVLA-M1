@@ -765,7 +765,7 @@ class LeRobotSingleDataset(Dataset):
         data = {}
         # Get the data for all modalities
         self.curr_traj_data = self.get_trajectory_data(trajectory_id)
-        # TODO @JinhuiYE The logic below is poorly implemented. Data reading should be directly based on curr_traj_data.
+        
         for modality in self.modality_keys:
             # Get the data corresponding to each key in the modality
             for key in self.modality_keys[modality]:
@@ -797,7 +797,7 @@ class LeRobotSingleDataset(Dataset):
         trajectory_indices = np.where(self.trajectory_ids == trajectory_id)[0]
         if len(trajectory_indices) != 1:
             raise ValueError(
-                f"Error finding trajectory index for {trajectory_id}, found {trajectory_indices=}"
+                f"Error finding trajectory index for {trajectory_id}, found {trajectory_indices}"
             )
         return trajectory_indices[0]
 
@@ -893,8 +893,8 @@ class LeRobotSingleDataset(Dataset):
         key = key.replace("video.", "")
         video_path = self.get_video_path(trajectory_id, key)
         # Get the action/state timestamps for each frame in the video
-        assert self.curr_traj_data is not None, f"No data found for {trajectory_id=}"
-        assert "timestamp" in self.curr_traj_data.columns, f"No timestamp found in {trajectory_id=}"
+        assert self.curr_traj_data is not None, f"No data found for {trajectory_id}"
+        assert "timestamp" in self.curr_traj_data.columns, f"No timestamp found in {trajectory_id}"
         timestamp: np.ndarray = self.curr_traj_data["timestamp"].to_numpy()
         # Get the corresponding video timestamps from the step indices
         video_timestamp = timestamp[step_indices]
@@ -943,8 +943,8 @@ class LeRobotSingleDataset(Dataset):
         if le_key is None:
             le_key = key
         # Get the data array, shape: (T, D)
-        assert self.curr_traj_data is not None, f"No data found for {trajectory_id=}"
-        assert le_key in self.curr_traj_data.columns, f"No {le_key} found in {trajectory_id=}"
+        assert self.curr_traj_data is not None, f"No data found for {trajectory_id}"
+        assert le_key in self.curr_traj_data.columns, f"No {le_key} found in {trajectory_id}"
         data_array: np.ndarray = np.stack(self.curr_traj_data[le_key])  # type: ignore
         assert data_array.ndim == 2, f"Expected 2D array, got key {le_key} is{data_array.shape} array"
         le_indices = np.arange(
@@ -981,7 +981,7 @@ class LeRobotSingleDataset(Dataset):
         Returns:
             list[str]: The annotation data for the trajectory and step indices. If no matching data is found, return empty strings.
         """
-        assert self.curr_traj_data is not None, f"No data found for {trajectory_id=}"
+        assert self.curr_traj_data is not None, f"No data found for {trajectory_id}"
         # Get the step indices
         step_indices = self.delta_indices[key] + base_index
         # Get the trajectory index

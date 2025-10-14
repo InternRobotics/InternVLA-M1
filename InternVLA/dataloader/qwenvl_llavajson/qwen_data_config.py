@@ -112,7 +112,6 @@ def data_list(dataset_names):
 genmanip_json_root = f"./playground/Datasets/Genmanip_vlm_v5"
 
 # Object-container
-# /fs-computility/efm/yejinhui/Projects/System2VLA/playground/Datasets/Genmanip_vlm_v5/object_container
 genmanip_object_object_root = f"{genmanip_json_root}/object_container"
 GENMANIP_v5_object_container = {
     "annotation_path": f"{genmanip_object_object_root}/Manipu_CoT.json",

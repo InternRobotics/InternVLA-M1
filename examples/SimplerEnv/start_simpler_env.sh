@@ -2,7 +2,7 @@
 
 echo `which python`
 
-export SimplerEnv_PATH=/mnt/petrelfs/share/yejinhui/Projects/SimplerEnv
+export SimplerEnv_PATH=./Projects/SimplerEnv
 export PYTHONPATH=$(pwd):${PYTHONPATH}
 
 MODEL_PATH=$1

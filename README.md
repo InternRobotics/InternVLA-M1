@@ -1,6 +1,6 @@
 # InternVLA-M1
 
-**InternVLA-M1** is a Open-source Spatially Grounded Foundation Model for Generalist Robot Policy
+**InternVLA-M1** is a spatially guided vision-language-action framework for generalist robot policy.
 
 https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
@@ -12,12 +12,10 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
 2025-09-30 | EVAL | Double-check unified model server eval on Simpler & LIBERO |
 
-
 ## 🔥 Key Features
 
 1. **Modular & Extensible**  
    All core components (model architecture, training data, training strategies, evaluation pipeline) are fully decoupled, enabling independent development, debugging, and extension of each module.
-
 
 2. **Dual-System and Dual-Supervision**
    InternVLA-M1 integrates both a language head and an action head under a unified framework, enabling collaborative training with dual supervision. 
@@ -37,8 +35,6 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 | $\pi_0$         | 27.1    | 54.8             | 58.8             | 94.2   |
 | GR00t       | 61.9    | 44.5             | 35.2             | 93.9   |
 | InternVLA-M1 |**71.7** |**76.0**          |**80.7**          |**95.9**|
-
-
 
 # 🚀 Quick Start
 
@@ -185,10 +181,10 @@ If you find this useful in your research, please consider citing:
 
 ```bibtex
 @misc{internvla2024,
-  title  = {InternVLA-M1: Latent Spatial Grounding for Instruction-Following Robotic Manipulation},
+  title  = {InternVLA-M1: A Spatially Guided Vision-Language-Action Framework for Generalist Robot Policy},
   author = {InternVLA-M1 Contributors},
   year   = {2025},
-  booktitle={arXiv},
+  booktitle={},
 }
 ```
 

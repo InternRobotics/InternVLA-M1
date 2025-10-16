@@ -180,11 +180,11 @@ Please include detailed logs and reproduction steps when reporting bugs.
 If you find this useful in your research, please consider citing:
 
 ```bibtex
-@misc{internvla2024,
-  title  = {InternVLA-M1: A Spatially Guided Vision-Language-Action Framework for Generalist Robot Policy},
-  author = {InternVLA-M1 Contributors},
-  year   = {2025},
-  booktitle={},
+@article{internvlam1,
+  title   = {InternVLA-M1: A Spatially Guided Vision-Language-Action Framework for Generalist Robot Policy},
+  author  = {InternVLA-M1 Contributors},
+  journal = {arXiv preprint arXiv:2510.13778},
+  year    = {2025}
 }
 ```
 

@@ -8,7 +8,7 @@ export PYTHONPATH=$PYTHONPATH:${LIBERO_HOME} # let eval_libero find the LIBERO t
 export PYTHONPATH=$(pwd):${PYTHONPATH} # let LIBERO find the websocket tools from main repo
 
 
-your_ckpt=playground/Pretrained_models/InternVLA-M1-LIBERO-Goal/checkpoints/steps_30000_pytorch_model.pt
+your_ckpt=/mnt/petrelfs/yujunqiu/code/vla-baseline/intern-clean5/playground/Checkpoints/open_source/0903_libero_goal_augsteps_0_wo_flash_attention_wo_augsteps_two_view_action_chunk_8_pretrained_vlm/checkpoints/steps_30000_pytorch_model.pt
 
 folder_name=$(echo "$your_ckpt" | awk -F'/' '{print $(NF-2)"_"$(NF-1)"_"$NF}')
 

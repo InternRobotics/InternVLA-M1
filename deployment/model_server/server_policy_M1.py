@@ -3,6 +3,7 @@ import socket
 import argparse
 from deployment.model_server.tools.websocket_policy_server import WebsocketPolicyServer
 from InternVLA.model.framework.M1 import InternVLA_M1
+# from InternVLA.model.framework.DinoQFormerACT import QwenQFormerDiT as InternVLA_M1
 import torch, os
 
 

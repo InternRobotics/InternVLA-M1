@@ -16,8 +16,6 @@ import tyro
 from libero.libero import benchmark, get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-
 from examples.LIBERO.model2libero_interface import M1Inference
 
 
@@ -57,11 +55,8 @@ class Args:
     job_name: str = "test"
 
 
-
 def eval_libero(args: Args) -> None:
     logging.info(f"Arguments: {json.dumps(dataclasses.asdict(args), indent=4)}")
-    if os.getenv("DEBUG", False):
-        start_debugpy_once()
 
     # Set random seed
     np.random.seed(args.seed)
@@ -88,8 +83,6 @@ def eval_libero(args: Args) -> None:
         max_steps = 400  # longest training demo has 373 steps
     else:
         raise ValueError(f"Unknown task suite: {args.task_suite_name}")
-
-    # client = websocket_policy_client.WebsocketClientPolicy(args.host, args.port)
 
     model = M1Inference(
         policy_ckpt_path=args.pretrained_path, # to get unnormalization stats
@@ -172,9 +165,9 @@ def eval_libero(args: Args) -> None:
 
                 # align key with model API
                 obs_input = {
-                "images": [observation["observation.primary"][0]],
-                # "images": [observation["observation.primary"][0], observation["observation.wrist_image"][0]], #@Junqiu 为什么是单视角？
-                "task_description": observation["instruction"][0],  
+                    "images": [observation["observation.primary"][0], observation["observation.wrist_image"][0]],
+                    "task_description": observation["instruction"][0],  
+                    "step": step,
                 }
 
                 
@@ -296,8 +289,8 @@ def start_debugpy_once():
     import debugpy
     if getattr(start_debugpy_once, "_started", False):
         return
-    debugpy.listen(("0.0.0.0", 10092))
-    print("🔍 Waiting for VSCode attach on 0.0.0.0:10092 ...")
+    debugpy.listen(("0.0.0.0", 5678))
+    print("🔍 Waiting for VSCode attach on 0.0.0.0:5678 ...")
     debugpy.wait_for_client()
     start_debugpy_once._started = True
 

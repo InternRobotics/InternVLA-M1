@@ -8,10 +8,6 @@ https://github.com/user-attachments/assets/e83ae046-a503-46a8-95e4-ef381919b7f8
 
 ![](assets/teaser.png)
 
-## Recent Updates
-
-2025-09-30 | EVAL | Double-check unified model server eval on Simpler & LIBERO |
-
 ## 🔥 Key Features
 
 1. **Modular & Extensible**  

@@ -97,4 +97,79 @@ accelerate launch --config_file InternVLA/config/deepseeds/deepspeed_zero2.yaml 
 ```
 
 ## Deploy and Inference
-see examples/SimplerEnv/README.md
+
+This section describes how to deploy and run InternVLA-M1 on real robots. The deployment requires three key components: camera service, model inference service, and robot controller.
+
+### Data Stream
+
+```
+[Dual RealSense Cameras] --> [Camera Server:5021] --> [Model Inference Server:25553] --> [Franka Robot Controller]
+```
+
+### Environment Setup
+
+**Hardware Requirements**:
+- Franka Emika Panda robot with FCI enabled
+- Robotiq 2F-85 gripper (or Franka Hand)  
+- 2+ Intel RealSense D435 cameras
+- GPU with CUDA support
+
+**Software Requirements**:
+
+Create a separate Python 3.10 environment for robot control:
+
+```bash
+conda create -n robot_control python=3.10
+conda activate robot_control
+pip install numpy scipy opencv-python loguru requests flask pyrealsense2
+```
+
+Install robot control libraries (see respective repos for details):
+- [frankx](https://github.com/pantor/frankx) - Franka control
+- [pyRobotiqGripper](https://github.com/castetsb/pyRobotiqGripper) - Robotiq gripper
+- [pyrealsense2](https://github.com/IntelRealSense/librealsense/tree/master/wrappers/python) - RealSense cameras
+
+For model inference, use the main InternVLA environment.
+
+### Deployment Steps
+
+**Step 1: Start Camera Server**
+
+```bash
+conda activate robot_control
+cd InternVLA-M1/examples/real_robot
+python realsense_server.py --mode server
+```
+
+**Step 2: Start Inference Server**
+
+```bash
+conda activate internvla
+python InternVLA-M1/examples/real_robot/controller_dual.py \
+    --saved_model_path path/to/your/finetuned/model \
+    --saved_model_path path/to/model \
+    --use_bf16
+```
+
+**Step 3: Configure and Run Robot Controller**
+
+Edit `config.py` to set your robot IP and task instruction, then:
+
+```bash
+conda activate robot_control
+cd InternVLA-M1/examples/real_robot
+python deploy_client.py
+```
+
+
+### Troubleshooting
+
+- **Cameras**: Ensure 2+ RealSense cameras connected, check with `rs-enumerate-devices`
+- **Robot**: Verify Franka IP (default: 172.16.0.2), unlock joints via web interface
+- **Gripper**: Check USB permissions for Robotiq: `ls -l /dev/ttyUSB*`
+- **GPU**: Recommend 12GB+ VRAM, use `--use_bf16` to reduce memory usage
+
+
+### Acknowledgements
+
+We thank the maintainers of [frankx](https://github.com/pantor/frankx), [pyRobotiqGripper](https://github.com/castetsb/pyRobotiqGripper), and [pyrealsense2](https://github.com/IntelRealSense/librealsense) for their excellent open-source robot control libraries.

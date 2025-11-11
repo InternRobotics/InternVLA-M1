@@ -147,8 +147,8 @@ python realsense_server.py --mode server
 conda activate internvla
 python InternVLA-M1/examples/real_robot/controller_dual.py \
     --saved_model_path path/to/your/finetuned/model \
-    --saved_model_path path/to/model \
-    --use_bf16
+    --use_bf16 \
+    --dual_freq_mode
 ```
 
 **Step 3: Configure and Run Robot Controller**

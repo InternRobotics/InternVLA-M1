@@ -11,7 +11,7 @@ Primary goal: predict continuous future actions conditioned on multi-view images
 from typing import List
 from tqdm import tqdm
 from typing import List, Optional, Tuple
-import torch
+import torch, os
 import torch.nn as nn
 import numpy as np
 from PIL import Image
@@ -360,9 +360,10 @@ if __name__ == "__main__":
     # model parameters
     import debugpy
 
-    debugpy.listen(("0.0.0.0", 10092))
-    print("🔍 Rank 0 waiting for debugger attach on port 10092...")
-    debugpy.wait_for_client()
+    if os.environ.get("DEBUG", None):
+        debugpy.listen(("0.0.0.0", 10092))
+        print("🔍 Rank 0 waiting for debugger attach on port 10092...")
+        debugpy.wait_for_client()
 
     config_yaml = "InternVLA/config/training/internvla_cotrain_oxe.yaml"
     cfg = OmegaConf.load(config_yaml)

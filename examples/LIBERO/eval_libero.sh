@@ -23,7 +23,6 @@ unnorm_key="franka"
 LOG_DIR="logs/$(date +"%Y%m%d_%H%M%S")"
 mkdir -p ${LOG_DIR}
 
-# export DEBUG=true
 
 python ./examples/LIBERO/eval_libero.py \
     --args.pretrained-path ${your_ckpt} \

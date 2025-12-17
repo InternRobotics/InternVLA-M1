@@ -117,7 +117,7 @@ def get_args():
     parser.add_argument("--octo-init-rng", type=int, default=0, help="Octo init rng seed")
     parser.add_argument("--async-freq", type=int, default=1)
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Octo init rng seed")
-    parser.add_argument("--port", type=int, default=10093)
+    parser.add_argument("--port", type=int, default=5340)
 
 
     args = parser.parse_args()

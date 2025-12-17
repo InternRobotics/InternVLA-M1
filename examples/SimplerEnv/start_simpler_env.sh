@@ -5,10 +5,13 @@ echo `which python`
 export SimplerEnv_PATH=./Projects/SimplerEnv
 export PYTHONPATH=$(pwd):${PYTHONPATH}
 
-MODEL_PATH=$1
+ckpt_path=./playground/Pretrained_models/InternVLA-M1-Pretrain-RT-1-Bridge/checkpoints/steps_50000_pytorch_model.pt
+
+MODEL_PATH=${1:-$ckpt_path}
 ckpt_path=${MODEL_PATH}
+
 TSET_NUM=1
-export DEBUG=1
+
 
 
 

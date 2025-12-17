@@ -16,7 +16,7 @@ from pathlib import Path
 
 
 from InternVLA.model.framework.share_tools import read_mode_config
-from InternVLA.model.framework.M1 import InternVLA_M1
+
 
 
 class M1Inference:
@@ -228,7 +228,7 @@ class M1Inference:
         policy_ckpt_path = Path(policy_ckpt_path)
         model_config, norm_stats = read_mode_config(policy_ckpt_path)  # read config and norm_stats
 
-        unnorm_key = InternVLA_M1._check_unnorm_key(norm_stats, unnorm_key)
+        # unnorm_key = baseframework._check_unnorm_key(norm_stats, unnorm_key)
         return norm_stats[unnorm_key]["action"]
 
 

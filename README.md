@@ -161,7 +161,7 @@ We release a series of pretrained models and checkpoints to facilitate reproduct
 
 # 🗺️ Roadmap
 
-* [ ] Add Co-Training Multimodel Multitask Readme (now co-training code is already here)
+* [x] 1215: Add Co-Training Multimodel Multitask [README.md](examples/CoTraininig/README.md)
 * [x] 0930: Unified Inference Server for Simpler and LIBERO
 * [x] 0918: Release model weights
 

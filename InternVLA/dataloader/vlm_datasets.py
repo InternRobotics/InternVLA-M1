@@ -601,15 +601,6 @@ from transformers import AutoTokenizer, AutoProcessor
 
 if __name__ == "__main__":
     # each file should be able to be debugged and tested independently
-
-    # data config
-    #
-    import debugpy
-
-    debugpy.listen(("0.0.0.0", 10092))
-    print("🔍 Rank 0 waiting for debugger attach on port 10092...")
-    debugpy.wait_for_client()
-
     # Load YAML config & Convert CLI overrides to dotlist config
     config_yaml = "path to yaml config"
     cfg = OmegaConf.load(config_yaml)

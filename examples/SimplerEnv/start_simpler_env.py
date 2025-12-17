@@ -8,19 +8,15 @@ from simpler_env.evaluation.maniskill2_evaluator import maniskill2_evaluator
 
 import numpy as np
 
-# try:
-#     from simpler_env.policies.octo.octo_model import OctoInference
-# except ImportError as e:
-#     print("Octo is not correctly imported.")
-#     print(e)
 
-if os.environ.get("DEBUG", None):
-    import debugpy
-    debugpy.listen(("0.0.0.0", 10092))
-    print("🔍 Rank 0 waiting for debugger attach on port 10092...")
-    debugpy.wait_for_client()
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
+
+# if os.environ.get("DEBUG", None):
+#     import debugpy
+#     debugpy.listen(("0.0.0.0", 10092))
+#     print("🔍 Rank 0 waiting for debugger attach on port 10092...")
+#     debugpy.wait_for_client()
+# os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+# os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 
 if __name__ == "__main__":
@@ -39,6 +35,7 @@ if __name__ == "__main__":
     model = M1Inference(
         policy_ckpt_path=args.ckpt_path, # to get unnormalization stats
         policy_setup=args.policy_setup,
+        port=args.port,
         action_scale=args.action_scale,
         cfg_scale=1.5                  # cfg from 1.5 to 7 also performs well
     )

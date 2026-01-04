@@ -10,7 +10,7 @@ export NCCL_TIMEOUT=1000  # timeout set to 1 hour (unit: seconds)
 
 
 Framework_name=InternVLA-M1
-base_vlm=./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct # must be a local path, due to simpler will run in other where
+base_vlm=InternRobotics/InternVLA-M1 # must be a local path or hf path, due to simpler will run in other where
 freeze_module_list="qwen_vl_interface,dino_encoder" # just for fast debug, sota is under fully FT, i.g., freeze_module_list=""
 freeze_module_list="qwen_vl_interface.model.model.visual,dino_encoder" # just for fast debug, sota is under fully FT, i.g., freeze_module_list=""
 

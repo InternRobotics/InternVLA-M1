@@ -173,9 +173,15 @@ Please include detailed logs and reproduction steps when reporting bugs.
 
 # 📜 Citation
 
-If you find this useful in your research, please consider citing:
+If you find this useful in your research, please consider citing our ICLR paper and technical report:
 
 ```bibtex
+@inproceedings{ye2026st4vla,
+  title={ST4VLA: Spatially Guided Training for Vision-Language-Action Models},
+  author={Ye, Jinhui and Wang, Fangjing and Gao, Ning and Yu, Junqiu and Zhu, Yangkun and Wang, Bin and Zhang, Jinyu and Jin, Weiyang and Fu, Yanwei and Zheng, Feng and Chen, Yilun and Pang, Jiangmiao},
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2026}
+}
 @article{internvlam1,
   title   = {InternVLA-M1: A Spatially Guided Vision-Language-Action Framework for Generalist Robot Policy},
   author  = {InternVLA-M1 Contributors},

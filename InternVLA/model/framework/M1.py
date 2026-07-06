@@ -26,7 +26,7 @@ logger = initialize_overwatch(__name__)
 IGNORE_INDEX = -100
 
 from InternVLA.model.framework.base_framework import baseframework
-from InternVLA.model.modules.vlm.QWen2_5 import get_qwen2_5_interface
+from InternVLA.model.modules.vlm.QWen2_5 import get_qwen2_5_interface, _get_autocast_device
 from InternVLA.model.modules.projector.QFormer import get_layerwise_qformer
 from InternVLA.model.modules.action_model.DiTActionHeader import get_action_model
 from InternVLA.model.modules.dino_model.dino import get_dino_model
@@ -106,7 +106,7 @@ class InternVLA_M1(baseframework):
 
         # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(_get_autocast_device(self.qwen_vl_interface.model), dtype=torch.bfloat16):
             qwenvl_outputs = self.qwen_vl_interface(
                 **qwen_inputs,
                 output_attentions=False,
@@ -138,7 +138,7 @@ class InternVLA_M1(baseframework):
         action_condition = self.layer_qformer(cat_conditions)  # [B, 64, D_action]
 
         # Step 4: Action Expert Forward and Loss
-        with torch.autocast("cuda", dtype=torch.float32):
+        with torch.autocast(_get_autocast_device(self.qwen_vl_interface.model), dtype=torch.float32):
 
             # here is a tips to accelerate training speed, by repeating each sample for several times @ref to CogACT
             actions = torch.tensor(np.array(actions), device=action_condition.device)  # [B, chunk, 7]
@@ -204,7 +204,7 @@ class InternVLA_M1(baseframework):
         inferface_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
         qwen_inputs = inferface_inputs
 
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(_get_autocast_device(self.qwen_vl_interface.model), dtype=torch.bfloat16):
             qwenvl_outputs = self.qwen_vl_interface(
                 **qwen_inputs,
                 output_hidden_states=True,
@@ -219,7 +219,7 @@ class InternVLA_M1(baseframework):
             dino_encoded_features = dino_features.reshape(B, -1, dino_features.shape[-1])  # [B, num_view * token, dim]
             dino_encoded_features = self.dino_pro(dino_encoded_features)  # [B, 256, D]
 
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(_get_autocast_device(self.qwen_vl_interface.model), dtype=torch.bfloat16):
 
             start_layer = self.config.framework.layer_qformer.qformer_start_layer
             end_layer = self.config.framework.layer_qformer.qformer_end_layer
@@ -296,10 +296,15 @@ class InternVLA_M1(baseframework):
         image: Image.Image,
         text: str,
         max_new_tokens: int = 128,
-        device: Optional[str] = "cuda",
+        device: Optional[str] = None,
     ) -> List[str]:
         processor = getattr(self.qwen_vl_interface, "processor", None)
         model = getattr(self.qwen_vl_interface, "model", None)
+        if device is None:
+            try:
+                device = next(model.parameters()).device
+            except (StopIteration, AttributeError):
+                device = "cpu"
         # if processor is None or model is None:
         #     raise RuntimeError("qwen_vl_interface 缺少 processor 或 model。")
 
@@ -394,6 +399,10 @@ if __name__ == "__main__":
         break
 
     # try get model
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        "xpu" if hasattr(torch, 'xpu') and torch.xpu.is_available()
+        else "cuda" if torch.cuda.is_available()
+        else "cpu"
+    )
     model = model.to(device)
     model(batch)

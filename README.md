@@ -54,6 +54,20 @@ pip install flash-attn --no-build-isolation
 pip install -e .
 ```
 
+> **Hardware support**
+>
+> InternVLA-M1 runs on **NVIDIA CUDA, Intel GPUs (XPU), or CPU**. The deployment and evaluation scripts automatically select the available device in this order: CUDA, XPU, then CPU. No code or configuration changes are needed.
+>
+> **Intel GPU (XPU):** install a PyTorch build with XPU support instead of the CUDA wheels:
+>
+> ```bash
+> pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+> ```
+>
+> Skip the `flash-attn` step above when using XPU. It is CUDA-only and is not required on XPU; the model uses PyTorch's built-in attention implementation instead.
+>
+> Outputs closely match the CUDA and CPU paths. Minor float32 flow-matching rounding drift is expected and is not a bug.
+
 
 ## ⚡ Quick Interactive M1 Demo
 
@@ -114,8 +128,12 @@ view2 = view1.copy()
 batch_images = [[view1, view2]]  # List[List[PIL.Image]]
 instructions = ["Pick up the apple and place it on the plate."]
 
-if torch.cuda.is_available():
-    internVLA_M1 = internVLA_M1.to("cuda")
+device = torch.device(
+  "cuda" if torch.cuda.is_available()
+  else "xpu" if hasattr(torch, "xpu") and torch.xpu.is_available()
+  else "cpu"
+)
+internVLA_M1 = internVLA_M1.to(device)
 
 pred = internVLA_M1.predict_action(
     batch_images=batch_images,

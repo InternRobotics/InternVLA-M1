@@ -24,6 +24,19 @@ DEFAULT_VIDEO_TOKEN = "<video>"
 
 import torch.nn as nn
 
+def _get_autocast_device(model_or_module):
+    """Detect autocast device type from model parameters."""
+    try:
+        p = next(model_or_module.parameters())
+        if p.device.type == "xpu":
+            return "xpu"
+        elif p.device.type == "cuda":
+            return "cuda"
+    except StopIteration:
+        pass
+    return "cpu"
+
+
 
 class _QWen_VL_Interface(nn.Module):
     """
@@ -77,11 +90,23 @@ class _QWen_VL_Interface(nn.Module):
         qwenvl_config = config.framework.get("qwenvl", {})
         model_id = qwenvl_config.get("base_vlm", "Qwen/Qwen2.5-VL-3B-Instruct")
 
+        # Backend-safe: flash_attention_2 + CUDA placement on CUDA; sdpa + XPU/CPU otherwise.
+        try:
+            from transformers.utils import is_flash_attn_2_available
+            _attn_impl = "flash_attention_2" if is_flash_attn_2_available() else "sdpa"
+        except Exception:
+            _attn_impl = "sdpa"
+        if torch.cuda.is_available():
+            _device_map = "cuda"
+        elif hasattr(torch, "xpu") and torch.xpu.is_available():
+            _device_map = "xpu"
+        else:
+            _device_map = "cpu"
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id,
-            attn_implementation="flash_attention_2",
+            attn_implementation=_attn_impl,
             torch_dtype="auto",
-            device_map="cuda",
+            device_map=_device_map,
         )
         processor = AutoProcessor.from_pretrained(model_id)
         processor.tokenizer.padding_side = "left"
@@ -131,7 +156,7 @@ class _QWen_VL_Interface(nn.Module):
             - Hidden states required for auxiliary alignment or feature extraction modules.
         """
 
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(_get_autocast_device(self.model), dtype=torch.bfloat16):
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -178,7 +203,7 @@ class _QWen_VL_Interface(nn.Module):
             - Uses autocast(float16); relies on attribute enable_mixed_precision_training.
             - For iterative dialogue, caller manages past_key_values externally.
         """
-        with torch.autocast("cuda", enabled=self.enable_mixed_precision_training, dtype=torch.float16):
+        with torch.autocast(_get_autocast_device(self.model), enabled=self.enable_mixed_precision_training, dtype=torch.float16):
             generation_output = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
